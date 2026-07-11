@@ -537,6 +537,268 @@ class PaperTradingRepository:
         ).scalars()
         return tuple(scheduler_row_to_domain(r) for r in rows)
 
+    def list_scheduler_runs(
+        self,
+        *,
+        limit: int,
+        after_scheduled_for: datetime | None = None,
+        after_run_id: UUID | None = None,
+    ) -> tuple[SchedulerRun, ...]:
+        stmt = select(SchedulerRunRow).order_by(
+            SchedulerRunRow.scheduled_for.desc(),
+            SchedulerRunRow.run_id.desc(),
+        )
+        if after_scheduled_for is not None and after_run_id is not None:
+            stmt = stmt.where(
+                (SchedulerRunRow.scheduled_for < after_scheduled_for)
+                | (
+                    (SchedulerRunRow.scheduled_for == after_scheduled_for)
+                    & (SchedulerRunRow.run_id < after_run_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(scheduler_row_to_domain(r) for r in rows)
+
+    def list_audit_events(
+        self,
+        *,
+        limit: int,
+        after_created_at: datetime | None = None,
+        after_event_id: UUID | None = None,
+    ) -> tuple[AuditEvent, ...]:
+        from paper_trading.db.orm import AuditEventRow
+
+        stmt = select(AuditEventRow).order_by(
+            AuditEventRow.created_at.desc(),
+            AuditEventRow.event_id.desc(),
+        )
+        if after_created_at is not None and after_event_id is not None:
+            stmt = stmt.where(
+                (AuditEventRow.created_at < after_created_at)
+                | (
+                    (AuditEventRow.created_at == after_created_at)
+                    & (AuditEventRow.event_id < after_event_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(audit_row_to_domain(r) for r in rows)
+
+    def list_evaluations(
+        self,
+        *,
+        limit: int,
+        after_created_at: datetime | None = None,
+        after_evaluation_id: UUID | None = None,
+    ) -> tuple[StrategyEvaluationRecord, ...]:
+        stmt = select(StrategyEvaluationRow).order_by(
+            StrategyEvaluationRow.created_at.desc(),
+            StrategyEvaluationRow.evaluation_id.desc(),
+        )
+        if after_created_at is not None and after_evaluation_id is not None:
+            stmt = stmt.where(
+                (StrategyEvaluationRow.created_at < after_created_at)
+                | (
+                    (StrategyEvaluationRow.created_at == after_created_at)
+                    & (StrategyEvaluationRow.evaluation_id < after_evaluation_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(evaluation_row_to_domain(r) for r in rows)
+
+    def list_intents(
+        self,
+        *,
+        limit: int,
+        after_created_at: datetime | None = None,
+        after_intent_id: UUID | None = None,
+    ) -> tuple[TradeIntent, ...]:
+        stmt = select(TradeIntentRow).order_by(
+            TradeIntentRow.created_at.desc(),
+            TradeIntentRow.intent_id.desc(),
+        )
+        if after_created_at is not None and after_intent_id is not None:
+            stmt = stmt.where(
+                (TradeIntentRow.created_at < after_created_at)
+                | (
+                    (TradeIntentRow.created_at == after_created_at)
+                    & (TradeIntentRow.intent_id < after_intent_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(intent_row_to_domain(r) for r in rows)
+
+    def list_orders(
+        self,
+        *,
+        limit: int,
+        after_created_at: datetime | None = None,
+        after_order_id: UUID | None = None,
+    ) -> tuple[PaperOrder, ...]:
+        stmt = select(PaperOrderRow).order_by(
+            PaperOrderRow.created_at.desc(),
+            PaperOrderRow.paper_order_id.desc(),
+        )
+        if after_created_at is not None and after_order_id is not None:
+            stmt = stmt.where(
+                (PaperOrderRow.created_at < after_created_at)
+                | (
+                    (PaperOrderRow.created_at == after_created_at)
+                    & (PaperOrderRow.paper_order_id < after_order_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(order_row_to_domain(r) for r in rows)
+
+    def list_fills(
+        self,
+        *,
+        limit: int,
+        after_fill_time: datetime | None = None,
+        after_fill_id: UUID | None = None,
+    ) -> tuple[PaperFill, ...]:
+        stmt = select(PaperFillRow).order_by(
+            PaperFillRow.fill_time.desc(),
+            PaperFillRow.fill_id.desc(),
+        )
+        if after_fill_time is not None and after_fill_id is not None:
+            stmt = stmt.where(
+                (PaperFillRow.fill_time < after_fill_time)
+                | (
+                    (PaperFillRow.fill_time == after_fill_time)
+                    & (PaperFillRow.fill_id < after_fill_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(fill_row_to_domain(r) for r in rows)
+
+    def list_positions(
+        self,
+        *,
+        limit: int,
+        after_opened_at: datetime | None = None,
+        after_position_id: UUID | None = None,
+    ) -> tuple[PaperPosition, ...]:
+        stmt = select(PaperPositionRow).order_by(
+            PaperPositionRow.opened_at.desc(),
+            PaperPositionRow.position_id.desc(),
+        )
+        if after_opened_at is not None and after_position_id is not None:
+            stmt = stmt.where(
+                (PaperPositionRow.opened_at < after_opened_at)
+                | (
+                    (PaperPositionRow.opened_at == after_opened_at)
+                    & (PaperPositionRow.position_id < after_position_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(position_row_to_domain(r) for r in rows)
+
+    def get_position(self, position_id: UUID) -> PaperPosition | None:
+        row = self._session.get(PaperPositionRow, position_id)
+        return position_row_to_domain(row) if row else None
+
+    def get_order_for_intent(self, intent_id: UUID) -> PaperOrder | None:
+        row = self._session.execute(
+            select(PaperOrderRow).where(PaperOrderRow.intent_id == intent_id)
+        ).scalar_one_or_none()
+        return order_row_to_domain(row) if row else None
+
+    def get_fills_for_order(self, paper_order_id: UUID) -> tuple[PaperFill, ...]:
+        rows = self._session.execute(
+            select(PaperFillRow)
+            .where(PaperFillRow.paper_order_id == paper_order_id)
+            .order_by(PaperFillRow.fill_sequence)
+        ).scalars()
+        return tuple(fill_row_to_domain(r) for r in rows)
+
+    def get_intent(self, intent_id: UUID) -> TradeIntent | None:
+        row = self._session.get(TradeIntentRow, intent_id)
+        return intent_row_to_domain(row) if row else None
+
+    def list_all_fills(self) -> tuple[PaperFill, ...]:
+        rows = self._session.execute(select(PaperFillRow)).scalars()
+        return tuple(fill_row_to_domain(r) for r in rows)
+
+    def list_all_positions(self) -> tuple[PaperPosition, ...]:
+        rows = self._session.execute(select(PaperPositionRow)).scalars()
+        return tuple(position_row_to_domain(r) for r in rows)
+
+    def list_all_intents(self) -> tuple[TradeIntent, ...]:
+        rows = self._session.execute(select(TradeIntentRow)).scalars()
+        return tuple(intent_row_to_domain(r) for r in rows)
+
+    def list_all_orders(self) -> tuple[PaperOrder, ...]:
+        rows = self._session.execute(select(PaperOrderRow)).scalars()
+        return tuple(order_row_to_domain(r) for r in rows)
+
+    def list_stop_events_for_position(
+        self, position_id: UUID
+    ) -> tuple[PositionStopEvent, ...]:
+        rows = self._session.execute(
+            select(PositionStopHistoryRow)
+            .where(PositionStopHistoryRow.position_id == position_id)
+            .order_by(PositionStopHistoryRow.evaluation_time)
+        ).scalars()
+        return tuple(stop_event_row_to_domain(r) for r in rows)
+
+    def update_order_status(
+        self,
+        paper_order_id: UUID,
+        status: str,
+        *,
+        remaining_quantity: Decimal | None = None,
+        updated_at: datetime | None = None,
+    ) -> PaperOrder:
+        values: dict[str, Any] = {
+            "status": status,
+            "updated_at": updated_at or _utc_now(),
+        }
+        if remaining_quantity is not None:
+            values["remaining_quantity"] = remaining_quantity
+        self._session.execute(
+            update(PaperOrderRow)
+            .where(PaperOrderRow.paper_order_id == paper_order_id)
+            .values(**values)
+        )
+        row = self._session.get(PaperOrderRow, paper_order_id)
+        assert row is not None
+        return order_row_to_domain(row)
+
+    def fail_orphan_scheduler_runs(self, *, completed_at: datetime) -> int:
+        result = self._session.execute(
+            update(SchedulerRunRow)
+            .where(SchedulerRunRow.status == SchedulerRunStatus.RUNNING.value)
+            .values(
+                status=SchedulerRunStatus.FAILED.value,
+                completed_at=completed_at,
+                error="orphan_run_marked_failed_on_recovery",
+            )
+        )
+        self._session.flush()
+        rowcount = getattr(result, "rowcount", 0)
+        return int(rowcount or 0)
+
+    def get_latest_portfolio_snapshot(self) -> PortfolioSnapshot | None:
+        row = self._session.execute(
+            select(PortfolioSnapshotRow)
+            .order_by(PortfolioSnapshotRow.evaluation_time.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        return snapshot_row_to_domain(row) if row else None
+
+    def count_open_positions_by_symbol(self) -> dict[str, int]:
+        rows = self._session.execute(
+            select(PaperPositionRow.symbol, PaperPositionRow.position_id).where(
+                PaperPositionRow.status.in_(
+                    [PaperPositionStatus.OPEN.value, PaperPositionStatus.CLOSING.value]
+                )
+            )
+        ).all()
+        counts: dict[str, int] = {}
+        for symbol, _ in rows:
+            counts[symbol] = counts.get(symbol, 0) + 1
+        return counts
+
     def create_portfolio_snapshot(self, row: PortfolioSnapshotRow) -> PortfolioSnapshot:
         self._session.add(row)
         self._session.flush()

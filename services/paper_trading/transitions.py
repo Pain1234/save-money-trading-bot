@@ -87,9 +87,11 @@ _ORDER_TRANSITIONS: dict[PaperOrderStatus, frozenset[PaperOrderStatus]] = {
 
 _RUNTIME_TRANSITIONS: dict[RuntimeStatus, frozenset[RuntimeStatus]] = {
     RuntimeStatus.STOPPED: frozenset({RuntimeStatus.STARTING}),
-    RuntimeStatus.STARTING: frozenset({RuntimeStatus.SYNCING, RuntimeStatus.FAILED}),
+    RuntimeStatus.STARTING: frozenset(
+        {RuntimeStatus.RECOVERING, RuntimeStatus.SYNCING, RuntimeStatus.FAILED}
+    ),
     RuntimeStatus.RECOVERING: frozenset(
-        {RuntimeStatus.SYNCING, RuntimeStatus.READY, RuntimeStatus.FAILED}
+        {RuntimeStatus.SYNCING, RuntimeStatus.READY, RuntimeStatus.DEGRADED, RuntimeStatus.FAILED}
     ),
     RuntimeStatus.SYNCING: frozenset(
         {RuntimeStatus.READY, RuntimeStatus.DEGRADED, RuntimeStatus.FAILED}
