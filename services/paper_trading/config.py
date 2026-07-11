@@ -71,6 +71,18 @@ class PaperTradingConfig(BaseModel):
             raise ValueError("advisory_lock_id must fit PostgreSQL BIGINT")
         return value
 
+    @field_validator("kill_switch_close_policy")
+    @classmethod
+    def validate_kill_switch_close_policy(
+        cls, value: KillSwitchClosePolicy
+    ) -> KillSwitchClosePolicy:
+        if value == KillSwitchClosePolicy.CLOSE_AT_NEXT_OPEN:
+            raise ValueError(
+                "CLOSE_AT_NEXT_OPEN is reserved for a future execution version; "
+                "paper trading V1 supports KillSwitchClosePolicy.FREEZE only"
+            )
+        return value
+
     @model_validator(mode="after")
     def validate_stale_threshold(self) -> Self:
         if self.stale_runtime_threshold_seconds <= self.heartbeat_interval_seconds:

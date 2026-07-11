@@ -165,7 +165,9 @@ class FillResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     fill_id: str
-    paper_order_id: str
+    fill_kind: str
+    paper_order_id: str | None
+    position_id: str | None
     symbol: str
     side: str
     quantity: str
@@ -228,6 +230,12 @@ class ControlResponse(BaseModel):
 
     accepted: bool
     message: str
+
+
+class KillControlRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    close_policy: str | None = None
 
 
 class RunCycleRequest(BaseModel):

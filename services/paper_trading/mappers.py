@@ -127,9 +127,13 @@ def order_row_to_domain(row: PaperOrderRow) -> PaperOrder:
 
 
 def fill_row_to_domain(row: PaperFillRow) -> PaperFill:
+    from paper_trading.enums import PaperFillKind
+
     return PaperFill(
         fill_id=row.fill_id,
         paper_order_id=row.paper_order_id,
+        position_id=row.position_id,
+        fill_kind=PaperFillKind(row.fill_kind),
         symbol=row.symbol,
         side=PaperSide(row.side),
         quantity=row.quantity,

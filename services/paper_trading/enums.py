@@ -56,6 +56,11 @@ class PaperSide(StrEnum):
     LONG = "LONG"
 
 
+class PaperFillKind(StrEnum):
+    ENTRY = "ENTRY"
+    EXIT = "EXIT"
+
+
 class SignalType(StrEnum):
     BREAKOUT = "BREAKOUT"
     PULLBACK = "PULLBACK"

@@ -22,6 +22,7 @@ from paper_trading.api_models import (
     FillResponse,
     HealthResponse,
     IntentResponse,
+    KillControlRequest,
     OrderResponse,
     PaginatedResponse,
     PortfolioResponse,
@@ -39,7 +40,7 @@ from paper_trading.api_models import (
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import SchedulerRunRow
 from paper_trading.db.transaction import transaction_scope
-from paper_trading.enums import SchedulerRunStatus
+from paper_trading.enums import KillSwitchClosePolicy, SchedulerRunStatus
 from paper_trading.ids import scheduler_run_key
 from paper_trading.lock import InMemoryAdvisoryLock
 from paper_trading.readiness import ReadinessService
@@ -344,7 +345,9 @@ def list_fills(
     items = [
         FillResponse(
             fill_id=format_uuid(f.fill_id),
-            paper_order_id=format_uuid(f.paper_order_id),
+            fill_kind=f.fill_kind.value,
+            paper_order_id=format_uuid(f.paper_order_id) if f.paper_order_id else None,
+            position_id=format_uuid(f.position_id) if f.position_id else None,
             symbol=f.symbol,
             side=f.side.value,
             quantity=format_decimal(f.quantity),
@@ -538,7 +541,23 @@ def control_kill(
     request: Request,
     repo: Annotated[PaperTradingRepository, Depends(get_repository)],
     _: Annotated[None, Depends(verify_control_api_key)],
+    body: KillControlRequest | None = None,
 ) -> ControlResponse:
+    if body is not None and body.close_policy == KillSwitchClosePolicy.CLOSE_AT_NEXT_OPEN.value:
+        _audit_control(
+            repo,
+            "CONTROL_KILL_POLICY_REJECTED",
+            request,
+            accepted=False,
+            extra={"close_policy": KillSwitchClosePolicy.CLOSE_AT_NEXT_OPEN.value},
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "CLOSE_AT_NEXT_OPEN is not supported in paper trading V1; "
+                "only KillSwitchClosePolicy.FREEZE is available"
+            ),
+        )
     runtime_svc = RuntimeService(repo)
     with transaction_scope(repo.session):
         runtime_svc.set_kill_switch(True)

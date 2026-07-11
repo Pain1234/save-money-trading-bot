@@ -13,10 +13,11 @@ from strategy_engine.models import Candle, StrategyParameters, TrailingStopState
 
 from paper_trading.accounting import paper_position_to_simulated
 from paper_trading.config import PaperTradingConfig
-from paper_trading.db.orm import PaperPositionRow, PositionStopHistoryRow
+from paper_trading.db.orm import PaperFillRow, PaperPositionRow, PositionStopHistoryRow
 from paper_trading.db.transaction import transaction_scope
-from paper_trading.enums import PaperPositionStatus
+from paper_trading.enums import PaperFillKind, PaperPositionStatus, PaperSide
 from paper_trading.execution import PaperExecutionEngine
+from paper_trading.ids import paper_exit_fill_key
 from paper_trading.lifecycle import SYMBOL_PROCESSING_ORDER
 from paper_trading.models import PaperPosition, StrategyEvaluationRecord
 from paper_trading.portfolio import PortfolioSnapshotService
@@ -217,6 +218,28 @@ class StopLifecycleService:
         with transaction_scope(self._repo.session):
             row = self._repo.session.get(PaperPositionRow, position.position_id)
             if row is None or row.status == PaperPositionStatus.CLOSED.value:
+                return StopCloseResult(position.position_id, closed=False, symbol=position.symbol)
+
+            exit_fill_key = paper_exit_fill_key(position.position_id, process_time)
+            fill_row = PaperFillRow(
+                fill_id=uuid4(),
+                paper_order_id=None,
+                position_id=position.position_id,
+                fill_kind=PaperFillKind.EXIT.value,
+                symbol=position.symbol,
+                side=PaperSide.LONG.value,
+                quantity=position.quantity,
+                market_open_price=trigger.exit_reference,
+                slippage=exit_accounting.slippage_cost,
+                fill_price=exit_accounting.fill_price,
+                fee=exit_accounting.fee,
+                fill_time=process_time,
+                candle_key=process_time,
+                fill_sequence=0,
+                deterministic_fill_key=exit_fill_key,
+            )
+            _, fill_created = self._repo.insert_or_get_paper_fill(fill_row)
+            if not fill_created:
                 return StopCloseResult(position.position_id, closed=False, symbol=position.symbol)
 
             row.status = PaperPositionStatus.CLOSING.value

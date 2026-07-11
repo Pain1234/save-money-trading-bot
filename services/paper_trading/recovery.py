@@ -18,6 +18,7 @@ from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import PaperOrderRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import (
+    PaperFillKind,
     PaperOrderStatus,
     PaperPositionStatus,
     RuntimeStatus,
@@ -387,6 +388,27 @@ class RecoveryService:
                 )
 
         for fill in self._repo.list_all_fills():
+            if fill.fill_kind == PaperFillKind.EXIT:
+                if fill.position_id is None:
+                    issues.append(
+                        ConsistencyIssue(
+                            code="exit_fill_without_position",
+                            severity=IssueSeverity.FATAL,
+                            message="EXIT fill missing position_id",
+                            details={"fill_id": str(fill.fill_id)},
+                        )
+                    )
+                continue
+            if fill.paper_order_id is None:
+                issues.append(
+                    ConsistencyIssue(
+                        code="entry_fill_without_order",
+                        severity=IssueSeverity.FATAL,
+                        message="ENTRY fill missing paper_order_id",
+                        details={"fill_id": str(fill.fill_id)},
+                    )
+                )
+                continue
             order_row = self._repo.session.get(PaperOrderRow, fill.paper_order_id)
             if order_row is None:
                 issues.append(

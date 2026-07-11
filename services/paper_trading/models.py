@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from paper_trading.config import PaperTradingConfig
 from paper_trading.enums import (
+    PaperFillKind,
     PaperOrderStatus,
     PaperOrderType,
     PaperPositionStatus,
@@ -144,7 +145,9 @@ class PaperFill(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     fill_id: UUID
-    paper_order_id: UUID
+    paper_order_id: UUID | None = None
+    position_id: UUID | None = None
+    fill_kind: PaperFillKind = PaperFillKind.ENTRY
     symbol: str
     side: PaperSide = PaperSide.LONG
     quantity: Decimal
@@ -168,6 +171,16 @@ class PaperFill(BaseModel):
         if value <= 0:
             raise ValueError("quantity and prices must be > 0")
         return value
+
+    @model_validator(mode="after")
+    def validate_kind_refs(self) -> PaperFill:
+        if self.fill_kind == PaperFillKind.ENTRY:
+            if self.paper_order_id is None:
+                raise ValueError("ENTRY fill requires paper_order_id")
+        elif self.fill_kind == PaperFillKind.EXIT:
+            if self.position_id is None:
+                raise ValueError("EXIT fill requires position_id")
+        return self
 
 
 class PaperPosition(BaseModel):

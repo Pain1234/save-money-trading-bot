@@ -153,9 +153,13 @@ class PaperFillRow(Base):
     __tablename__ = "paper_fills"
 
     fill_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
-    paper_order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("paper_orders.paper_order_id"), nullable=False
+    paper_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("paper_orders.paper_order_id"), nullable=True
     )
+    position_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("paper_positions.position_id"), nullable=True
+    )
+    fill_kind: Mapped[str] = mapped_column(String(8), nullable=False, server_default="ENTRY")
     symbol: Mapped[str] = mapped_column(String(8), nullable=False)
     side: Mapped[str] = mapped_column(String(8), nullable=False, server_default="LONG")
     quantity: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)

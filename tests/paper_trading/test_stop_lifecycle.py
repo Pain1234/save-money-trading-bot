@@ -67,6 +67,7 @@ def test_gap_stop_triggers_close() -> None:
     repo.get_wallet.return_value = MagicMock(cash=Decimal("100000"), total_realized_pnl=Decimal("0"))
     repo.get_open_positions.return_value = ()
     repo.insert_or_get_portfolio_snapshot.return_value = (MagicMock(), True)
+    repo.insert_or_get_paper_fill.return_value = (MagicMock(), True)
 
     service = StopLifecycleService(repo, config=_config())
     candle = make_daily("BTC", utc_dt(2024, 1, 17), "47000", "47500", "46500", "47200")

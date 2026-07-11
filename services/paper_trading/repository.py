@@ -265,11 +265,36 @@ class PaperTradingRepository:
         return order_row_to_domain(existing), False
 
     def insert_or_get_paper_fill(self, row: PaperFillRow) -> tuple[PaperFill, bool]:
+        fill_kind = row.fill_kind or "ENTRY"
+        if row.paper_order_id is not None:
+            existing_entry = self._session.execute(
+                select(PaperFillRow).where(
+                    PaperFillRow.paper_order_id == row.paper_order_id,
+                    PaperFillRow.candle_key == row.candle_key,
+                    PaperFillRow.fill_sequence == row.fill_sequence,
+                )
+            ).scalar_one_or_none()
+            if existing_entry is not None:
+                return fill_row_to_domain(existing_entry), False
+        if row.position_id is not None and fill_kind == "EXIT":
+            existing_exit = self._session.execute(
+                select(PaperFillRow).where(
+                    PaperFillRow.position_id == row.position_id,
+                    PaperFillRow.candle_key == row.candle_key,
+                    PaperFillRow.fill_sequence == row.fill_sequence,
+                    PaperFillRow.fill_kind == "EXIT",
+                )
+            ).scalar_one_or_none()
+            if existing_exit is not None:
+                return fill_row_to_domain(existing_exit), False
+
         stmt = (
             pg_insert(PaperFillRow)
             .values(
                 fill_id=row.fill_id,
                 paper_order_id=row.paper_order_id,
+                position_id=row.position_id,
+                fill_kind=fill_kind,
                 symbol=row.symbol,
                 side=row.side,
                 quantity=row.quantity,
@@ -282,13 +307,7 @@ class PaperTradingRepository:
                 fill_sequence=row.fill_sequence,
                 deterministic_fill_key=row.deterministic_fill_key,
             )
-            .on_conflict_do_nothing(
-                index_elements=[
-                    PaperFillRow.paper_order_id,
-                    PaperFillRow.candle_key,
-                    PaperFillRow.fill_sequence,
-                ]
-            )
+            .on_conflict_do_nothing(index_elements=[PaperFillRow.deterministic_fill_key])
             .returning(PaperFillRow)
         )
         inserted = self._session.execute(stmt).scalar_one_or_none()
@@ -296,9 +315,7 @@ class PaperTradingRepository:
             return fill_row_to_domain(inserted), True
         existing = self._session.execute(
             select(PaperFillRow).where(
-                PaperFillRow.paper_order_id == row.paper_order_id,
-                PaperFillRow.candle_key == row.candle_key,
-                PaperFillRow.fill_sequence == row.fill_sequence,
+                PaperFillRow.deterministic_fill_key == row.deterministic_fill_key
             )
         ).scalar_one()
         return fill_row_to_domain(existing), False
@@ -860,6 +877,7 @@ class PaperTradingRepository:
         return PaperOrderRow(paper_order_id=uuid4(), **kwargs)
 
     def new_fill_row(self, **kwargs: Any) -> PaperFillRow:
+        kwargs.setdefault("fill_kind", "ENTRY")
         return PaperFillRow(fill_id=uuid4(), **kwargs)
 
     def new_position_row(self, **kwargs: Any) -> PaperPositionRow:

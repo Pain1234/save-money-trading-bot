@@ -30,6 +30,7 @@ from paper_trading.accounting import paper_position_to_simulated
 from paper_trading.db.orm import PaperFillRow, PaperOrderRow, PaperPositionRow, TradeIntentRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import (
+    PaperFillKind,
     PaperOrderStatus,
     PaperOrderType,
     PaperPositionStatus,
@@ -364,6 +365,8 @@ class PaperFillService:
             fill_row = PaperFillRow(
                 fill_id=uuid4(),
                 paper_order_id=order.paper_order_id,
+                position_id=None,
+                fill_kind=PaperFillKind.ENTRY.value,
                 symbol=intent.symbol,
                 side=PaperSide.LONG.value,
                 quantity=calc.quantity,

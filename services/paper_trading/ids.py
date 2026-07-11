@@ -59,6 +59,12 @@ def paper_fill_key(
     return f"{paper_order_id}:{ts}:{fill_sequence}"
 
 
+def paper_exit_fill_key(position_id: UUID, fill_time: datetime) -> str:
+    """Unique key for one stop-exit fill per position and close time."""
+    ts = format_utc_timestamp(fill_time)
+    return f"exit:{position_id}:{ts}"
+
+
 def funding_event_key(position_id: UUID, funding_time: datetime) -> str:
     """Unique key for one funding event per position and timestamp."""
     ts = format_utc_timestamp(funding_time)
