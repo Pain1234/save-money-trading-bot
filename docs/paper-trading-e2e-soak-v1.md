@@ -92,11 +92,12 @@ Verified:
 
 ### Accelerated 365-day soak (pytest + CLI)
 
-- Injected clock; no real-time waits
-- BTC, ETH, SOL; monthly/weekly/daily data; multiple signals and quiet periods
-- Periodic double-scheduler calls, simulated restart, degraded readiness, pause toggles, recovery
+- Full daily open/close loop: entry fills, trailing stops, stop exits, evaluations
+- Deterministic multi-phase candle calendar (BTC, ETH, SOL): warmup, breakout, pullback, quiet period, gap/intraday stops, low volume, competing signals
+- Injected restart, recovery, pause, degraded readiness during run
 - Per-day invariant checks: no duplicates, position limits, stop monotonicity, wallet consistency, no NaN/Inf
-- **Measured (seed=1, local PostgreSQL):** ~0.66 s elapsed, 132 evaluations, 1 intent, 0 fills, 133 audit events (fixture-driven signal density)
+- Independent accounting reconstruction in `scripts/verify_paper_state.py`
+- **Reference seed=1 (PostgreSQL, `--reset-db`):** ~17 s, 1026 evaluations, 9 intents, 8 entry fills, 6 closed positions, 100 trailing updates, 5 gap + 1 intraday stop, 1 risk rejection, independent accounting OK
 
 ### Optional live public-data soak
 
@@ -112,6 +113,9 @@ Verified:
 | Preserve closed position quantity | Zeroing quantity on close violated `ck_paper_positions_quantity_positive` |
 | `RuntimeService` import in `api.py` | Control endpoints raised `NameError` at runtime |
 | E2E fill context uses evaluation ATR | Hardcoded ATR caused spurious `RC_REJECT_DATA` fills |
+| Deterministic soak candle calendar | Prior random drift produced OHLC-invalid weekly candles and zero fills |
+| Soak weekly/monthly window sizing | 55 weekly / 25 monthly candles align with strategy minimums |
+| Independent wallet verification | Reconstruct cash/fees from fills and stop-close audit events, not service helpers |
 
 ## Verification commands
 

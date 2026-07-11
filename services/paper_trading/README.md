@@ -86,9 +86,11 @@ Control (disabled by default): `/control/pause`, `/control/resume`, `/control/ki
 ## Phase 9 soak scripts
 
 ```powershell
-python scripts/run_paper_soak.py --database-url-env PAPER_TRADING_DATABASE_URL --days 365 --seed 1
+python scripts/run_paper_soak.py --database-url-env PAPER_TRADING_DATABASE_URL --days 365 --seed 1 --reset-db
 python scripts/verify_paper_state.py --database-url-env PAPER_TRADING_DATABASE_URL
 ```
+
+Reference seed=1 (365 days, PostgreSQL): ~17 s, 1026 evaluations, 9 intents, 8 entry fills, 6 closed positions, 100 trailing stop updates, 5 gap + 1 intraday stop, 1 risk rejection, independent accounting OK.
 
 Optional live public soak (testnet, network):
 
