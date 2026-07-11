@@ -10,12 +10,12 @@ from uuid import UUID
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 
 from paper_trading.clock import Clock, SystemClock
 from paper_trading.config import PaperTradingConfig
-from paper_trading.db.orm import PaperOrderRow
+from paper_trading.db.orm import PaperOrderRow, PaperPositionRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import (
     PaperFillKind,
@@ -95,39 +95,72 @@ class RecoveryService:
     def apply_auto_repairs(self, issues: list[ConsistencyIssue]) -> list[str]:
         repairs: list[str] = []
         now = self._clock.now()
-        for issue in issues:
-            if issue.severity != IssueSeverity.AUTO_REPAIRABLE:
-                continue
-            if issue.code == "orphan_scheduler_run":
-                count = self._repo.fail_orphan_scheduler_runs(completed_at=now)
-                if count:
-                    repairs.append(f"marked_{count}_orphan_scheduler_runs_failed")
-            elif issue.code == "open_order_with_fill":
-                order_id = UUID(issue.details["paper_order_id"])
-                self._repo.update_order_status(
-                    order_id,
-                    PaperOrderStatus.FILLED.value,
-                    remaining_quantity=issue.details.get("remaining_quantity", 0),
-                    updated_at=now,
-                )
-                repairs.append(f"order_{order_id}_set_filled")
-            elif issue.code == "filled_intent_without_status":
-                intent_id = UUID(issue.details["intent_id"])
-                self._repo.update_intent_status(
-                    intent_id,
-                    TradeIntentStatus.FILLED.value,
-                    updated_at=now,
-                )
-                repairs.append(f"intent_{intent_id}_set_filled")
-            elif issue.code == "stale_runtime_heartbeat":
-                runtime = self._repo.get_runtime_state()
-                if runtime is not None:
-                    self._repo.update_runtime_state(
-                        heartbeat_at=now,
-                        expected_version=runtime.version,
+        with transaction_scope(self._repo.session):
+            for issue in issues:
+                if issue.severity != IssueSeverity.AUTO_REPAIRABLE:
+                    continue
+                if issue.code == "orphan_scheduler_run":
+                    count = self._repo.fail_orphan_scheduler_runs(completed_at=now)
+                    if count:
+                        repairs.append(f"marked_{count}_orphan_scheduler_runs_failed")
+                elif issue.code == "open_order_with_fill":
+                    order_id = UUID(issue.details["paper_order_id"])
+                    if not self._fill_economic_chain_consistent_for_order(order_id):
+                        continue
+                    self._repo.update_order_status(
+                        order_id,
+                        PaperOrderStatus.FILLED.value,
+                        remaining_quantity=issue.details.get("remaining_quantity", 0),
+                        updated_at=now,
                     )
-                    repairs.append("runtime_heartbeat_refreshed")
+                    repairs.append(f"order_{order_id}_set_filled")
+                elif issue.code == "filled_intent_without_status":
+                    intent_id = UUID(issue.details["intent_id"])
+                    if not self._fill_economic_chain_consistent_for_intent(intent_id):
+                        continue
+                    self._repo.update_intent_status(
+                        intent_id,
+                        TradeIntentStatus.FILLED.value,
+                        updated_at=now,
+                    )
+                    repairs.append(f"intent_{intent_id}_set_filled")
+                elif issue.code == "stale_runtime_heartbeat":
+                    runtime = self._repo.get_runtime_state()
+                    if runtime is not None:
+                        self._repo.update_runtime_state(
+                            heartbeat_at=now,
+                            expected_version=runtime.version,
+                        )
+                        repairs.append("runtime_heartbeat_refreshed")
         return repairs
+
+    def _fill_economic_chain_consistent_for_intent(self, intent_id: UUID) -> bool:
+        order = self._repo.get_order_for_intent(intent_id)
+        if order is None:
+            return False
+        return self._fill_economic_chain_consistent_for_order(order.paper_order_id)
+
+    def _fill_economic_chain_consistent_for_order(self, order_id: UUID) -> bool:
+        fills = self._repo.get_fills_for_order(order_id)
+        if not fills:
+            return False
+        fill = fills[0]
+        if fill.fill_kind != PaperFillKind.ENTRY:
+            return False
+        order = self._repo.session.get(PaperOrderRow, order_id)
+        if order is None:
+            return False
+        position = self._repo.get_open_position_for_symbol(fill.symbol)
+        if position is None or position.entry_intent_id != order.intent_id:
+            return False
+        if position.quantity != fill.quantity:
+            return False
+        if position.average_entry_price != fill.fill_price:
+            return False
+        wallet = self._repo.get_wallet()
+        if wallet is None:
+            return False
+        return True
 
     def recover_on_startup(
         self,
@@ -229,13 +262,14 @@ class RecoveryService:
     def _fail_recovery(self, code: str) -> None:
         self._runtime.transition(RuntimeStatus.FAILED, last_error=code)
         runtime = self._runtime.get_state()
-        self._repo.append_audit_event(
-            event_type="RECOVERY_FAILED",
-            aggregate_type="runtime_state",
-            aggregate_id=runtime.instance_id,
-            payload_json={"code": code},
-            created_at=self._clock.now(),
-        )
+        with transaction_scope(self._repo.session):
+            self._repo.append_audit_event(
+                event_type="RECOVERY_FAILED",
+                aggregate_type="runtime_state",
+                aggregate_id=runtime.instance_id,
+                payload_json={"code": code},
+                created_at=self._clock.now(),
+            )
 
     def _capture_recovery_snapshot(self) -> None:
         self._snapshots.capture_snapshot(
@@ -309,27 +343,47 @@ class RecoveryService:
                     )
                 )
             elif fills and intent.status not in TERMINAL_INTENT_STATUSES:
-                issues.append(
-                    ConsistencyIssue(
-                        code="filled_intent_without_status",
-                        severity=IssueSeverity.AUTO_REPAIRABLE,
-                        message="Fill exists but intent not terminal",
-                        details={"intent_id": str(intent.intent_id)},
+                if self._fill_economic_chain_consistent_for_intent(intent.intent_id):
+                    issues.append(
+                        ConsistencyIssue(
+                            code="filled_intent_without_status",
+                            severity=IssueSeverity.AUTO_REPAIRABLE,
+                            message="Fill exists but intent not terminal",
+                            details={"intent_id": str(intent.intent_id)},
+                        )
                     )
-                )
+                else:
+                    issues.append(
+                        ConsistencyIssue(
+                            code="fill_without_economic_chain",
+                            severity=IssueSeverity.FATAL,
+                            message="Fill exists without consistent position/wallet chain",
+                            details={"intent_id": str(intent.intent_id)},
+                        )
+                    )
 
             if order and order.status == PaperOrderStatus.OPEN and fills:
-                issues.append(
-                    ConsistencyIssue(
-                        code="open_order_with_fill",
-                        severity=IssueSeverity.AUTO_REPAIRABLE,
-                        message="OPEN order has fill rows",
-                        details={
-                            "paper_order_id": str(order.paper_order_id),
-                            "remaining_quantity": "0",
-                        },
+                if self._fill_economic_chain_consistent_for_order(order.paper_order_id):
+                    issues.append(
+                        ConsistencyIssue(
+                            code="open_order_with_fill",
+                            severity=IssueSeverity.AUTO_REPAIRABLE,
+                            message="OPEN order has fill rows",
+                            details={
+                                "paper_order_id": str(order.paper_order_id),
+                                "remaining_quantity": "0",
+                            },
+                        )
                     )
-                )
+                else:
+                    issues.append(
+                        ConsistencyIssue(
+                            code="fill_without_economic_chain",
+                            severity=IssueSeverity.FATAL,
+                            message="OPEN order fill lacks economic chain consistency",
+                            details={"paper_order_id": str(order.paper_order_id)},
+                        )
+                    )
 
             if (
                 intent.status in TERMINAL_INTENT_STATUSES
@@ -371,7 +425,7 @@ class RecoveryService:
                 issues.append(
                     ConsistencyIssue(
                         code="position_without_entry_fill",
-                        severity=IssueSeverity.MANUAL,
+                        severity=IssueSeverity.FATAL,
                         message="Position missing entry fill",
                         details={"position_id": str(position.position_id)},
                     )
@@ -420,16 +474,20 @@ class RecoveryService:
                     )
                 )
                 continue
-            position_for_intent = self._repo.get_open_position_for_symbol(fill.symbol)
+            position_row = self._repo.session.execute(
+                select(PaperPositionRow).where(
+                    PaperPositionRow.entry_intent_id == order_row.intent_id
+                )
+            ).scalar_one_or_none()
             if (
-                position_for_intent is None
+                position_row is None
                 and order_row.status == PaperOrderStatus.FILLED.value
             ):
                 issues.append(
                     ConsistencyIssue(
                         code="fill_without_position",
-                        severity=IssueSeverity.MANUAL,
-                        message="Filled order has no open position",
+                        severity=IssueSeverity.FATAL,
+                        message="Filled order has no position row",
                         details={"fill_id": str(fill.fill_id)},
                     )
                 )

@@ -99,6 +99,7 @@ _RUNTIME_TRANSITIONS: dict[RuntimeStatus, frozenset[RuntimeStatus]] = {
     RuntimeStatus.READY: frozenset(
         {
             RuntimeStatus.DEGRADED,
+            RuntimeStatus.FAILED,
             RuntimeStatus.PAUSED,
             RuntimeStatus.KILLED,
             RuntimeStatus.SHUTTING_DOWN,
