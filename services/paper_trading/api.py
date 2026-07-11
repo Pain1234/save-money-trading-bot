@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.engine import Engine
 
 from paper_trading.api_dependencies import (
     get_config,
@@ -37,12 +38,13 @@ from paper_trading.api_models import (
     format_utc,
     format_uuid,
 )
+from paper_trading.app_state import configure_app_state, get_app_state
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import SchedulerRunRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import KillSwitchClosePolicy, SchedulerRunStatus
 from paper_trading.ids import scheduler_run_key
-from paper_trading.lock import InMemoryAdvisoryLock
+from paper_trading.lock import PostgresAdvisoryLock
 from paper_trading.readiness import ReadinessService
 from paper_trading.recovery import RecoveryService
 from paper_trading.repository import PaperTradingRepository
@@ -51,19 +53,35 @@ from paper_trading.scheduler import SchedulerJobName
 
 app = FastAPI(title="Paper Trading Orchestrator", version="1.0.0")
 
-_market_data_ready: bool = True
-_advisory_lock = InMemoryAdvisoryLock("api")
-_scheduler_active: bool = False
+
+def _market_data_ready() -> bool:
+    return get_app_state().market_data_ready()
+
+
+def _advisory_lock_for_recover(
+    config: PaperTradingConfig,
+    repo: PaperTradingRepository,
+) -> PostgresAdvisoryLock:
+    state_lock = get_app_state().advisory_lock
+    if isinstance(state_lock, PostgresAdvisoryLock):
+        return state_lock
+    bind = repo.session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    assert isinstance(engine, Engine)
+    return PostgresAdvisoryLock(engine, config.advisory_lock_id)
+
+
+def _scheduler_active(config: PaperTradingConfig) -> bool:
+    state = get_app_state()
+    return state.scheduler_active or not config.scheduler_enabled
 
 
 def set_market_data_ready(value: bool) -> None:
-    global _market_data_ready
-    _market_data_ready = value
+    configure_app_state(market_data_ready=lambda: value)
 
 
 def set_scheduler_active(value: bool) -> None:
-    global _scheduler_active
-    _scheduler_active = value
+    configure_app_state(scheduler_active=value)
 
 
 def _runtime_response(repo: PaperTradingRepository) -> RuntimeResponse:
@@ -118,9 +136,9 @@ def readiness(
 ) -> JSONResponse:
     readiness_svc = ReadinessService(repo, config)
     snapshot = readiness_svc.evaluate(
-        market_data_ready=_market_data_ready,
-        advisory_lock=_advisory_lock,
-        scheduler_active=_scheduler_active or not config.scheduler_enabled,
+        market_data_ready=_market_data_ready(),
+        advisory_lock=get_app_state().advisory_lock,
+        scheduler_active=_scheduler_active(config),
         recovery_active=RecoveryService.is_recovery_active(),
     )
     runtime = repo.get_runtime_state()
@@ -128,10 +146,12 @@ def readiness(
         process_liveness=snapshot.process_liveness,
         runtime_readiness=snapshot.runtime_readiness,
         entry_readiness=snapshot.entry_readiness,
-        market_data_ready=_market_data_ready,
+        market_data_ready=_market_data_ready(),
         database_ready="database_unreachable" not in snapshot.reasons,
         migration_at_head="migration_not_at_head" not in snapshot.reasons,
-        advisory_lock_held=_advisory_lock.held,
+        advisory_lock_held=(
+            lock.held if (lock := get_app_state().advisory_lock) is not None else False
+        ),
         paused=runtime.paused if runtime else False,
         kill_switch=runtime.kill_switch if runtime else False,
         reasons=snapshot.reasons,
@@ -574,19 +594,28 @@ def control_recover(
 ) -> ControlResponse:
     if RecoveryService.is_recovery_active():
         raise HTTPException(status_code=409, detail="recovery already running")
-    lock = InMemoryAdvisoryLock("control-recover")
-    if not lock.try_acquire():
+    lock = _advisory_lock_for_recover(config, repo)
+    state_lock = get_app_state().advisory_lock
+    release_after = False
+    if state_lock is not None and state_lock.held:
+        active_lock = state_lock
+    elif not lock.try_acquire():
         raise HTTPException(status_code=409, detail="advisory lock not available")
+    else:
+        active_lock = lock
+        release_after = True
     try:
         runtime_svc = RuntimeService(repo)
-        runtime_svc.recover_on_startup(
-            config,
-            lock,
-            market_data_ready=_market_data_ready,
-        )
-        _audit_control(repo, "CONTROL_RECOVER", request, accepted=True)
+        with transaction_scope(repo.session):
+            runtime_svc.recover_on_startup(
+                config,
+                active_lock,
+                market_data_ready=_market_data_ready(),
+            )
+            _audit_control(repo, "CONTROL_RECOVER", request, accepted=True)
     finally:
-        lock.release()
+        if release_after:
+            lock.release()
     return ControlResponse(accepted=True, message="recovery completed")
 
 
