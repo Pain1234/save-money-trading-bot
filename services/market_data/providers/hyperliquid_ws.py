@@ -79,6 +79,8 @@ class HyperliquidWebSocketFeed:
         self._shutdown = False
         self._preview: dict[tuple[str, str, datetime], RawCandle] = {}
         self._subscribed: set[tuple[str, str]] = set()
+        self._reconnect_lock = asyncio.Lock()
+        self._background_error: str | None = None
 
     @property
     def status(self) -> ConnectionStatus:
@@ -108,6 +110,10 @@ class HyperliquidWebSocketFeed:
     def preview_candles(self) -> dict[tuple[str, str, datetime], RawCandle]:
         return dict(self._preview)
 
+    @property
+    def background_error(self) -> str | None:
+        return self._background_error
+
     def begin_buffer(self) -> None:
         self._buffering = True
         self._buffer.clear()
@@ -117,6 +123,10 @@ class HyperliquidWebSocketFeed:
         items = tuple(sorted(self._buffer, key=lambda c: c.open_time))
         self._buffer.clear()
         return items
+
+    def discard_buffer(self) -> None:
+        self._buffering = False
+        self._buffer.clear()
 
     async def connect_and_subscribe(self) -> None:
         if self._shutdown:
@@ -144,19 +154,36 @@ class HyperliquidWebSocketFeed:
 
         self._status = ConnectionStatus.CONNECTED
         self._consecutive_failures = 0
-        self._start_background_tasks()
+        self._background_error = None
+        await self._start_background_tasks()
 
-    def _start_background_tasks(self) -> None:
-        if self._reader_task is None or self._reader_task.done():
-            self._reader_task = asyncio.create_task(self._reader_loop())
-        if self._heartbeat_task is None or self._heartbeat_task.done():
-            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+    async def _start_background_tasks(self) -> None:
+        await self._cancel_background_tasks()
+        self._reader_task = asyncio.create_task(self._reader_loop())
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def _cancel_background_tasks(self) -> None:
+        for task in (self._reader_task, self._heartbeat_task):
+            if task is not None and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._reader_task = None
+        self._heartbeat_task = None
 
     async def _reader_loop(self) -> None:
         while not self._shutdown and self._conn is not None:
             try:
                 await self._read_once()
-            except HyperliquidWebSocketError:
+            except HyperliquidWebSocketError as exc:
+                self._background_error = str(exc)
+                if not self._shutdown:
+                    self._status = ConnectionStatus.RECONNECTING
+                break
+            except Exception as exc:
+                self._background_error = str(exc)
                 if not self._shutdown:
                     self._status = ConnectionStatus.RECONNECTING
                 break
@@ -170,11 +197,13 @@ class HyperliquidWebSocketFeed:
             if self._last_pong_time is not None:
                 elapsed = (now - self._last_pong_time).total_seconds()
                 if elapsed > self._config.pong_timeout_seconds:
+                    self._background_error = "pong timeout"
                     self._status = ConnectionStatus.RECONNECTING
                     break
             try:
                 await self._conn.send(dumps_message({"method": "ping"}))
-            except HyperliquidWebSocketError:
+            except HyperliquidWebSocketError as exc:
+                self._background_error = str(exc)
                 self._status = ConnectionStatus.RECONNECTING
                 break
 
@@ -234,7 +263,12 @@ class HyperliquidWebSocketFeed:
             coin = str(item.get("s", "")).upper()
             interval = str(item.get("i", ""))
             key = _sub_key(coin, interval)
-            if key not in self._subscribed:
+            if key not in self._expected_subs:
+                continue
+            if self._buffering:
+                if key not in self._subscribed:
+                    continue
+            elif key not in self._acked_subs:
                 continue
             raw = self._adapter.parse_candle(
                 item,
@@ -263,26 +297,33 @@ class HyperliquidWebSocketFeed:
         return tuple(items)
 
     async def disconnect(self) -> None:
+        if self._shutdown and self._conn is None:
+            return
         self._shutdown = True
         self._status = ConnectionStatus.SHUTDOWN
-        for task in (self._reader_task, self._heartbeat_task):
-            if task is not None and not task.done():
-                task.cancel()
+        await self._cancel_background_tasks()
         if self._conn is not None:
             await self._conn.close()
             self._conn = None
+        self.discard_buffer()
 
     async def reconnect(self) -> None:
         if self._shutdown:
             return
-        self._reconnect_count += 1
-        backoff_factor = 2 ** min(self._consecutive_failures, 5)
-        delay = min(
-            self._config.reconnect_initial_delay_seconds * backoff_factor,
-            self._config.reconnect_max_delay_seconds,
-        )
-        await self._sleep(delay)
-        self._consecutive_failures += 1
-        if self._conn is not None:
-            await self._conn.close()
-        await self.connect_and_subscribe()
+        async with self._reconnect_lock:
+            if self._shutdown:
+                return
+            self._reconnect_count += 1
+            backoff_factor = 2 ** min(self._consecutive_failures, 5)
+            delay = min(
+                self._config.reconnect_initial_delay_seconds * backoff_factor,
+                self._config.reconnect_max_delay_seconds,
+            )
+            await self._sleep(delay)
+            self._consecutive_failures += 1
+            await self._cancel_background_tasks()
+            if self._conn is not None:
+                await self._conn.close()
+                self._conn = None
+            self._shutdown = False
+            await self.connect_and_subscribe()

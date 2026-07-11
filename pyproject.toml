@@ -41,6 +41,10 @@ warn_return_any = true
 warn_unused_configs = true
 packages = ["strategy_engine", "risk_engine", "backtester", "market_data"]
 
+[[tool.mypy.overrides]]
+module = "tests.market_data.hyperliquid.*"
+disable_error_code = ["import-untyped"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

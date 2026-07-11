@@ -7,7 +7,7 @@ from datetime import datetime
 
 from market_data.config import HyperliquidPublicConfig
 from market_data.models import MarketSymbol, MarketTimeframe, RawCandle
-from market_data.network.errors import HyperliquidParseError
+from market_data.network.errors import HyperliquidPaginationIncompleteError, HyperliquidParseError
 from market_data.network.http_client import HyperliquidHttpClient
 from market_data.providers.hyperliquid import (
     HyperliquidCandleAdapter,
@@ -62,6 +62,7 @@ class HyperliquidHistoricalProvider:
         cursor = start_ms
         last_progress_ms: int | None = None
         stagnant_pages = 0
+        pagination_complete = False
 
         for page in range(self._config.max_pagination_pages):
             body = {
@@ -80,6 +81,7 @@ class HyperliquidHistoricalProvider:
                 raise HyperliquidParseError("candleSnapshot response must be a list")
 
             if not payload:
+                pagination_complete = True
                 break
 
             page_candles: list[RawCandle] = []
@@ -93,7 +95,15 @@ class HyperliquidHistoricalProvider:
                     evaluation_time=evaluation_time,
                     strict=True,
                 )
-                key = (_to_epoch_ms(raw.open_time), _to_epoch_ms(raw.close_time))
+                open_ms = _to_epoch_ms(raw.open_time)
+                if open_ms > end_ms:
+                    raise HyperliquidParseError(
+                        f"candleSnapshot candle open time {open_ms} after "
+                        f"requested end {end_ms}"
+                    )
+                if open_ms < start_ms:
+                    continue
+                key = (open_ms, _to_epoch_ms(raw.close_time))
                 if key in seen_keys:
                     continue
                 seen_keys.add(key)
@@ -101,6 +111,7 @@ class HyperliquidHistoricalProvider:
 
             page_candles.sort(key=lambda c: c.open_time)
             if not page_candles:
+                pagination_complete = True
                 break
 
             all_candles.extend(page_candles)
@@ -109,33 +120,29 @@ class HyperliquidHistoricalProvider:
             if last_progress_ms is not None and last_ms <= last_progress_ms:
                 stagnant_pages += 1
                 if stagnant_pages >= 2:
-                    break
+                    raise HyperliquidPaginationIncompleteError(
+                        f"pagination stagnant at timestamp {last_ms} for {coin}/{interval}"
+                    )
             else:
                 stagnant_pages = 0
             last_progress_ms = last_ms
 
             if last_ms >= end_ms or len(payload) < self._config.max_candles_per_snapshot:
+                pagination_complete = True
                 break
 
             cursor = _to_epoch_ms(last.close_time) + 1
             if cursor > end_ms:
+                pagination_complete = True
                 break
 
-        all_candles.sort(key=lambda c: c.open_time)
-        expected_span = end_ms - start_ms
-        max_expected = (
-            self._config.max_candles_per_snapshot * self._config.max_pagination_pages
-        )
-        if expected_span > 0 and len(all_candles) > max_expected:
-            logger.warning(
-                "hyperliquid_pagination_limit",
-                extra={
-                    "event_type": "pagination_limit",
-                    "symbol": coin,
-                    "timeframe": timeframe.value,
-                },
+        if not pagination_complete:
+            raise HyperliquidPaginationIncompleteError(
+                f"pagination incomplete for {coin}/{interval}: "
+                f"cursor={cursor}, end_ms={end_ms}, pages={self._config.max_pagination_pages}"
             )
 
+        all_candles.sort(key=lambda c: c.open_time)
         return tuple(all_candles)
 
     async def fetch_history(

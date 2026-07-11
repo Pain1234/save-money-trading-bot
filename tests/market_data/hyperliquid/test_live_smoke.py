@@ -22,7 +22,7 @@ from market_data.providers.hyperliquid_meta import fetch_perpetual_meta
 from market_data.providers.hyperliquid_ws import HyperliquidWebSocketFeed
 from market_data.timeframes import ensure_utc, is_candle_closed
 
-from tests.market_data.hyperliquid.conftest import (
+from tests.market_data.hyperliquid.live_support import (
     LIVE_ENV_FLAG,
     NETWORK_ENV_FLAG,
     assert_public_read_only_safety,

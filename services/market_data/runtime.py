@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -82,6 +83,9 @@ class HyperliquidMarketDataRuntime:
         self._last_error: str | None = None
         self._initial_backfill_done = False
         self._meta_ok = False
+        self._backfill_ok = False
+        self._reconnect_lock = asyncio.Lock()
+        self._started = False
 
     @property
     def repository(self) -> InMemoryCandleRepository:
@@ -92,6 +96,18 @@ class HyperliquidMarketDataRuntime:
     async def aclose(self) -> None:
         await self._ws.disconnect()
         await self._http.aclose()
+        self._started = False
+
+    def _record_failure(self, exc: BaseException) -> None:
+        self._last_error = str(exc)
+        self._meta_ok = False
+        self._backfill_ok = False
+        self._initial_backfill_done = False
+
+    def _record_backfill_success(self, evaluation_time: datetime) -> None:
+        self._last_backfill = evaluation_time
+        self._backfill_ok = True
+        self._last_error = None
 
     async def backfill_symbol(
         self,
@@ -104,80 +120,111 @@ class HyperliquidMarketDataRuntime:
         evaluation_time = ensure_utc(evaluation_time)
         start_time = ensure_utc(start_time)
         end_time = ensure_utc(end_time)
-        await fetch_perpetual_meta(self._http, self._config, cache=self._meta_cache)
-        self._meta_ok = True
-        raws = await self._historical.fetch_candles(
-            symbol, timeframe, start_time, end_time, evaluation_time
-        )
-        ingest_raw_batch(self.repository, raws, evaluation_time)
-        closed = self.repository.get_closed_before(symbol, timeframe, evaluation_time)
-        gaps = detect_gaps(closed, symbol, timeframe, evaluation_time)
-        report = validate_series(
-            closed,
-            symbol,
-            timeframe,
-            evaluation_time,
-            gaps=gaps,
-            conflicts=_repo_conflicts(self.repository, symbol, timeframe),
-        )
-        self._last_backfill = evaluation_time
-        logger.info(
-            "hyperliquid_backfill",
-            extra={
-                "event_type": "backfill",
-                "symbol": symbol.value,
-                "timeframe": timeframe.value,
-                "status": report.status.value,
-            },
-        )
-        return report
+        try:
+            await fetch_perpetual_meta(self._http, self._config, cache=self._meta_cache)
+            self._meta_ok = True
+            raws = await self._historical.fetch_candles(
+                symbol, timeframe, start_time, end_time, evaluation_time
+            )
+            ingest_raw_batch(self.repository, raws, evaluation_time)
+            closed = self.repository.get_closed_before(symbol, timeframe, evaluation_time)
+            gaps = detect_gaps(closed, symbol, timeframe, evaluation_time)
+            report = validate_series(
+                closed,
+                symbol,
+                timeframe,
+                evaluation_time,
+                gaps=gaps,
+                conflicts=_repo_conflicts(self.repository, symbol, timeframe),
+            )
+            self._record_backfill_success(evaluation_time)
+            logger.info(
+                "hyperliquid_backfill",
+                extra={
+                    "event_type": "backfill",
+                    "symbol": symbol.value,
+                    "timeframe": timeframe.value,
+                    "status": report.status.value,
+                },
+            )
+            return report
+        except Exception as exc:
+            self._record_failure(exc)
+            raise
 
     async def start(self, evaluation_time: datetime) -> None:
         evaluation_time = ensure_utc(evaluation_time)
-        await fetch_perpetual_meta(self._http, self._config, cache=self._meta_cache)
-        self._meta_ok = True
-        await self._ws.connect_and_subscribe()
+        if self._started:
+            return
         self._ws.begin_buffer()
-        for symbol, timeframe in all_subscriptions(self._config):
-            latest = self.repository.get_latest(symbol, timeframe)
-            if latest is None:
-                start = evaluation_time.replace(year=evaluation_time.year - 1)
-            else:
-                start = latest.open_time
-            await self.backfill_symbol(symbol, timeframe, start, evaluation_time, evaluation_time)
-        buffered = self._ws.end_buffer()
-        ingest_live_raw(self.repository, buffered, evaluation_time)
-        self._initial_backfill_done = True
+        try:
+            await fetch_perpetual_meta(self._http, self._config, cache=self._meta_cache)
+            self._meta_ok = True
+            await self._ws.connect_and_subscribe()
+            for symbol, timeframe in all_subscriptions(self._config):
+                latest = self.repository.get_latest(symbol, timeframe)
+                if latest is None:
+                    start = evaluation_time.replace(year=evaluation_time.year - 1)
+                else:
+                    start = latest.open_time
+                await self.backfill_symbol(
+                    symbol, timeframe, start, evaluation_time, evaluation_time
+                )
+            buffered = self._ws.end_buffer()
+            ingest_live_raw(self.repository, buffered, evaluation_time)
+            self._initial_backfill_done = True
+            self._backfill_ok = True
+            self._last_error = None
+            self._started = True
+        except Exception as exc:
+            self._record_failure(exc)
+            self._ws.discard_buffer()
+            raise
 
     async def process_live(self, evaluation_time: datetime) -> int:
         evaluation_time = ensure_utc(evaluation_time)
+        await self._ensure_connected(evaluation_time)
         events = await self._ws.drain_events()
         result = ingest_live_raw(self.repository, events, evaluation_time)
         return result.inserted
 
+    async def _ensure_connected(self, evaluation_time: datetime) -> None:
+        if self._ws.status != ConnectionStatus.RECONNECTING:
+            return
+        async with self._reconnect_lock:
+            if self._ws.status == ConnectionStatus.RECONNECTING:
+                await self.reconnect(evaluation_time)
+
     async def reconnect(self, evaluation_time: datetime) -> None:
         evaluation_time = ensure_utc(evaluation_time)
-        self._ws.begin_buffer()
-        await self._ws.reconnect()
-        for symbol, timeframe in all_subscriptions(self._config):
-            latest = self.repository.get_latest(symbol, timeframe)
-            if latest is None:
-                continue
-            await self.backfill_symbol(
-                symbol,
-                timeframe,
-                latest.open_time,
-                evaluation_time,
-                evaluation_time,
-            )
-        buffered = self._ws.end_buffer()
-        ingest_live_raw(self.repository, buffered, evaluation_time)
+        async with self._reconnect_lock:
+            self._ws.begin_buffer()
+            try:
+                await self._ws.reconnect()
+                for symbol, timeframe in all_subscriptions(self._config):
+                    latest = self.repository.get_latest(symbol, timeframe)
+                    if latest is None:
+                        continue
+                    await self.backfill_symbol(
+                        symbol,
+                        timeframe,
+                        latest.open_time,
+                        evaluation_time,
+                        evaluation_time,
+                    )
+                buffered = self._ws.end_buffer()
+                ingest_live_raw(self.repository, buffered, evaluation_time)
+                self._last_error = None
+            except Exception as exc:
+                self._record_failure(exc)
+                self._ws.discard_buffer()
+                raise
 
     def status(self, evaluation_time: datetime) -> HyperliquidRuntimeStatus:
         evaluation_time = ensure_utc(evaluation_time)
         series_status: list[SeriesRuntimeStatus] = []
         unresolved_conflicts = self.repository.conflicts
-        all_valid = True
+        all_series_valid = True
         for symbol, timeframe in all_subscriptions(self._config):
             closed = self.repository.get_closed_before(symbol, timeframe, evaluation_time)
             gaps = detect_gaps(closed, symbol, timeframe, evaluation_time)
@@ -189,8 +236,8 @@ class HyperliquidMarketDataRuntime:
                 gaps=gaps,
                 conflicts=_repo_conflicts(self.repository, symbol, timeframe),
             )
-            if report.status in (DataQualityStatus.INVALID, DataQualityStatus.DISCONNECTED):
-                all_valid = False
+            if report.status != DataQualityStatus.VALID:
+                all_series_valid = False
             preview = None
             for key, raw in self._ws.preview_candles.items():
                 if key[0] == coin_for_symbol(symbol) and key[1] == timeframe.value:
@@ -205,13 +252,16 @@ class HyperliquidMarketDataRuntime:
                 )
             )
 
+        last_error = self._last_error or self._ws.background_error
         readiness = (
             self._meta_ok
+            and self._backfill_ok
             and self._ws.subscriptions_acknowledged >= self._ws.subscriptions_expected
             and self._initial_backfill_done
             and not unresolved_conflicts
-            and all_valid
+            and all_series_valid
             and self._ws.status == ConnectionStatus.CONNECTED
+            and last_error is None
         )
         return HyperliquidRuntimeStatus(
             network=self._config.network,
@@ -224,7 +274,7 @@ class HyperliquidMarketDataRuntime:
             reconnect_count=self._ws.reconnect_count,
             last_successful_backfill=self._last_backfill,
             series=tuple(series_status),
-            last_error=self._last_error,
+            last_error=last_error,
             readiness=readiness,
         )
 

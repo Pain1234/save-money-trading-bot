@@ -119,7 +119,7 @@ async def test_invalid_json() -> None:
 @pytest.mark.asyncio
 async def test_400_no_retry() -> None:
     config = HyperliquidPublicConfig.for_network(
-        HyperliquidNetwork.TESTNET, max_http_retries=3, reconnect_initial_delay_seconds=0
+        HyperliquidNetwork.TESTNET, max_http_retries=3, reconnect_initial_delay_seconds=0.001
     )
     calls = {"n": 0}
 

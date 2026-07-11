@@ -172,6 +172,9 @@ ruff check services/market_data tests/market_data
 - **WebSocket:** 9 candle subscriptions (BTC/ETH/SOL × 1d/1w/1M), ping/pong, ack-gated CONNECTED
 - **Config:** `HyperliquidPublicConfig.from_env()` or `for_network(MAINNET|TESTNET)`
 - **Runtime:** `HyperliquidMarketDataRuntime.backfill_symbol()` uses shared ingest path
+- **Readiness:** all configured series must be `VALID`; `INCOMPLETE`/`STALE`/`INVALID` block orchestrator readiness
+- **Pagination:** incomplete history raises `HyperliquidPaginationIncompleteError` (fail-closed)
+- **Startup:** buffer before WebSocket connect to avoid cold-start event loss
 - **Live smoke:** `RUN_HYPERLIQUID_LIVE_TESTS=1 HYPERLIQUID_NETWORK=testnet pytest tests/market_data/hyperliquid -m live -v`
 - **Limit:** ~5000 candles per snapshot; volume in base unit; no `closed` field — closure from `T`
 

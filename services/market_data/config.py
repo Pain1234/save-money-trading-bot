@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from market_data.models import MarketSymbol, MarketTimeframe
 
@@ -26,19 +26,19 @@ class HyperliquidPublicConfig(BaseModel):
     network: HyperliquidNetwork = HyperliquidNetwork.TESTNET
     http_base_url: str = DEFAULT_TESTNET_HTTP
     websocket_url: str = DEFAULT_TESTNET_WS
-    request_timeout_seconds: float = 10.0
-    connect_timeout_seconds: float = 10.0
-    heartbeat_interval_seconds: float = 30.0
-    pong_timeout_seconds: float = 60.0
-    subscription_ack_timeout_seconds: float = 10.0
-    reconnect_initial_delay_seconds: float = 1.0
-    reconnect_max_delay_seconds: float = 30.0
+    request_timeout_seconds: float = Field(default=10.0, gt=0)
+    connect_timeout_seconds: float = Field(default=10.0, gt=0)
+    heartbeat_interval_seconds: float = Field(default=30.0, gt=0)
+    pong_timeout_seconds: float = Field(default=60.0, gt=0)
+    subscription_ack_timeout_seconds: float = Field(default=10.0, gt=0)
+    reconnect_initial_delay_seconds: float = Field(default=1.0, gt=0)
+    reconnect_max_delay_seconds: float = Field(default=30.0, gt=0)
     max_reconnect_attempts: int | None = None
-    max_http_retries: int = 3
-    max_pagination_pages: int = 20
-    max_candles_per_snapshot: int = 5000
-    max_http_concurrency: int = 2
-    reconnect_buffer_size: int = 500
+    max_http_retries: int = Field(default=3, ge=0)
+    max_pagination_pages: int = Field(default=20, ge=1)
+    max_candles_per_snapshot: int = Field(default=5000, ge=1)
+    max_http_concurrency: int = Field(default=2, ge=1)
+    reconnect_buffer_size: int = Field(default=500, ge=1)
     user_agent: str = "save-money-bot-market-data/1.0"
     symbols: tuple[MarketSymbol, ...] = (
         MarketSymbol.BTC,
@@ -50,7 +50,17 @@ class HyperliquidPublicConfig(BaseModel):
         MarketTimeframe.WEEKLY,
         MarketTimeframe.MONTHLY,
     )
-    meta_cache_ttl_seconds: float = 300.0
+    meta_cache_ttl_seconds: float = Field(default=300.0, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_delays(self) -> HyperliquidPublicConfig:
+        if self.reconnect_max_delay_seconds < self.reconnect_initial_delay_seconds:
+            raise ValueError(
+                "reconnect_max_delay_seconds must be >= reconnect_initial_delay_seconds"
+            )
+        if self.pong_timeout_seconds <= self.heartbeat_interval_seconds:
+            raise ValueError("pong_timeout_seconds must be greater than heartbeat_interval_seconds")
+        return self
 
     @classmethod
     def for_network(
@@ -65,7 +75,7 @@ class HyperliquidPublicConfig(BaseModel):
         else:
             base = cls(network=network)
         if overrides:
-            return base.model_copy(update=overrides)
+            return cls.model_validate({**base.model_dump(), **overrides})
         return base
 
     @classmethod

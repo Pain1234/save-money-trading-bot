@@ -44,6 +44,13 @@ class HyperliquidParseError(HyperliquidHttpError):
         super().__init__(message, retryable=False)
 
 
+class HyperliquidPaginationIncompleteError(HyperliquidParseError):
+    """Historical pagination did not reach endTime — fail-closed."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class HyperliquidWebSocketError(Exception):
     """WebSocket transport or protocol error."""
 

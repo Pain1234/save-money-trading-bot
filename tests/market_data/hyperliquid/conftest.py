@@ -4,77 +4,36 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 
 import httpx
 import pytest
-from market_data.config import (
-    DEFAULT_TESTNET_HTTP,
-    DEFAULT_TESTNET_WS,
-    HyperliquidNetwork,
-    HyperliquidPublicConfig,
-)
+from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig
 from market_data.network.http_client import HyperliquidHttpClient
 from market_data.providers.hyperliquid import coin_for_symbol, interval_for_timeframe
 
-LIVE_ENV_FLAG = "RUN_HYPERLIQUID_LIVE_TESTS"
-NETWORK_ENV_FLAG = "HYPERLIQUID_NETWORK"
-
-_FORBIDDEN_SECRET_ENV = (
-    "HYPERLIQUID_PRIVATE_KEY",
-    "PRIVATE_KEY",
-    "WALLET_ADDRESS",
-    "HYPERLIQUID_API_SECRET",
+from tests.market_data.hyperliquid.live_support import (
+    assert_public_read_only_safety,
+    require_testnet_live,
 )
 
-
-def require_testnet_live() -> None:
-    """Skip unless live testnet smoke tests are explicitly enabled."""
-    if os.getenv(LIVE_ENV_FLAG) != "1":
-        pytest.skip(f"{LIVE_ENV_FLAG} not enabled")
-    network = os.getenv(NETWORK_ENV_FLAG, "").strip().lower()
-    if network != "testnet":
-        pytest.skip(
-            f"{NETWORK_ENV_FLAG} must be 'testnet' for live smoke tests (got {network!r})"
-        )
-
-
-def assert_public_read_only_safety(config: HyperliquidPublicConfig) -> None:
-    """Fail closed if secrets are present or endpoints are not public testnet."""
-    for key in _FORBIDDEN_SECRET_ENV:
-        if os.getenv(key):
-            pytest.fail(f"Refusing live smoke test with secret env var: {key}")
-    assert config.network == HyperliquidNetwork.TESTNET
-    assert config.http_base_url == DEFAULT_TESTNET_HTTP
-    assert config.websocket_url == DEFAULT_TESTNET_WS
-    assert "testnet" in config.http_base_url.lower()
-    assert "/exchange" not in config.http_base_url
-
-
-@pytest.fixture
-def live_testnet_config() -> HyperliquidPublicConfig:
-    require_testnet_live()
-    config = HyperliquidPublicConfig.for_network(
-        HyperliquidNetwork.TESTNET,
-        max_http_retries=1,
-        request_timeout_seconds=10.0,
-        connect_timeout_seconds=10.0,
-    )
-    assert_public_read_only_safety(config)
-    return config
-
-
-@pytest.fixture
-async def live_http_client(
-    live_testnet_config: HyperliquidPublicConfig,
-) -> AsyncIterator[HyperliquidHttpClient]:
-    client = HyperliquidHttpClient(live_testnet_config)
-    try:
-        yield client
-    finally:
-        await client.aclose()
+__all__ = [
+    "assert_public_read_only_safety",
+    "require_testnet_live",
+    "candle_dict",
+    "meta_response",
+    "ws_ack",
+    "ws_candle",
+    "MockInfoRouter",
+    "PaginatedMockRouter",
+    "make_http_client",
+    "all_ack_messages",
+    "immediate_sleep",
+    "fixed_clock",
+    "live_testnet_config",
+    "live_http_client",
+]
 
 
 def candle_dict(
@@ -125,6 +84,8 @@ class MockInfoRouter:
     def __init__(self) -> None:
         self.requests: list[dict[str, object]] = []
         self.handlers: dict[str, object] = {}
+        self.fail_after_meta: Exception | None = None
+        self.call_count = 0
 
     def set_meta(self, payload: dict[str, object] | None = None) -> None:
         self.handlers["meta"] = payload or meta_response()
@@ -137,19 +98,46 @@ class MockInfoRouter:
         self.requests.append(body)
         req_type = body.get("type")
         if req_type == "meta":
-            payload = self.handlers.get("meta", meta_response())
-            return httpx.Response(200, json=payload)
+            return httpx.Response(200, json=self.handlers.get("meta", meta_response()))
         if req_type == "candleSnapshot":
+            self.call_count += 1
+            if self.fail_after_meta is not None and self.call_count > 1:
+                raise self.fail_after_meta
             payload = self.handlers.get("candleSnapshot", [])
             return httpx.Response(200, json=payload)
         return httpx.Response(400, text="unknown")
 
 
-def make_http_client(
-    router: MockInfoRouter, config: HyperliquidPublicConfig | None = None
-) -> HyperliquidHttpClient:
-    from market_data.config import HyperliquidNetwork
+class PaginatedMockRouter:
+    """Route candleSnapshot by startTime cursor."""
 
+    def __init__(
+        self,
+        pages_by_start: dict[int, list[dict[str, object]]],
+        *,
+        max_per_page: int = 5000,
+    ) -> None:
+        self.pages_by_start = pages_by_start
+        self.max_per_page = max_per_page
+        self.requests: list[dict[str, object]] = []
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        self.requests.append(body)
+        req_type = body.get("type")
+        if req_type == "meta":
+            return httpx.Response(200, json=meta_response())
+        if req_type == "candleSnapshot":
+            start = int(body["req"]["startTime"])
+            candles = self.pages_by_start.get(start, [])
+            return httpx.Response(200, json=candles[: self.max_per_page])
+        return httpx.Response(400, text="unknown")
+
+
+def make_http_client(
+    router: MockInfoRouter | PaginatedMockRouter,
+    config: HyperliquidPublicConfig | None = None,
+) -> HyperliquidHttpClient:
     config = config or HyperliquidPublicConfig.for_network(HyperliquidNetwork.TESTNET)
     transport = httpx.MockTransport(router.handle)
     client = httpx.AsyncClient(transport=transport, base_url=config.http_base_url)
@@ -170,3 +158,27 @@ async def immediate_sleep(_: float) -> None:
 
 def fixed_clock(at: datetime) -> Callable[[], datetime]:
     return lambda: at
+
+
+@pytest.fixture
+def live_testnet_config() -> HyperliquidPublicConfig:
+    require_testnet_live()
+    config = HyperliquidPublicConfig.for_network(
+        HyperliquidNetwork.TESTNET,
+        max_http_retries=1,
+        request_timeout_seconds=10.0,
+        connect_timeout_seconds=10.0,
+    )
+    assert_public_read_only_safety(config)
+    return config
+
+
+@pytest.fixture
+async def live_http_client(
+    live_testnet_config: HyperliquidPublicConfig,
+) -> AsyncIterator[HyperliquidHttpClient]:
+    client = HyperliquidHttpClient(live_testnet_config)
+    try:
+        yield client
+    finally:
+        await client.aclose()

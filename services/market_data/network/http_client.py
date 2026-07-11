@@ -69,7 +69,14 @@ class HyperliquidHttpClient:
 
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    delay = float(retry_after) if retry_after else None
+                    delay: float | None = None
+                    if retry_after is not None:
+                        try:
+                            parsed = float(retry_after)
+                            if parsed >= 0:
+                                delay = parsed
+                        except ValueError:
+                            delay = None
                     raise HyperliquidRateLimitError(
                         "HTTP 429 rate limited",
                         retry_after_seconds=delay,
@@ -94,7 +101,14 @@ class HyperliquidHttpClient:
                     raise HyperliquidParseError(f"Invalid JSON: {exc}") from exc
 
         def _retryable(exc: Exception) -> bool:
-            if isinstance(exc, HyperliquidRateLimitError):
+            if isinstance(
+                exc,
+                (
+                    HyperliquidTimeoutError,
+                    HyperliquidConnectionError,
+                    HyperliquidRateLimitError,
+                ),
+            ):
                 return True
             return isinstance(exc, HyperliquidHttpStatusError) and exc.retryable
 

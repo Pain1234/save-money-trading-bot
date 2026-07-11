@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from decimal import Decimal
 
@@ -21,11 +20,7 @@ from market_data.timeframes import ensure_utc, is_candle_closed, is_valid_timefr
 
 
 def _is_finite_decimal(value: Decimal) -> bool:
-    try:
-        f = float(value)
-    except (OverflowError, ValueError):
-        return False
-    return math.isfinite(f)
+    return value.is_finite()
 
 
 def validate_raw_candle(raw: RawCandle) -> tuple[MarketDataReasonCode, ...]:

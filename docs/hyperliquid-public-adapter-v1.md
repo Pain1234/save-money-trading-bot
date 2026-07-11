@@ -86,12 +86,14 @@ Buffer overflow → fail-closed reconnect.
 `HyperliquidMarketDataRuntime`:
 
 - `backfill_symbol(...)` — meta check, HTTP fetch, shared ingest, gap detection
-- `start(evaluation_time)` — meta, WS connect, initial backfill, buffer replay
-- `process_live(evaluation_time)` — drain WS queue through live ingest
-- `reconnect(evaluation_time)` — WS reconnect + HTTP backfill + buffer replay
+- `start(evaluation_time)` — **buffer first**, then meta, WS connect/ack, backfill, buffer replay
+- `process_live(evaluation_time)` — drain WS queue; auto-reconnect when WS is `RECONNECTING`
+- `reconnect(evaluation_time)` — WS reconnect + HTTP backfill + buffer replay (locked, no parallel runs)
 - `status(evaluation_time)` — readiness, subscriptions, series quality
 
-Readiness requires: meta OK, all subscriptions acked, initial backfill done, no unresolved conflicts, required series not INVALID/DISCONNECTED.
+Readiness requires: meta OK, backfill OK, all subscriptions acked, initial backfill done, **all series VALID**, no unresolved conflicts, WS CONNECTED, no runtime error.
+
+Partial pagination raises `HyperliquidPaginationIncompleteError` and never reaches ingest.
 
 ## Rate Limits
 
