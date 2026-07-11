@@ -87,3 +87,26 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_inmemory_lock() -> Iterator[None]:
+    from paper_trading.lock import InMemoryAdvisoryLock
+
+    InMemoryAdvisoryLock.reset()
+    yield
+    InMemoryAdvisoryLock.reset()
+
+
+@pytest.fixture
+def e2e_harness(db_session: Session):
+    from paper_trading.repository import PaperTradingRepository
+
+    from tests.paper_trading.e2e.helpers import PaperE2EHarness, paper_config_from_env
+
+    harness = PaperE2EHarness(
+        PaperTradingRepository(db_session),
+        paper_config_from_env(_postgres_url()),
+    )
+    harness.set_runtime_ready()
+    return harness
