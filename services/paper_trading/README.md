@@ -1,10 +1,10 @@
-# Paper Trading Orchestrator (Phases 1–8)
+# Paper Trading Orchestrator (Phases 1–9)
 
 ## Scope
 
-Phases 1–8 implement domain, PostgreSQL persistence, execution parity with the backtester, evaluation/intent/fill lifecycle, stop/close/portfolio snapshots, internal scheduler, composite readiness, deterministic recovery, and a FastAPI read/control plane.
+Phases 1–9 implement domain, PostgreSQL persistence, execution parity with the backtester, evaluation/intent/fill lifecycle, stop/close/portfolio snapshots, internal scheduler, composite readiness, deterministic recovery, FastAPI read/control plane, and Phase 9 E2E/replay/crash/soak validation.
 
-Not implemented: Hyperliquid private API, wallet/signing, real exchange orders (Phases 9–10).
+Not implemented: Hyperliquid private API, wallet/signing, real exchange orders (Phase 10 audit gate).
 
 ## Key modules
 
@@ -20,6 +20,7 @@ Not implemented: Hyperliquid private API, wallet/signing, real exchange orders (
 | `runtime.py` | Runtime state machine, pause, kill, startup recovery |
 | `lock.py` | PostgreSQL advisory lock |
 | `recovery.py` | Consistency checks, auto-repair, startup recovery |
+| `db/transaction.py` | Nested transaction/savepoint helper |
 | `api.py` | FastAPI read and control endpoints |
 
 ## Local PostgreSQL test setup (Windows)
@@ -37,7 +38,7 @@ CREATE DATABASE paper_trading_test OWNER paper_trading_test;
 ```powershell
 $env:PAPER_TRADING_DATABASE_URL = "postgresql+psycopg://paper_trading_test:<LOCAL_TEST_PASSWORD>@localhost:5432/paper_trading_test"
 python -m alembic upgrade head
-python -m pytest tests/paper_trading/integration -m postgres -v
+python -m pytest tests/paper_trading -m postgres -v
 ```
 
 Alternative: `docker/docker-compose.paper-test.yml` on port `5433`.
@@ -82,14 +83,30 @@ Control (disabled by default): `/control/pause`, `/control/resume`, `/control/ki
 - **Kill switch:** persistent; blocks new entries; not reset on restart
 - **No exchange execution** in V1 — local paper simulation only
 
+## Phase 9 soak scripts
+
+```powershell
+python scripts/run_paper_soak.py --database-url-env PAPER_TRADING_DATABASE_URL --days 365 --seed 1
+python scripts/verify_paper_state.py --database-url-env PAPER_TRADING_DATABASE_URL
+```
+
+Optional live public soak (testnet, network):
+
+```powershell
+$env:HYPERLIQUID_NETWORK = "testnet"
+$env:RUN_PAPER_LIVE_SOAK = "1"
+python -m pytest tests/paper_trading/soak/test_live_public_data_soak.py -m live -v
+```
+
 ## Tests
 
 ```bash
-python -m pytest tests/paper_trading -m "not postgres" -q
-python -m pytest tests/paper_trading/integration -m postgres -v
-python -m pytest tests/paper_trading/test_api_read.py tests/paper_trading/test_api_control.py tests/paper_trading/test_api_security.py -q
+python -m pytest tests/paper_trading -m "not postgres and not live and not soak" -q
+python -m pytest tests/paper_trading -m postgres -q
+python -m pytest tests/paper_trading/e2e tests/paper_trading/replay tests/paper_trading/failure -m postgres -q
+python -m pytest tests/paper_trading/soak/test_accelerated_soak.py -m "postgres and soak" -q
 ```
 
 ## Not approved for unsupervised paper trading
 
-End-to-end and soak tests (Phases 9–10) remain before operational deployment.
+Phase 10 independent read-only audit required before operational deployment.

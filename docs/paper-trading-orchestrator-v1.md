@@ -1,4 +1,4 @@
-# Paper Trading Orchestrator V1 — Implementation Status (Phases 1–8)
+# Paper Trading Orchestrator V1 — Implementation Status (Phases 1–9)
 
 ## Implemented
 
@@ -22,20 +22,31 @@ See prior sections: domain, persistence, execution, lifecycle, stops/portfolio, 
 - Control plane gated by `PAPER_CONTROL_API_ENABLED` + `PAPER_CONTROL_API_KEY`
 - Optional deps: `fastapi>=0.110`, `uvicorn[standard]>=0.27`
 
+### Phase 9 — E2E, Replay, Crash, Recovery, Soak
+
+- E2E: full BTC lifecycle, multi-symbol limits, pause/kill, restart recovery, API against PostgreSQL
+- Replay: backtester parity and idempotency
+- Failure: crash boundaries, DB interruptions, advisory-lock contention
+- Soak: 365-day accelerated soak; `scripts/run_paper_soak.py`, `scripts/verify_paper_state.py`
+- Optional live public testnet soak (network; skipped by default)
+
+See [paper-trading-e2e-soak-v1.md](./paper-trading-e2e-soak-v1.md) for detailed results.
+
 ## PostgreSQL verification status
 
 **Live verified** on local PostgreSQL 16.14 (`localhost:5432`, database `paper_trading_test`).
 
 - Migrations: upgrade/downgrade roundtrip OK
-- 24 PostgreSQL integration tests passing (including recovery, failure injection, API)
+- 54 PostgreSQL integration/E2E tests passing
 - Schema verified via `scripts/verify_pg_schema.py`
+- Independent state verification via `scripts/verify_paper_state.py`
 
-## Remaining (Phases 9–10)
+## Remaining (Phase 10)
 
-- End-to-end orchestrator soak tests
+- Independent read-only operational audit
 - Production deployment hardening
 - Hyperliquid private API, wallet, signing, real orders — **not in scope**
 
 ## Not approved for unsupervised paper trading
 
-Soak and E2E validation (Phases 9–10) required before operational deployment.
+Phase 10 independent audit required before operational deployment.
