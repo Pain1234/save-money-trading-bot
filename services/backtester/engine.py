@@ -7,13 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from risk_engine.engine import RiskEngine
-from risk_engine.models import (
-    BotSystemState,
-    MarketDataStatus,
-    SymbolConstraints,
-    TradeProposal,
-    TradeSide,
-)
+from risk_engine.models import SymbolConstraints
 from strategy_engine.engine import StrategyEngine
 from strategy_engine.models import (
     Candle,
@@ -23,11 +17,6 @@ from strategy_engine.models import (
     Timeframe,
     TrailingStopState,
 )
-from strategy_engine.stops import (
-    compute_initial_stop,
-    initialize_trailing_stop,
-    update_trailing_stop,
-)
 
 from backtester.constants import INTRABAR_ASSUMPTION
 from backtester.data import (
@@ -36,13 +25,7 @@ from backtester.data import (
     slice_closed_candles,
     validate_chronological,
 )
-from backtester.execution import (
-    apply_entry_slippage,
-    apply_exit_slippage,
-    compute_fee,
-    compute_funding_payment,
-    compute_slippage_cost,
-)
+from backtester.execution import compute_funding_payment
 from backtester.intent import build_client_intent_id
 from backtester.metrics import compute_drawdown_curve, compute_metrics
 from backtester.models import (
@@ -50,7 +33,6 @@ from backtester.models import (
     BacktestResult,
     BacktestTrade,
     EquitySnapshot,
-    ExitReason,
     HistoricalDataBundle,
     OrderStatus,
     PendingIntent,
@@ -59,17 +41,21 @@ from backtester.models import (
     SimulatedPosition,
     TrailingStopSnapshot,
 )
+from backtester.paper_lifecycle import (
+    build_simulated_position_from_entry,
+    compute_entry_accounting,
+    compute_entry_fill_prices,
+    compute_exit_accounting,
+    compute_stop_trigger,
+    compute_trailing_stop_update,
+    evaluate_entry_risk_decision,
+    filter_rejection_reason_codes,
+)
 from backtester.portfolio import (
-    build_account_state,
-    build_portfolio_state,
     compute_equity,
     compute_unrealized_pnl,
     mark_prices_from_candles,
-    position_margin,
     prior_closes_from_timeline,
-    resolve_marks_at_open,
-    to_open_orders,
-    to_position_states,
 )
 
 
@@ -301,48 +287,35 @@ class BacktestEngine:
 
             constraints = self._get_constraints(config, symbol)
             open_ref = candle.open
-            fill = apply_entry_slippage(open_ref, config.slippage_model)
-            tick = constraints.price_tick_size
-            stop_init = compute_initial_stop(
-                fill, intent.atr14, config.strategy_params, tick
+            fill_prices = compute_entry_fill_prices(
+                open_ref,
+                intent.atr14,
+                slippage_bps=config.slippage_model.slippage_bps,
+                strategy_params=config.strategy_params,
+                price_tick_size=constraints.price_tick_size,
             )
+            fill = fill_prices.fill_price
+            stop_init = fill_prices.stop_initial
 
-            marks = resolve_marks_at_open(
-                tuple(rt.positions.values()), day_candles, prior_closes
-            )
-            portfolio = build_portfolio_state(
-                rt.cash,
-                tuple(rt.positions.values()),
-            )
-            account = build_account_state(
-                portfolio, marks, config.risk_params.max_leverage
-            )
-            proposal = TradeProposal(
+            decision = evaluate_entry_risk_decision(
+                self._risk,
                 symbol=symbol,
-                side=TradeSide.LONG,
-                entry_price=fill,
-                stop_price=stop_init,
+                fill_price=fill,
+                stop_initial=stop_init,
                 client_intent_id=intent.client_intent_id,
-                signal_intent_kind=SignalIntentKind.LONG_ENTRY,
-                strategy_approved=True,
-                market_data_status=MarketDataStatus.OK,
-                bot_system_state=BotSystemState.ACTIVE,
                 atr14=intent.atr14,
-            )
-            decision = self._risk.evaluate(
-                proposal,
-                account,
-                constraints,
-                open_positions=to_position_states(tuple(rt.positions.values()), marks),
-                open_orders=to_open_orders(tuple(rt.pending_intents)),
+                constraints=constraints,
+                wallet_cash=rt.cash,
+                open_positions=tuple(rt.positions.values()),
+                pending_intents=tuple(rt.pending_intents),
                 processed_intent_ids=frozenset(rt.processed_intent_ids),
-                params=config.risk_params,
+                day_candles=day_candles,
+                prior_closes=prior_closes,
+                risk_params=config.risk_params,
             )
 
             if not decision.approved or decision.rounded_quantity is None:
-                reject_codes = tuple(
-                    c for c in decision.reason_codes if c != ReasonCode.RC_RISK_APPROVED
-                ) or decision.reason_codes
+                reject_codes = filter_rejection_reason_codes(decision)
                 self._mark_terminal_intent(rt, intent, OrderStatus.REJECTED)
                 rt.rejections.append(
                     RiskRejectionRecord(
@@ -356,10 +329,20 @@ class BacktestEngine:
                 continue
 
             qty = decision.rounded_quantity
-            notional = fill * qty
-            fee = compute_fee(notional, config.fee_model.entry_fee_rate)
-            slip = compute_slippage_cost(open_ref, fill, qty)
-            margin = position_margin(notional, config.risk_params.max_leverage)
+            accounting = compute_entry_accounting(
+                fill_price=fill,
+                open_ref=open_ref,
+                quantity=qty,
+                stop_initial=stop_init,
+                fee_rate=config.fee_model.entry_fee_rate,
+                slippage_bps=config.slippage_model.slippage_bps,
+                max_leverage=config.risk_params.max_leverage,
+                strategy_params=config.strategy_params,
+                price_tick_size=constraints.price_tick_size,
+                atr14=intent.atr14,
+            )
+            fee = accounting.fee
+            slip = accounting.slippage_cost
 
             if fee > rt.cash:
                 self._mark_terminal_intent(rt, intent, OrderStatus.REJECTED)
@@ -378,22 +361,14 @@ class BacktestEngine:
             rt.total_fees += fee
             rt.total_slippage += slip
 
-            trail_state = initialize_trailing_stop(
-                fill, intent.atr14, stop_init, config.strategy_params, tick
-            )
-
-            pos = SimulatedPosition(
+            pos = build_simulated_position_from_entry(
                 symbol=symbol,
                 quantity=qty,
-                entry_price=fill,
+                fill_price=fill,
                 entry_time=candle.open_time,
-                initial_stop=trail_state.stop_initial,
-                trail_stop=trail_state.trail_stop,
-                effective_stop=trail_state.effective_stop,
-                highest_close=trail_state.highest_close,
-                entry_atr14=intent.atr14,
+                accounting=accounting,
+                atr14=intent.atr14,
                 client_intent_id=intent.client_intent_id,
-                margin_reserved=margin,
             )
             rt.positions[symbol] = pos
             rt.trail_history[symbol] = [
@@ -404,7 +379,7 @@ class BacktestEngine:
                 )
             ]
 
-            initial_risk = qty * (fill - stop_init)
+            initial_risk = accounting.initial_risk_usd
             trade = BacktestTrade(
                 symbol=symbol,
                 client_intent_id=intent.client_intent_id,
@@ -447,30 +422,31 @@ class BacktestEngine:
             return
 
         effective = pos.effective_stop
-        exit_ref: Decimal | None = None
-        reason: ExitReason | None = None
-
-        if candle.open < effective:
-            exit_ref = candle.open
-            reason = ExitReason.STOP_GAP
-        elif candle.low <= effective:
-            exit_ref = effective
-            reason = (
-                ExitReason.STOP_TRAILING
-                if pos.trail_stop >= pos.initial_stop
-                else ExitReason.STOP_INITIAL
-            )
-
-        if exit_ref is None or reason is None:
+        trigger = compute_stop_trigger(
+            candle,
+            effective_stop=effective,
+            initial_stop=pos.initial_stop,
+            trail_stop=pos.trail_stop,
+        )
+        if trigger is None:
             return
 
-        fill = apply_exit_slippage(exit_ref, config.slippage_model)
-        notional = fill * pos.quantity
-        fee = compute_fee(notional, config.fee_model.exit_fee_rate)
-        slip = compute_slippage_cost(exit_ref, fill, pos.quantity)
-        gross = (fill - pos.entry_price) * pos.quantity
+        exit_ref = trigger.exit_reference
+        reason = trigger.exit_reason
 
-        rt.cash += gross - fee
+        exit_accounting = compute_exit_accounting(
+            exit_reference=exit_ref,
+            quantity=pos.quantity,
+            entry_price=pos.entry_price,
+            slippage_bps=config.slippage_model.slippage_bps,
+            fee_rate=config.fee_model.exit_fee_rate,
+        )
+        fill = exit_accounting.fill_price
+        fee = exit_accounting.fee
+        slip = exit_accounting.slippage_cost
+        gross = exit_accounting.gross_pnl
+
+        rt.cash += exit_accounting.net_wallet_delta
         rt.total_fees += fee
         rt.total_slippage += slip
 
@@ -618,7 +594,7 @@ class BacktestEngine:
             effective_stop=pos.effective_stop,
         )
         constraints = self._get_constraints(config, symbol)
-        updated = update_trailing_stop(
+        updated = compute_trailing_stop_update(
             state,
             candle.close,
             atr,
