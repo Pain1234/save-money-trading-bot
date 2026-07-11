@@ -1,60 +1,62 @@
-# Paper Trading Orchestrator (Phases 1–3)
+# Paper Trading Orchestrator (Phases 1–6)
 
-Implemented scope:
+## Scope
 
-- Domain models, enums, validated configuration, deterministic idempotency keys
-- PostgreSQL ORM, Alembic migrations, transactional repository
-- Paper accounting adapters and execution engine shared with `backtester.paper_lifecycle`
-- Transactional fill service with idempotent persistence
+Phases 1–6 implement domain, PostgreSQL persistence, execution parity with the backtester, evaluation/intent/fill lifecycle, stop/close/portfolio snapshots, and an internal scheduler with advisory lock and composite readiness.
 
-Not implemented yet:
+Not implemented: recovery supervisor (Phase 7), FastAPI control API, wallet/signing, real exchange orders.
 
-- Scheduler and runtime orchestrator
-- Recovery supervisor
-- FastAPI control/read API
-- Funding processing (disabled by default)
-- Dashboard integration
+## Key modules
 
-## Dependencies
+| Module | Purpose |
+|--------|---------|
+| `clock.py` | Injectable UTC clock |
+| `evaluation.py` | Daily-close strategy evaluation |
+| `lifecycle.py` | Intent creation, scheduled fills |
+| `stops.py` | Trailing stops, stop triggers, close |
+| `portfolio.py` | Idempotent portfolio snapshots |
+| `scheduler.py` | Deterministic job runner |
+| `readiness.py` | Liveness / runtime / entry readiness |
+| `runtime.py` | Runtime state machine, pause, kill |
+| `lock.py` | PostgreSQL advisory lock |
 
-- `sqlalchemy>=2.0`
-- `alembic>=1.13`
-- `psycopg[binary]>=3.1`
+## ATR semantics
 
-## Database
+- **Entry:** `entry_atr14` persisted on `paper_positions` at fill time (frozen).
+- **Trailing update:** current daily evaluation ATR when available, else `entry_atr14` (matches backtester).
 
-Run migrations against PostgreSQL:
+## Scheduler jobs
 
-```bash
-PAPER_TRADING_DATABASE_URL=postgresql+psycopg://user:pass@localhost:5432/paper_trading alembic upgrade head
+1. `readiness_check`
+2. `daily_signal_evaluation`
+3. `next_open_fill_processing`
+4. `daily_stop_update`
+5. `stop_trigger_processing`
+6. `funding_processing` (only if `funding_enabled=true`)
+7. `portfolio_snapshot`
+8. `runtime_heartbeat`
+
+**Daily open:** fills → stops → funding (optional) → snapshot  
+**Daily close + delay:** evaluation → trailing → snapshot
+
+## PostgreSQL verification
+
+**Status: PostgreSQL nicht live verifiziert** (no Docker/local PG during last run).
+
+Use `docker/docker-compose.paper-test.yml` and:
+
+```powershell
+$env:PAPER_TRADING_DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/paper_trading_test"
+python -m alembic upgrade head
+python -m pytest tests/paper_trading/integration -m postgres -v
 ```
 
-Singleton tables seeded by migration `004_seed`:
-
-- `runtime_state` (STOPPED)
-- `paper_wallet` (cash = 100000)
-
-## Execution parity
-
-Paper fills use the same pure functions as the backtester via `services/backtester/paper_lifecycle.py`:
-
-- Entry slippage and fill-based initial stop
-- Post-slippage `RiskEngine.evaluate`
-- Gap/intraday stop ordering
-- Trailing stop monotonic updates
-
-`SymbolConstraints` must be injected explicitly. Missing constraints fail closed.
-
 ## Tests
-
-Offline:
 
 ```bash
 python -m pytest tests/paper_trading -m "not postgres" -q
 ```
 
-PostgreSQL integration (requires running database):
+## Not approved for unsupervised paper trading
 
-```bash
-python -m pytest tests/paper_trading/integration -m postgres -v
-```
+Recovery and API layers are still required.
