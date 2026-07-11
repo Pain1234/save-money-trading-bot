@@ -124,6 +124,7 @@ class PaperTradingScheduler:
     ) -> tuple[JobRunOutcome, ...]:
         if scheduled_for.tzinfo is None:
             raise ValueError("scheduled_for must be timezone-aware UTC")
+        already_held = advisory_lock.held
         if not advisory_lock.try_acquire():
             return (
                 JobRunOutcome(
@@ -167,7 +168,8 @@ class PaperTradingScheduler:
             )
             return tuple(outcomes)
         finally:
-            advisory_lock.release()
+            if not already_held:
+                advisory_lock.release()
 
     def run_daily_close_sequence(
         self,
@@ -178,6 +180,7 @@ class PaperTradingScheduler:
     ) -> tuple[JobRunOutcome, ...]:
         if scheduled_for.tzinfo is None:
             raise ValueError("scheduled_for must be timezone-aware UTC")
+        already_held = advisory_lock.held
         if not advisory_lock.try_acquire():
             return (
                 JobRunOutcome(
@@ -219,7 +222,8 @@ class PaperTradingScheduler:
             ]
             return tuple(outcomes)
         finally:
-            advisory_lock.release()
+            if not already_held:
+                advisory_lock.release()
 
     def run_job(
         self,
@@ -284,13 +288,13 @@ class PaperTradingScheduler:
         try:
             handler(scheduled_for=scheduled_for, cycle_id=cycle_id)
             self._complete_run(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
-            return JobRunOutcome(
-                job_name, scheduled_for, SchedulerRunStatus.COMPLETED, skipped=False
+            return self._persisted_job_outcome(
+                job_name, scheduled_for, skipped=False
             )
         except Exception as exc:
             self._complete_run(job_name, scheduled_for, SchedulerRunStatus.FAILED, str(exc))
-            return JobRunOutcome(
-                job_name, scheduled_for, SchedulerRunStatus.FAILED, skipped=False, error=str(exc)
+            return self._persisted_job_outcome(
+                job_name, scheduled_for, skipped=False, error=str(exc)
             )
 
     def _complete_run(
@@ -308,6 +312,31 @@ class PaperTradingScheduler:
                 completed_at=self._clock.now(),
                 error=error,
             )
+
+    def _persisted_job_outcome(
+        self,
+        job_name: str,
+        scheduled_for: datetime,
+        *,
+        skipped: bool,
+        error: str | None = None,
+    ) -> JobRunOutcome:
+        run = self._repo.get_scheduler_run(job_name, scheduled_for)
+        if run is not None:
+            return JobRunOutcome(
+                job_name,
+                scheduled_for,
+                run.status,
+                skipped=skipped,
+                error=run.error,
+            )
+        return JobRunOutcome(
+            job_name,
+            scheduled_for,
+            SchedulerRunStatus.FAILED,
+            skipped=False,
+            error=error or "scheduler_run_missing",
+        )
 
     def _job_readiness_check(self, **kwargs: Any) -> None:
         self._readiness.evaluate(

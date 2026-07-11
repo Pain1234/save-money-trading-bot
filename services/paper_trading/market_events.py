@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,8 +22,9 @@ from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import SchedulerRunRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import SchedulerRunStatus
-from paper_trading.ids import format_utc_timestamp, scheduler_run_key
+from paper_trading.ids import scheduler_run_key
 from paper_trading.lock import AdvisoryLock
+from paper_trading.models import SchedulerRun
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.scheduler import PaperTradingScheduler, SchedulerJobName
 from paper_trading.scheduler_context import ProductionContextBuilder
@@ -54,20 +56,26 @@ class MarketEvent:
 
 
 def market_event_job_name(event: MarketEvent) -> str:
-    ts = format_utc_timestamp(event.candle_open_time)
+    ts = _compact_timestamp(event.candle_open_time)
     if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
-        return f"market_event:daily_open:{event.symbol}:{ts}"
+        return f"me:do:{event.symbol}:{ts}"
     if event.event_type == MarketEventType.DAILY_LIVE_UPDATE:
         low = event.observed_low
         assert low is not None
-        return f"market_event:daily_live:{event.symbol}:{ts}:low:{format(low, 'f')}"
+        low_digest = hashlib.sha256(format(low, "f").encode()).hexdigest()[:12]
+        return f"me:dl:{event.symbol}:{ts}:{low_digest}"
     if event.event_type == MarketEventType.DAILY_CLOSED:
-        return f"market_event:daily_closed:{event.symbol}:{ts}"
+        return f"me:dc:{event.symbol}:{ts}"
     if event.event_type == MarketEventType.WEEKLY_CLOSED:
-        return f"market_event:weekly_closed:{event.symbol}:{ts}"
+        return f"me:wc:{event.symbol}:{ts}"
     if event.event_type == MarketEventType.MONTHLY_CLOSED:
-        return f"market_event:monthly_closed:{event.symbol}:{ts}"
+        return f"me:mc:{event.symbol}:{ts}"
     raise ValueError(f"unknown event type: {event.event_type}")
+
+
+def _compact_timestamp(dt: datetime) -> str:
+    normalized = ensure_utc(dt)
+    return normalized.strftime("%Y%m%dT%H%M%SZ")
 
 
 @dataclass
@@ -165,14 +173,15 @@ class MarketEventDetector:
         if tracker.daily_open_time != open_time:
             tracker.daily_open_time = open_time
             tracker.daily_observed_low = candle.low
-            events.append(
-                MarketEvent(
-                    event_type=MarketEventType.DAILY_OPEN_AVAILABLE,
-                    symbol=candle.symbol.value,
-                    candle_open_time=open_time,
-                    provider_received_at=evaluation_time,
+            if not candle.is_closed:
+                events.append(
+                    MarketEvent(
+                        event_type=MarketEventType.DAILY_OPEN_AVAILABLE,
+                        symbol=candle.symbol.value,
+                        candle_open_time=open_time,
+                        provider_received_at=evaluation_time,
+                    )
                 )
-            )
         elif tracker.daily_observed_low != candle.low and not candle.is_closed:
             tracker.daily_observed_low = candle.low
             events.append(
@@ -290,6 +299,43 @@ class MarketEventBridge:
             logger.exception("market_event_db_unhealthy")
             return True
 
+    def _persisted_outcome(
+        self,
+        event: MarketEvent,
+        job_name: str,
+        scheduled_for: datetime,
+        *,
+        skipped: bool,
+    ) -> EventProcessOutcome:
+        run = self.repository.get_scheduler_run(job_name, scheduled_for)
+        if run is None:
+            raise RuntimeError(f"scheduler run missing after processing: {job_name}")
+        return EventProcessOutcome(
+            event=event,
+            job_name=job_name,
+            status=run.status,
+            skipped=skipped,
+            error=run.error,
+        )
+
+    def _ensure_scheduler_run(
+        self,
+        job_name: str,
+        scheduled_for: datetime,
+    ) -> tuple[SchedulerRun, bool]:
+        started = self.clock.now()
+        with transaction_scope(self.repository.session):
+            return self.repository.insert_or_get_scheduler_run(
+                SchedulerRunRow(
+                    run_id=uuid4(),
+                    job_name=job_name,
+                    scheduled_for=scheduled_for,
+                    started_at=started,
+                    status=SchedulerRunStatus.RUNNING.value,
+                    idempotency_key=scheduler_run_key(job_name, scheduled_for),
+                )
+            )
+
     def _process_event(
         self,
         event: MarketEvent,
@@ -313,25 +359,14 @@ class MarketEventBridge:
         }:
             return self._complete_marker_event(event, job_name, scheduled_for)
 
-        started = self.clock.now()
-        with transaction_scope(self.repository.session):
-            run, created = self.repository.insert_or_get_scheduler_run(
-                SchedulerRunRow(
-                    run_id=uuid4(),
-                    job_name=job_name,
-                    scheduled_for=scheduled_for,
-                    started_at=started,
-                    status=SchedulerRunStatus.RUNNING.value,
-                    idempotency_key=scheduler_run_key(job_name, scheduled_for),
-                )
+        run, created = self._ensure_scheduler_run(job_name, scheduled_for)
+        if not created and run.status == SchedulerRunStatus.COMPLETED.value:
+            return EventProcessOutcome(
+                event=event,
+                job_name=job_name,
+                status=SchedulerRunStatus.COMPLETED,
+                skipped=True,
             )
-            if not created and run.status == SchedulerRunStatus.COMPLETED.value:
-                return EventProcessOutcome(
-                    event=event,
-                    job_name=job_name,
-                    status=SchedulerRunStatus.COMPLETED,
-                    skipped=True,
-                )
 
         try:
             if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
@@ -344,23 +379,16 @@ class MarketEventBridge:
                 raise ValueError(f"unsupported event: {event.event_type}")
 
             self._complete_market_event(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
-            return EventProcessOutcome(
-                event=event,
-                job_name=job_name,
-                status=SchedulerRunStatus.COMPLETED,
-                skipped=False,
+            return self._persisted_outcome(
+                event, job_name, scheduled_for, skipped=False
             )
         except Exception as exc:
             logger.exception("market_event_processing_failed", extra={"job_name": job_name})
             self._complete_market_event(
                 job_name, scheduled_for, SchedulerRunStatus.FAILED, str(exc)
             )
-            return EventProcessOutcome(
-                event=event,
-                job_name=job_name,
-                status=SchedulerRunStatus.FAILED,
-                skipped=False,
-                error=str(exc),
+            return self._persisted_outcome(
+                event, job_name, scheduled_for, skipped=False
             )
 
     def _complete_marker_event(
@@ -377,13 +405,18 @@ class MarketEventBridge:
                 status=SchedulerRunStatus.COMPLETED,
                 skipped=True,
             )
+
+        run, created = self._ensure_scheduler_run(job_name, scheduled_for)
+        if not created and run.status == SchedulerRunStatus.COMPLETED.value:
+            return EventProcessOutcome(
+                event=event,
+                job_name=job_name,
+                status=SchedulerRunStatus.COMPLETED,
+                skipped=True,
+            )
+
         self._complete_market_event(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
-        return EventProcessOutcome(
-            event=event,
-            job_name=job_name,
-            status=SchedulerRunStatus.COMPLETED,
-            skipped=False,
-        )
+        return self._persisted_outcome(event, job_name, scheduled_for, skipped=not created)
 
     def _complete_market_event(
         self,

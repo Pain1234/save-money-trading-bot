@@ -74,6 +74,7 @@ class ProductionContextBuilder:
             MIN_WEEKLY_CANDLES,
             MIN_MONTHLY_CANDLES,
             backfill=backfill,
+            aggregate_higher_timeframes=False,
         )
 
     def _runtime_gates(self) -> tuple[bool, bool, bool]:

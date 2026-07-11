@@ -206,6 +206,7 @@ class MarketDataService:
         monthly_minimum: int,
         *,
         backfill: bool = True,
+        aggregate_higher_timeframes: bool = True,
     ) -> StrategyDataBundle:
         evaluation_time = ensure_utc(evaluation_time)
         if backfill:
@@ -218,6 +219,7 @@ class MarketDataService:
             daily_minimum,
             weekly_minimum,
             monthly_minimum,
+            aggregate_higher_timeframes=aggregate_higher_timeframes,
         )
 
     def store_normalized(

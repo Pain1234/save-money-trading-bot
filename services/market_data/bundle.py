@@ -73,6 +73,23 @@ def _conflicts_for(
     )
 
 
+def _gap_check_time(
+    closed: tuple[NormalizedCandle, ...],
+    evaluation_time: datetime,
+    timeframe: MarketTimeframe,
+) -> datetime:
+    """
+    Gap detection horizon for strategy bundles.
+
+    Daily series must cover through ``evaluation_time``. Higher timeframes only
+    require internal continuity of stored native history — trailing calendar
+    periods after the last closed candle are not treated as gaps.
+    """
+    if timeframe == MarketTimeframe.DAILY or not closed:
+        return evaluation_time
+    return min(evaluation_time, closed[-1].close_time)
+
+
 def _resolve_higher_timeframe(
     repository: InMemoryCandleRepository,
     daily_closed: tuple[NormalizedCandle, ...],
@@ -165,12 +182,19 @@ def get_strategy_bundle(
         _conflicts_for(repo_conflicts, symbol, MarketTimeframe.MONTHLY) + monthly_merge_conflicts
     )
 
+    weekly_gap_time = _gap_check_time(
+        weekly_closed, evaluation_time, MarketTimeframe.WEEKLY
+    )
+    monthly_gap_time = _gap_check_time(
+        monthly_closed, evaluation_time, MarketTimeframe.MONTHLY
+    )
+
     weekly_report = validate_series(
         weekly_closed,
         symbol,
         MarketTimeframe.WEEKLY,
         evaluation_time,
-        gaps=detect_gaps(weekly_closed, symbol, MarketTimeframe.WEEKLY, evaluation_time),
+        gaps=detect_gaps(weekly_closed, symbol, MarketTimeframe.WEEKLY, weekly_gap_time),
         conflicts=weekly_conflicts,
     )
     monthly_report = validate_series(
@@ -178,7 +202,7 @@ def get_strategy_bundle(
         symbol,
         MarketTimeframe.MONTHLY,
         evaluation_time,
-        gaps=detect_gaps(monthly_closed, symbol, MarketTimeframe.MONTHLY, evaluation_time),
+        gaps=detect_gaps(monthly_closed, symbol, MarketTimeframe.MONTHLY, monthly_gap_time),
         conflicts=monthly_conflicts,
     )
 

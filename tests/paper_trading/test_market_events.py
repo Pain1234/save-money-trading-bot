@@ -51,7 +51,7 @@ def test_daily_open_event_key_is_deterministic() -> None:
         candle_open_time=utc_dt(2024, 1, 16),
         provider_received_at=utc_dt(2024, 1, 16, 1),
     )
-    assert market_event_job_name(event) == "market_event:daily_open:BTC:2024-01-16T00:00:00Z"
+    assert market_event_job_name(event) == "me:do:BTC:20240116T000000Z"
 
 
 def test_detector_daily_open_only_once() -> None:

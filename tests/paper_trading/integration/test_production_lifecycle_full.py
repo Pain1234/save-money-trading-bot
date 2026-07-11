@@ -99,6 +99,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
         daily_count=len(bundle.daily[symbol]) - 2,
         evaluation_time=signal_eval_time - timedelta(seconds=1),
     )
+    await md.start(signal_eval_time)
 
     lock_id = 987655000 + (os.getpid() % 50000)
     config = PaperServiceConfig.from_env(
@@ -163,16 +164,18 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
     assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 1
     assert len(repo.get_open_positions()) == 1
 
-    stop_price = intent.requested_stop
+    position = repo.get_open_positions()[0]
+    active_stop = position.current_stop
     clock.advance_to(fill_eval_time + timedelta(hours=6))
+    above_stop_low = active_stop + Decimal("1000")
     md.enqueue_raw(
         raw_daily(
             symbol,
             fill_candle.open_time,
             open_=str(fill_candle.open),
-            high=str(fill_candle.high),
-            low=str(stop_price + Decimal("1000")),
-            close=str(fill_candle.close),
+            high=str(max(fill_candle.high, above_stop_low)),
+            low=str(above_stop_low),
+            close=str(max(fill_candle.close, above_stop_low)),
             volume=str(fill_candle.volume),
             is_closed=False,
         )
@@ -183,14 +186,15 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
     assert len(repo.get_open_positions()) == 1
 
     clock.advance_to(fill_eval_time + timedelta(hours=12))
+    below_stop_low = active_stop - Decimal("1")
     md.enqueue_raw(
         raw_daily(
             symbol,
             fill_candle.open_time,
             open_=str(fill_candle.open),
-            high=str(fill_candle.high),
-            low=str(stop_price - Decimal("1")),
-            close=str(fill_candle.close),
+            high=str(max(fill_candle.high, below_stop_low)),
+            low=str(below_stop_low),
+            close=str(below_stop_low),
             volume=str(fill_candle.volume),
             is_closed=False,
         )
@@ -199,7 +203,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
     bridge.process_after_poll(clock.now())
     repo.session.commit()
     assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.EXIT]) == 1
-    assert repo.get_open_positions() == []
+    assert not repo.get_open_positions()
 
     counts_before = {
         "fills": len(repo.list_fills(limit=100)),
@@ -218,6 +222,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
         daily_count=len(bundle.daily[symbol]),
         evaluation_time=clock.now(),
     )
+    await md2.start(clock.now())
     lock2 = PostgresAdvisoryLock(migrated_engine, lock_id)
     assert lock2.try_acquire() is True
     repo2 = PaperTradingRepository(postgres_commit_session)
