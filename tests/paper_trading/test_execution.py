@@ -39,6 +39,7 @@ def test_entry_execution_requires_valid_open() -> None:
             constraints=DEFAULT_CONSTRAINTS,
             wallet_cash=Decimal("100000"),
             open_positions=(),
+            pending_intents=(),
             pending_intent_ids=frozenset(),
             processed_intent_ids=frozenset(),
             day_candles={},

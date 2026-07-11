@@ -63,6 +63,7 @@ class EntryExecutionInput:
     constraints: SymbolConstraints
     wallet_cash: Decimal
     open_positions: tuple[PaperPosition, ...]
+    pending_intents: tuple[PendingIntent, ...]
     pending_intent_ids: frozenset[str]
     processed_intent_ids: frozenset[str]
     day_candles: dict[str, Candle]
@@ -132,7 +133,7 @@ class PaperExecutionEngine:
         )
 
         simulated_open = tuple(paper_position_to_simulated(p) for p in inputs.open_positions)
-        pending: tuple[PendingIntent, ...] = ()
+        pending = inputs.pending_intents
 
         decision = evaluate_entry_risk_decision(
             self._risk,
@@ -244,21 +245,23 @@ class PaperFillService:
         day_candles: dict[str, Candle],
         prior_closes: dict[str, Decimal],
         processed_intent_ids: frozenset[str],
+        pending_intents: tuple[PendingIntent, ...] = (),
         pending_intent_ids: frozenset[str] = frozenset(),
         cycle_id: UUID | None = None,
     ) -> TransactionalFillResult | EntryExecutionRejected:
         validate_symbol_constraints(constraints)
-        wallet = self._repo.get_wallet()
-        if wallet is None:
-            raise LookupError("paper_wallet not seeded")
 
         existing = self._load_existing_fill(intent, candle_open_time)
         if existing is not None:
             return existing
 
+        self._repo.session.expire_all()
         open_positions = self._repo.get_open_positions()
         if any(p.symbol == intent.symbol for p in open_positions):
             return EntryExecutionRejected(detail="position already open for symbol")
+        wallet = self._repo.get_wallet()
+        if wallet is None:
+            raise LookupError("paper_wallet not seeded")
 
         calc = self._engine.compute_entry_execution(
             EntryExecutionInput(
@@ -269,6 +272,7 @@ class PaperFillService:
                 constraints=constraints,
                 wallet_cash=wallet.cash,
                 open_positions=open_positions,
+                pending_intents=pending_intents,
                 pending_intent_ids=pending_intent_ids,
                 processed_intent_ids=processed_intent_ids,
                 day_candles=day_candles,

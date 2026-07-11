@@ -8,11 +8,13 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from backtester.data import evaluation_time_for_daily
+from backtester.models import PendingIntent
 from market_data.models import MarketTimeframe
 from market_data.timeframes import next_open_time
 from risk_engine.models import RiskParameters, SymbolConstraints
 from strategy_engine.models import (
     Candle,
+    EntryType,
     SignalIntentKind,
     StrategyEvaluation,
     StrategyParameters,
@@ -52,6 +54,49 @@ class EntryGateContext:
     open_position_count: int
     has_symbol_position: bool
     has_nonterminal_intent: bool
+
+
+def _pending_intents_for_open_batch(
+    repo: PaperTradingRepository,
+    *,
+    candle_open_time: datetime,
+    current_symbol: str,
+    symbol_contexts: dict[str, FillProcessingContext],
+    skip_intent_keys: frozenset[str],
+) -> tuple[PendingIntent, ...]:
+    """Build pending intents for symbols not yet processed in this open batch."""
+    current_index = SYMBOL_PROCESSING_ORDER.index(current_symbol)
+    pending: list[PendingIntent] = []
+    for symbol in SYMBOL_PROCESSING_ORDER[current_index + 1 :]:
+        ctx = symbol_contexts.get(symbol)
+        if ctx is None or ctx.candle_open_time != candle_open_time:
+            continue
+        for intent in repo.get_scheduled_intents_for_symbol(symbol, candle_open_time):
+            if intent.scheduled_fill_time != candle_open_time:
+                continue
+            if intent.idempotency_key in skip_intent_keys:
+                continue
+            pending.append(
+                PendingIntent(
+                    client_intent_id=intent.idempotency_key,
+                    symbol=intent.symbol,
+                    strategy_version="paper-v1",
+                    entry_type=EntryType.BREAKOUT,
+                    strategy_reason_codes=(),
+                    signal_time=intent.signal_time,
+                    order_time=candle_open_time,
+                    signal_close_price=intent.requested_entry,
+                    stop_price=intent.requested_stop,
+                    atr14=ctx.atr14,
+                    strategy_evaluation=StrategyEvaluation.model_construct(
+                        symbol=intent.symbol,
+                        evaluation_time=intent.signal_time,
+                        strategy_version="paper-v1",
+                        parameters=ctx.strategy_params,
+                    ),
+                )
+            )
+    return tuple(pending)
 
 
 @dataclass(frozen=True)
@@ -208,6 +253,7 @@ def process_scheduled_intents_for_open(
         raise ValueError("process_time must be timezone-aware UTC")
 
     results: list[FillBatchResult] = []
+    processed_intent_ids: frozenset[str] = frozenset()
     for symbol in SYMBOL_PROCESSING_ORDER:
         ctx = symbol_contexts.get(symbol)
         if ctx is None:
@@ -251,8 +297,18 @@ def process_scheduled_intents_for_open(
                 execution_config=ctx.execution_config,
                 day_candles=ctx.day_candles,
                 prior_closes=ctx.prior_closes,
-                processed_intent_ids=ctx.processed_intent_ids,
+                processed_intent_ids=processed_intent_ids,
+                pending_intents=_pending_intents_for_open_batch(
+                    repo,
+                    candle_open_time=ctx.candle_open_time,
+                    current_symbol=symbol,
+                    symbol_contexts=symbol_contexts,
+                    skip_intent_keys=processed_intent_ids,
+                ),
                 cycle_id=cycle_id,
+            )
+            processed_intent_ids = frozenset(
+                processed_intent_ids | {intent.idempotency_key}
             )
             if isinstance(outcome, EntryExecutionRejected):
                 rejected += 1
@@ -260,6 +316,7 @@ def process_scheduled_intents_for_open(
                 filled += 1
             else:
                 skipped += 1
+            repo.session.expire_all()
 
         results.append(
             FillBatchResult(
