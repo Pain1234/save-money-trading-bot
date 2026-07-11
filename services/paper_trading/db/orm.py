@@ -185,6 +185,11 @@ class PaperFillRow(Base):
         ),
         CheckConstraint("quantity > 0", name="ck_paper_fills_quantity_positive"),
         CheckConstraint("fill_price > 0", name="ck_paper_fills_price_positive"),
+        CheckConstraint(
+            "(fill_kind = 'ENTRY' AND paper_order_id IS NOT NULL AND position_id IS NULL) "
+            "OR (fill_kind = 'EXIT' AND position_id IS NOT NULL)",
+            name="ck_paper_fills_kind_refs",
+        ),
         Index("ix_paper_fills_symbol_time", "symbol", "fill_time"),
     )
 

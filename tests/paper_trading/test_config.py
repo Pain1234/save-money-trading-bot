@@ -80,6 +80,14 @@ def test_rejects_close_at_next_open_policy() -> None:
         )
 
 
+def test_rejects_funding_enabled() -> None:
+    with pytest.raises(ValueError, match="funding_enabled"):
+        PaperTradingConfig(
+            database_url="postgresql://localhost/paper",
+            funding_enabled=True,
+        )
+
+
 def test_rejects_advisory_lock_out_of_range() -> None:
     with pytest.raises(ValueError, match="BIGINT"):
         PaperTradingConfig(

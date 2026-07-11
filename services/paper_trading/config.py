@@ -91,6 +91,15 @@ class PaperTradingConfig(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def validate_funding_disabled(self) -> Self:
+        if self.funding_enabled:
+            raise ValueError(
+                "funding_enabled=True is not supported in paper trading V1; "
+                "perpetual funding processing is not implemented"
+            )
+        return self
+
     @classmethod
     def from_env(cls, **overrides: object) -> PaperTradingConfig:
         """Build config from environment with optional overrides (for tests)."""
