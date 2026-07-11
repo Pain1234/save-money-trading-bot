@@ -20,6 +20,7 @@ from strategy_engine.models import (
 
 from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import TradeIntentRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import PaperSide, TradeIntentStatus
 from paper_trading.execution import EntryExecutionRejected, PaperFillService
 from paper_trading.ids import entry_type_to_signal_type, trade_intent_key
@@ -232,7 +233,7 @@ def process_scheduled_intents_for_open(
                 continue
             processed += 1
             validate_intent_transition(intent.status, TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE)
-            with repo.session.begin():
+            with transaction_scope(repo.session):
                 repo.update_intent_status(
                     intent.intent_id,
                     TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE.value,

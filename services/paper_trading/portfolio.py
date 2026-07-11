@@ -17,9 +17,9 @@ from paper_trading.accounting import (
     resolve_marks_for_paper_positions,
 )
 from paper_trading.db.orm import PortfolioSnapshotRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.models import PaperPosition, PaperWalletState, PortfolioSnapshot
 from paper_trading.repository import PaperTradingRepository
-from paper_trading.runtime import _transaction_scope
 
 
 def portfolio_snapshot_key(event: str, evaluation_time: datetime) -> str:
@@ -72,7 +72,7 @@ class PortfolioSnapshotService:
             open_position_count=len(open_positions),
             idempotency_key=key,
         )
-        with _transaction_scope(self._repo.session):
+        with transaction_scope(self._repo.session):
             snapshot, created = self._repo.insert_or_get_portfolio_snapshot(row)
             if created:
                 self._repo.append_audit_event(

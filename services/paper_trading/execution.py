@@ -28,6 +28,7 @@ from strategy_engine.models import Candle, StrategyParameters, TrailingStopState
 
 from paper_trading.accounting import paper_position_to_simulated
 from paper_trading.db.orm import PaperFillRow, PaperOrderRow, PaperPositionRow, TradeIntentRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import (
     PaperOrderStatus,
     PaperOrderType,
@@ -277,7 +278,7 @@ class PaperFillService:
             )
         )
         if isinstance(calc, EntryExecutionRejected):
-            with self._repo.session.begin():
+            with transaction_scope(self._repo.session):
                 self._repo.update_intent_status(
                     intent.intent_id,
                     TradeIntentStatus.REJECTED.value,
@@ -344,7 +345,7 @@ class PaperFillService:
     ) -> TransactionalFillResult:
         now = candle_open_time
         trail = calc.accounting.trail_state
-        with self._repo.session.begin():
+        with transaction_scope(self._repo.session):
             order_row = PaperOrderRow(
                 paper_order_id=uuid4(),
                 intent_id=intent.intent_id,

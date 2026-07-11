@@ -14,6 +14,7 @@ from strategy_engine.models import SignalIntentKind, StrategyParameters
 from paper_trading.clock import Clock
 from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import StrategyEvaluationRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.ids import deterministic_input_hash
 from paper_trading.lifecycle import EntryGateContext, create_intent_from_evaluation
 from paper_trading.models import StrategyEvaluationRecord, TradeIntent
@@ -116,7 +117,7 @@ class PaperEvaluationService:
             created_at=created_at,
         )
 
-        with self._repo.session.begin():
+        with transaction_scope(self._repo.session):
             evaluation, created = self._repo.insert_or_get_strategy_evaluation(row)
             self._repo.append_audit_event(
                 event_type="STRATEGY_EVALUATION_RECORDED",

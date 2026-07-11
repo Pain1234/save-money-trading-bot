@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy.orm import Session
-
 from paper_trading.clock import Clock, SystemClock
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import RuntimeStatus
 from paper_trading.models import RuntimeState
 from paper_trading.repository import PaperTradingRepository
@@ -23,16 +20,6 @@ if TYPE_CHECKING:
     from paper_trading.config import PaperTradingConfig
     from paper_trading.lock import AdvisoryLock
     from paper_trading.recovery import RecoveryResult
-
-
-@contextmanager
-def _transaction_scope(session: Session) -> Iterator[None]:
-    if session.in_transaction():
-        with session.begin_nested():
-            yield
-    else:
-        with session.begin():
-            yield
 
 
 @dataclass(frozen=True)
@@ -70,7 +57,7 @@ class RuntimeService:
         current = self.get_state()
         validate_runtime_transition(current.status, target)
         now = self._clock.now()
-        with _transaction_scope(self._repo.session):
+        with transaction_scope(self._repo.session):
             updated = self._repo.update_runtime_state(
                 status=target,
                 last_error=last_error if last_error is not None else current.last_error,
@@ -106,7 +93,7 @@ class RuntimeService:
 
     def set_paused(self, paused: bool) -> RuntimeState:
         current = self.get_state()
-        with _transaction_scope(self._repo.session):
+        with transaction_scope(self._repo.session):
             updated = self._repo.update_runtime_state(
                 paused=paused,
                 expected_version=current.version,
@@ -122,7 +109,7 @@ class RuntimeService:
 
     def set_kill_switch(self, enabled: bool) -> RuntimeState:
         current = self.get_state()
-        with _transaction_scope(self._repo.session):
+        with transaction_scope(self._repo.session):
             updated = self._repo.update_runtime_state(
                 kill_switch=enabled,
                 expected_version=current.version,

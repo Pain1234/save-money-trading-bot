@@ -14,6 +14,7 @@ from strategy_engine.models import Candle, StrategyParameters, TrailingStopState
 from paper_trading.accounting import paper_position_to_simulated
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import PaperPositionRow, PositionStopHistoryRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import PaperPositionStatus
 from paper_trading.execution import PaperExecutionEngine
 from paper_trading.lifecycle import SYMBOL_PROCESSING_ORDER
@@ -107,7 +108,7 @@ class StopLifecycleService:
                 )
                 continue
 
-            with self._repo.session.begin():
+            with transaction_scope(self._repo.session):
                 _, created = self._repo.insert_or_get_stop_event(
                     PositionStopHistoryRow(
                         stop_event_id=uuid4(),
@@ -213,7 +214,7 @@ class StopLifecycleService:
             fee_rate=self._config.paper_fee_rate,
         )
 
-        with self._repo.session.begin():
+        with transaction_scope(self._repo.session):
             row = self._repo.session.get(PaperPositionRow, position.position_id)
             if row is None or row.status == PaperPositionStatus.CLOSED.value:
                 return StopCloseResult(position.position_id, closed=False, symbol=position.symbol)
@@ -230,7 +231,6 @@ class StopLifecycleService:
             )
 
             row.status = PaperPositionStatus.CLOSED.value
-            row.quantity = Decimal("0")
             row.closed_at = process_time
             row.realized_pnl = exit_accounting.gross_pnl - exit_accounting.fee
             row.unrealized_pnl = Decimal("0")

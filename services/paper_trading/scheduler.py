@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from paper_trading.clock import Clock, SystemClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import SchedulerRunRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import SchedulerRunStatus
 from paper_trading.evaluation import PaperEvaluationService
 from paper_trading.execution import PaperFillService
@@ -237,7 +238,7 @@ class PaperTradingScheduler:
                 )
 
         started = self._clock.now()
-        with self._repo.session.begin():
+        with transaction_scope(self._repo.session):
             run, created = self._repo.insert_or_get_scheduler_run(
                 SchedulerRunRow(
                     run_id=uuid4(),

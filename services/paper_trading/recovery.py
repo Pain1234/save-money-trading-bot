@@ -16,6 +16,7 @@ from sqlalchemy.engine import Engine
 from paper_trading.clock import Clock, SystemClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import PaperOrderRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import (
     PaperOrderStatus,
     PaperPositionStatus,
@@ -25,7 +26,7 @@ from paper_trading.enums import (
 from paper_trading.lock import AdvisoryLock
 from paper_trading.portfolio import PortfolioSnapshotService
 from paper_trading.repository import PaperTradingRepository
-from paper_trading.runtime import RuntimeService, _transaction_scope
+from paper_trading.runtime import RuntimeService
 from paper_trading.transitions import TERMINAL_INTENT_STATUSES
 
 
@@ -481,7 +482,7 @@ def recover_on_startup(
     result = service.recover_on_startup(advisory_lock, market_data_ready=market_data_ready)
     runtime = repository.get_runtime_state()
     if runtime is not None:
-        with _transaction_scope(repository.session):
+        with transaction_scope(repository.session):
             repository.append_audit_event(
                 event_type="RECOVERY_COMPLETED",
                 aggregate_type="runtime_state",

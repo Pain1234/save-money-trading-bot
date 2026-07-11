@@ -38,13 +38,14 @@ from paper_trading.api_models import (
 )
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import SchedulerRunRow
+from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import SchedulerRunStatus
 from paper_trading.ids import scheduler_run_key
 from paper_trading.lock import InMemoryAdvisoryLock
 from paper_trading.readiness import ReadinessService
 from paper_trading.recovery import RecoveryService
 from paper_trading.repository import PaperTradingRepository
-from paper_trading.runtime import RuntimeService, _transaction_scope
+from paper_trading.runtime import RuntimeService
 from paper_trading.scheduler import SchedulerJobName
 
 app = FastAPI(title="Paper Trading Orchestrator", version="1.0.0")
@@ -505,7 +506,7 @@ def control_pause(
     _: Annotated[None, Depends(verify_control_api_key)],
 ) -> ControlResponse:
     runtime_svc = RuntimeService(repo)
-    with _transaction_scope(repo.session):
+    with transaction_scope(repo.session):
         runtime_svc.set_paused(True)
         _audit_control(repo, "CONTROL_PAUSE", request, accepted=True)
     return ControlResponse(accepted=True, message="paused")
@@ -526,7 +527,7 @@ def control_resume(
     if RecoveryService.is_recovery_active():
         raise HTTPException(status_code=409, detail="recovery active")
     runtime_svc = RuntimeService(repo)
-    with _transaction_scope(repo.session):
+    with transaction_scope(repo.session):
         runtime_svc.set_paused(False)
         _audit_control(repo, "CONTROL_RESUME", request, accepted=True)
     return ControlResponse(accepted=True, message="resumed")
@@ -539,7 +540,7 @@ def control_kill(
     _: Annotated[None, Depends(verify_control_api_key)],
 ) -> ControlResponse:
     runtime_svc = RuntimeService(repo)
-    with _transaction_scope(repo.session):
+    with transaction_scope(repo.session):
         runtime_svc.set_kill_switch(True)
         _audit_control(repo, "CONTROL_KILL", request, accepted=True)
     return ControlResponse(accepted=True, message="kill switch enabled")
@@ -588,7 +589,7 @@ def control_run_cycle(
         raise HTTPException(status_code=400, detail="unknown job name")
     key = scheduler_run_key(body.job_name, scheduled_for)
     created: bool
-    with _transaction_scope(repo.session):
+    with transaction_scope(repo.session):
         row = SchedulerRunRow(
             run_id=uuid4(),
             job_name=body.job_name,
