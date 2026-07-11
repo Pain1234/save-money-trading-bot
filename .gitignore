@@ -1,9 +1,21 @@
-node_modules
-.next
-out
-.env*.local
-*.tsbuildinfo
-next-env.d.ts
-test-results
-playwright-report
-playwright/.cache
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+playwright-report/
+test-results/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
