@@ -38,6 +38,9 @@ class PaperTradingConfig(BaseModel):
     stale_runtime_threshold_seconds: int = Field(default=300, gt=0)
     scheduler_enabled: bool = True
     control_api_enabled: bool = False
+    control_api_localhost_only: bool = False
+    paper_production_mode: bool = False
+    control_api_rate_limit_per_minute: int = Field(default=60, gt=0)
     advisory_lock_id: int = Field(default=987654321)
     kill_switch_close_policy: KillSwitchClosePolicy = KillSwitchClosePolicy.FREEZE
     funding_enabled: bool = False
@@ -106,6 +109,15 @@ class PaperTradingConfig(BaseModel):
             in {"1", "true", "yes"},
             "control_api_enabled": os.environ.get("PAPER_CONTROL_API_ENABLED", "false").lower()
             in {"1", "true", "yes"},
+            "control_api_localhost_only": os.environ.get(
+                "PAPER_CONTROL_API_LOCALHOST_ONLY", "false"
+            ).lower()
+            in {"1", "true", "yes"},
+            "paper_production_mode": os.environ.get("PAPER_PRODUCTION_MODE", "false").lower()
+            in {"1", "true", "yes"},
+            "control_api_rate_limit_per_minute": int(
+                os.environ.get("PAPER_CONTROL_API_RATE_LIMIT_PER_MINUTE", "60")
+            ),
             "advisory_lock_id": int(os.environ.get("PAPER_ADVISORY_LOCK_ID", "987654321")),
             "kill_switch_close_policy": os.environ.get(
                 "PAPER_KILL_SWITCH_CLOSE_POLICY", "FREEZE"
