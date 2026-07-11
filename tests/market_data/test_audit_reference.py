@@ -20,9 +20,11 @@ def test_daily_close_boundary_microseconds() -> None:
     candle = make_daily(day=dt(2024, 1, 1))
     repo.upsert(candle)
     close = candle.close_time
-    assert repo.get_closed_before(MarketSymbol.BTC, MarketTimeframe.DAILY, close - timedelta(microseconds=1)) == ()
+    before_close = close - timedelta(microseconds=1)
+    after_close = close + timedelta(microseconds=1)
+    assert repo.get_closed_before(MarketSymbol.BTC, MarketTimeframe.DAILY, before_close) == ()
     assert len(repo.get_closed_before(MarketSymbol.BTC, MarketTimeframe.DAILY, close)) == 1
-    assert len(repo.get_closed_before(MarketSymbol.BTC, MarketTimeframe.DAILY, close + timedelta(microseconds=1))) == 1
+    assert len(repo.get_closed_before(MarketSymbol.BTC, MarketTimeframe.DAILY, after_close)) == 1
 
 
 def test_no_false_gap_between_day_boundary() -> None:

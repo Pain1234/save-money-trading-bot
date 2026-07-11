@@ -26,7 +26,9 @@ from tests.market_data.conftest import dt, make_daily, make_daily_series
 
 def test_valid_historical_series() -> None:
     candles = make_daily_series(5)
-    report = validate_series(candles, MarketSymbol.BTC, MarketTimeframe.DAILY, candles[-1].close_time)
+    report = validate_series(
+        candles, MarketSymbol.BTC, MarketTimeframe.DAILY, candles[-1].close_time
+    )
     assert report.status == DataQualityStatus.VALID
     assert MarketDataReasonCode.MD_VALID in report.reason_codes
 
@@ -34,7 +36,9 @@ def test_valid_historical_series() -> None:
 def test_unsorted_input_flagged() -> None:
     candles = make_daily_series(3)
     unsorted = (candles[2], candles[0], candles[1])
-    report = validate_series(unsorted, MarketSymbol.BTC, MarketTimeframe.DAILY, candles[-1].close_time)
+    report = validate_series(
+        unsorted, MarketSymbol.BTC, MarketTimeframe.DAILY, candles[-1].close_time
+    )
     assert report.status == DataQualityStatus.INVALID
 
 
@@ -113,7 +117,10 @@ def test_open_candle_excluded() -> None:
     candle = make_daily(is_closed=False)
     eval_time = candle.open_time + timedelta(hours=12)
     codes = validate_single_candle(candle, eval_time)
-    assert MarketDataReasonCode.MD_FUTURE_CANDLE in codes or MarketDataReasonCode.MD_OPEN_CANDLE_EXCLUDED in codes
+    assert (
+        MarketDataReasonCode.MD_FUTURE_CANDLE in codes
+        or MarketDataReasonCode.MD_OPEN_CANDLE_EXCLUDED in codes
+    )
 
 
 def test_future_candle_rejected() -> None:

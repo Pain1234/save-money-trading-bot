@@ -18,7 +18,14 @@ from strategy_engine.models import Candle, CandleSeries, Timeframe
 UTC = UTC
 
 
-def dt(year: int, month: int, day: int, hour: int = 0, minute: int = 0, second: int = 0) -> datetime:
+def dt(
+    year: int,
+    month: int,
+    day: int,
+    hour: int = 0,
+    minute: int = 0,
+    second: int = 0,
+) -> datetime:
     return datetime(year, month, day, hour, minute, second, tzinfo=UTC)
 
 

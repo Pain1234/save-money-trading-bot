@@ -19,11 +19,19 @@ from strategy_engine.models import (
 
 
 def _regime_long() -> RegimeResult:
-    return RegimeResult(regime_long=True, monthly_close=Decimal("200"), ema20_monthly=Decimal("100"))
+    return RegimeResult(
+        regime_long=True,
+        monthly_close=Decimal("200"),
+        ema20_monthly=Decimal("100"),
+    )
 
 
 def _trend_ok() -> TrendResult:
-    return TrendResult(trend_confirmed=True, ema20_weekly=Decimal("110"), ema50_weekly=Decimal("100"))
+    return TrendResult(
+        trend_confirmed=True,
+        ema20_weekly=Decimal("110"),
+        ema50_weekly=Decimal("100"),
+    )
 
 
 class TestVolumeFilter:

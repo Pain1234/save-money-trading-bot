@@ -353,7 +353,10 @@ async def test_disconnect_clears_readiness() -> None:
         return FakeWebSocketConnection(incoming, outgoing=[])
 
     ws = HyperliquidWebSocketFeed(
-        config, connect_fn=connect, clock=fixed_clock(datetime(2024, 6, 1, tzinfo=UTC)), sleep=immediate_sleep
+        config,
+        connect_fn=connect,
+        clock=fixed_clock(datetime(2024, 6, 1, tzinfo=UTC)),
+        sleep=immediate_sleep,
     )
     runtime = _make_runtime(config=config, ws=ws)
     runtime._meta_ok = True  # noqa: SLF001

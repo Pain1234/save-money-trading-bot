@@ -29,7 +29,12 @@ def test_open_daily_excluded_from_bundle() -> None:
     open_candle = make_daily(day=dt(2024, 1, 2), is_closed=False)
     repo = _repo_with(closed, open_candle)
     bundle = get_strategy_bundle(
-        repo, MarketSymbol.BTC, closed.close_time, daily_minimum=1, weekly_minimum=0, monthly_minimum=0
+        repo,
+        MarketSymbol.BTC,
+        closed.close_time,
+        daily_minimum=1,
+        weekly_minimum=0,
+        monthly_minimum=0,
     )
     assert all(c.is_closed for c in bundle.daily.candles)
     assert bundle.daily.candles[-1].open_time == closed.open_time
@@ -40,7 +45,12 @@ def test_future_daily_excluded() -> None:
     future = make_daily(day=dt(2024, 1, 5))
     repo = _repo_with(past, future)
     bundle = get_strategy_bundle(
-        repo, MarketSymbol.BTC, past.close_time, daily_minimum=1, weekly_minimum=0, monthly_minimum=0
+        repo,
+        MarketSymbol.BTC,
+        past.close_time,
+        daily_minimum=1,
+        weekly_minimum=0,
+        monthly_minimum=0,
     )
     assert len(bundle.daily.candles) == 1
 
