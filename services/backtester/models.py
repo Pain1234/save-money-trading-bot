@@ -19,6 +19,7 @@ from strategy_engine.models import (
 )
 
 from backtester.constants import BACKTESTER_VERSION, DEFAULT_SYMBOLS
+from backtester.core_metadata import CORE_ENGINE_METADATA, CoreEngineMetadata
 
 
 class OrderStatus(StrEnum):
@@ -74,6 +75,7 @@ class BacktestConfig(BaseModel):
     symbol_constraints: dict[str, SymbolConstraints] = Field(default_factory=dict)
     initial_processed_intent_ids: tuple[str, ...] = Field(default_factory=tuple)
     backtester_version: str = BACKTESTER_VERSION
+    core_metadata: CoreEngineMetadata = Field(default_factory=lambda: CORE_ENGINE_METADATA)
 
 
 class HistoricalDataBundle(BaseModel):
@@ -313,6 +315,7 @@ class BacktestResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     config: BacktestConfig
+    core_metadata: CoreEngineMetadata = Field(default_factory=lambda: CORE_ENGINE_METADATA)
     strategy_version: str = STRATEGY_VERSION
     risk_specification_version: str = RISK_SPECIFICATION_VERSION
     data_start: datetime | None

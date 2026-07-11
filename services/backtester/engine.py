@@ -228,6 +228,7 @@ class BacktestEngine:
 
         return BacktestResult(
             config=config,
+            core_metadata=config.core_metadata,
             data_start=data_start,
             data_end=data_end,
             start_capital=config.initial_cash,
@@ -662,6 +663,7 @@ class BacktestEngine:
         )
         return BacktestResult(
             config=config,
+            core_metadata=config.core_metadata,
             data_start=start,
             data_end=end,
             start_capital=config.initial_cash,

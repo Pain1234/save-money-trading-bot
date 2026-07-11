@@ -1,6 +1,12 @@
 """Event-driven backtester for Strategy Engine V1.0 and Risk Engine V1.0."""
 
 from backtester.constants import BACKTESTER_VERSION, DEFAULT_SYMBOLS, INTRABAR_ASSUMPTION
+from backtester.core_metadata import (
+    CORE_ENGINE_METADATA,
+    AccountingModel,
+    AuditStatus,
+    CoreEngineMetadata,
+)
 from backtester.engine import BacktestEngine
 from backtester.models import (
     BacktestConfig,
@@ -25,8 +31,12 @@ from backtester.models import (
 
 __all__ = [
     "BACKTESTER_VERSION",
+    "CORE_ENGINE_METADATA",
     "DEFAULT_SYMBOLS",
     "INTRABAR_ASSUMPTION",
+    "AccountingModel",
+    "AuditStatus",
+    "CoreEngineMetadata",
     "BacktestConfig",
     "BacktestEngine",
     "BacktestMetrics",
