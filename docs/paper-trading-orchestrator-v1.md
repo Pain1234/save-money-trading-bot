@@ -30,6 +30,10 @@ See prior sections: domain, persistence, execution, lifecycle, stops/portfolio, 
 - Soak: 365-day accelerated soak; `scripts/run_paper_soak.py`, `scripts/verify_paper_state.py`
 - Optional live public testnet soak (network; skipped by default)
 
+**Kill switch (V1):** only `KillSwitchClosePolicy.FREEZE` is supported. `CLOSE_AT_NEXT_OPEN` is reserved for a future execution version and is rejected fail-closed in config and API control. FREEZE blocks new entries; open positions are not auto-closed; trailing stops continue during pause.
+
+**Accounting verification:** canonical sources are `paper_fills` (ENTRY and EXIT), `paper_positions`, and `paper_wallet`. Stop exits persist as EXIT fills (migration `006_exit_fills`). Audit events are not used to reconstruct PnL.
+
 See [paper-trading-e2e-soak-v1.md](./paper-trading-e2e-soak-v1.md) for detailed results.
 
 ## PostgreSQL verification status

@@ -96,7 +96,7 @@ Verified:
 - Deterministic multi-phase candle calendar (BTC, ETH, SOL): warmup, breakout, pullback, quiet period, gap/intraday stops, low volume, competing signals
 - Injected restart, recovery, pause, degraded readiness during run
 - Per-day invariant checks: no duplicates, position limits, stop monotonicity, wallet consistency, no NaN/Inf
-- Independent accounting reconstruction in `scripts/verify_paper_state.py`
+- Independent accounting reconstruction in `scripts/verify_paper_state.py` from `paper_fills` (ENTRY/EXIT), `paper_positions`, and `paper_wallet` — audit events are not used for PnL
 - **Reference seed=1 (PostgreSQL, `--reset-db`):** ~17 s, 1026 evaluations, 9 intents, 8 entry fills, 6 closed positions, 100 trailing updates, 5 gap + 1 intraday stop, 1 risk rejection, independent accounting OK
 
 ### Optional live public-data soak
@@ -115,7 +115,8 @@ Verified:
 | E2E fill context uses evaluation ATR | Hardcoded ATR caused spurious `RC_REJECT_DATA` fills |
 | Deterministic soak candle calendar | Prior random drift produced OHLC-invalid weekly candles and zero fills |
 | Soak weekly/monthly window sizing | 55 weekly / 25 monthly candles align with strategy minimums |
-| Independent wallet verification | Reconstruct cash/fees from fills and stop-close audit events, not service helpers |
+| Canonical EXIT fills (migration 006) | Stop closes persist `paper_fills` with `fill_kind=EXIT` for independent accounting |
+| Kill switch V1 fail-closed | `CLOSE_AT_NEXT_OPEN` rejected in config and API; only `FREEZE` supported |
 
 ## Verification commands
 

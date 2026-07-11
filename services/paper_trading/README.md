@@ -80,8 +80,21 @@ Control (disabled by default): `/control/pause`, `/control/resume`, `/control/ki
 ## Pause / Kill switch
 
 - **Pause:** no new intents/entries; stops and snapshots continue
-- **Kill switch:** persistent; blocks new entries; not reset on restart
+- **Kill switch (V1):** persistent `FREEZE` only — blocks new entries; does not auto-close open positions; not reset on restart
+- **`CLOSE_AT_NEXT_OPEN`:** reserved enum value; rejected fail-closed in config (`PaperTradingConfig`) and API (`POST /control/kill` with unsupported policy returns 422)
 - **No exchange execution** in V1 — local paper simulation only
+
+## Accounting verification
+
+Canonical reconstruction sources (no audit-log PnL):
+
+- `paper_fills` with `fill_kind=ENTRY|EXIT` (migration `006_exit_fills`)
+- `paper_positions` (entry price, realized PnL, margin)
+- `paper_wallet`
+
+```powershell
+python scripts/verify_paper_state.py --database-url-env PAPER_TRADING_DATABASE_URL
+```
 
 ## Phase 9 soak scripts
 
