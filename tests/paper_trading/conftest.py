@@ -113,6 +113,36 @@ def _reset_inmemory_lock() -> Iterator[None]:
 
 
 @pytest.fixture
+def clean_production_db(migrated_engine: Engine) -> None:
+    """Clear stuck scheduler runs before production runner integration tests."""
+    try:
+        with migrated_engine.connect() as conn:
+            conn.execute(text("SET lock_timeout = '1s'"))
+            conn.execute(text("SET statement_timeout = '2s'"))
+            conn.execute(
+                text(
+                    "UPDATE scheduler_runs SET status = 'FAILED', error = 'test_cleanup' "
+                    "WHERE status = 'RUNNING'"
+                )
+            )
+            conn.commit()
+    except Exception:
+        pytest.skip("PostgreSQL not writable (stale locks); restart DB or clear sessions")
+
+
+@pytest.fixture
+def postgres_runtime_writable(migrated_engine: Engine) -> None:
+    """Skip integration tests when runtime_state is locked by a stale session."""
+    try:
+        with migrated_engine.connect() as conn:
+            conn.execute(text("SET lock_timeout = '1s'"))
+            conn.execute(text("SELECT 1 FROM runtime_state FOR UPDATE NOWAIT"))
+            conn.rollback()
+    except Exception:
+        pytest.skip("runtime_state locked; restart PostgreSQL or clear stale sessions")
+
+
+@pytest.fixture
 def e2e_harness(db_session: Session):
     from paper_trading.repository import PaperTradingRepository
 
