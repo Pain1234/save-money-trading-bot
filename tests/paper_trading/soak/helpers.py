@@ -20,7 +20,11 @@ from dataclasses import replace
 
 from backtester.data import evaluation_time_for_daily
 from backtester.models import HistoricalDataBundle
+from paper_trading.accounting_verification import (
+    verify_accounting_independent as verify_accounting_canonical,
+)
 from paper_trading.enums import (
+    PaperFillKind,
     PaperPositionStatus,
     RuntimeStatus,
     SchedulerRunStatus,
@@ -203,64 +207,8 @@ def assert_soak_invariants(repo: PaperTradingRepository) -> None:
 
 
 def verify_accounting_independent(repo: PaperTradingRepository) -> list[str]:
-    """Reconstruct wallet totals from persisted fills and stop-close audit events."""
-    from backtester.paper_lifecycle import compute_exit_accounting
-
-    issues: list[str] = []
-    wallet = repo.get_wallet()
-    if wallet is None:
-        return ["wallet missing"]
-
-    cash = INITIAL_CASH
-    fees = Decimal("0")
-    slippage = Decimal("0")
-    realized = Decimal("0")
-
-    for fill in repo.list_all_fills():
-        cash -= fill.fee
-        fees += fill.fee
-        slippage += fill.slippage
-
-    positions_by_id = {p.position_id: p for p in repo.list_positions(limit=10_000)}
-    for event in repo.list_audit_events(limit=10_000):
-        if event.event_type != "POSITION_CLOSED_STOP":
-            continue
-        pos = positions_by_id.get(event.aggregate_id)
-        if pos is None:
-            issues.append(f"missing position for stop audit {event.aggregate_id}")
-            continue
-        payload = event.payload_json
-        exit_ref = Decimal(str(payload.get("exit_reference", pos.current_stop)))
-        exit_acct = compute_exit_accounting(
-            exit_reference=exit_ref,
-            quantity=pos.quantity,
-            entry_price=pos.average_entry_price,
-            slippage_bps=Decimal("5"),
-            fee_rate=FEE_RATE,
-        )
-        cash += exit_acct.net_wallet_delta
-        fees += exit_acct.fee
-        slippage += exit_acct.slippage_cost
-        realized += exit_acct.gross_pnl - exit_acct.fee
-
-    if wallet.cash != cash:
-        issues.append(f"wallet cash mismatch: db={wallet.cash} reconstructed={cash}")
-    if wallet.total_fees != fees:
-        issues.append(f"wallet fees mismatch: db={wallet.total_fees} reconstructed={fees}")
-    if wallet.total_slippage != slippage:
-        issues.append(
-            f"wallet slippage mismatch: db={wallet.total_slippage} reconstructed={slippage}"
-        )
-
-    for pos in repo.get_open_positions():
-        if pos.margin_reserved <= 0:
-            issues.append(f"open position {pos.symbol} has no margin reserved")
-
-    for pos in repo.list_positions(limit=10_000):
-        if pos.status == PaperPositionStatus.CLOSED and pos.margin_reserved != 0:
-            issues.append(f"closed position {pos.symbol} still reserves margin")
-
-    return issues
+    """Reconstruct wallet totals from canonical paper_fills and paper_positions."""
+    return verify_accounting_canonical(repo, initial_cash=INITIAL_CASH)
 
 
 def _build_fill_contexts(
@@ -524,7 +472,12 @@ class DeterministicSoakEngine:
         self.report.orders = counts.orders
         self.report.audit_events = counts.audit_events
         self.report.intents_created = counts.intents
-        self.report.entry_fills = len(self.repo.list_all_fills())
+        self.report.entry_fills = sum(
+            1 for f in self.repo.list_all_fills() if f.fill_kind == PaperFillKind.ENTRY
+        )
+        self.report.exit_fills = sum(
+            1 for f in self.repo.list_all_fills() if f.fill_kind == PaperFillKind.EXIT
+        )
 
         positions = self.repo.list_positions(limit=10_000)
         self.report.positions_opened = len(positions)

@@ -8,17 +8,21 @@ import argparse
 import json
 import os
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services"))
 sys.path.insert(0, str(ROOT))
 
+from paper_trading.accounting_verification import verify_accounting_independent
 from paper_trading.repository import PaperTradingRepository
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from tests.paper_trading.soak.helpers import assert_soak_invariants, verify_accounting_independent
+from tests.paper_trading.soak.helpers import assert_soak_invariants
+
+INITIAL_CASH = Decimal("100000")
 
 
 def _resolve_database_url(env_name: str) -> str:
@@ -37,7 +41,7 @@ def verify(database_url: str) -> dict[str, object]:
             assert_soak_invariants(repo)
         except AssertionError as exc:
             issues.append(str(exc))
-        issues.extend(verify_accounting_independent(repo))
+        issues.extend(verify_accounting_independent(repo, initial_cash=INITIAL_CASH))
         with engine.connect() as conn:
             head = conn.execute(
                 text("SELECT version_num FROM alembic_version LIMIT 1")

@@ -72,6 +72,14 @@ def test_rejects_negative_fee_rate() -> None:
         )
 
 
+def test_rejects_close_at_next_open_policy() -> None:
+    with pytest.raises(ValueError, match="CLOSE_AT_NEXT_OPEN"):
+        PaperTradingConfig(
+            database_url="postgresql://localhost/paper",
+            kill_switch_close_policy="CLOSE_AT_NEXT_OPEN",
+        )
+
+
 def test_rejects_advisory_lock_out_of_range() -> None:
     with pytest.raises(ValueError, match="BIGINT"):
         PaperTradingConfig(
