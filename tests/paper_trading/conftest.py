@@ -89,12 +89,26 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
         connection.close()
 
 
+@pytest.fixture
+def postgres_commit_session(migrated_engine: Engine) -> Iterator[Session]:
+    """Session without outer rollback wrapper — commits visible across connections."""
+    session = Session(bind=migrated_engine, autoflush=False, expire_on_commit=False)
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
 @pytest.fixture(autouse=True)
 def _reset_inmemory_lock() -> Iterator[None]:
+    from paper_trading.app_state import reset_app_state
     from paper_trading.lock import InMemoryAdvisoryLock
 
+    reset_app_state()
     InMemoryAdvisoryLock.reset()
     yield
+    reset_app_state()
     InMemoryAdvisoryLock.reset()
 
 
