@@ -190,16 +190,30 @@ def filter_rejection_reason_codes(decision: RiskDecision) -> tuple[ReasonCode, .
     )
 
 
-def compute_stop_trigger(
+def compute_gap_stop_at_open(
+    candle: Candle,
+    *,
+    effective_stop: Decimal,
+) -> StopTriggerResult | None:
+    """Gap stop at daily open — uses open price only (no future low)."""
+    if candle.open < effective_stop:
+        return StopTriggerResult(exit_reference=candle.open, exit_reason=ExitReason.STOP_GAP)
+    return None
+
+
+def compute_intraday_stop(
     candle: Candle,
     *,
     effective_stop: Decimal,
     initial_stop: Decimal,
     trail_stop: Decimal,
 ) -> StopTriggerResult | None:
-    """Gap stop first, then intraday stop (backtester semantics)."""
-    if candle.open < effective_stop:
-        return StopTriggerResult(exit_reference=candle.open, exit_reason=ExitReason.STOP_GAP)
+    """
+    Intraday stop using the low known so far on the current bar.
+
+    For open/preview candles only the partial low is visible; closed candles
+    use the final daily low.
+    """
     if candle.low <= effective_stop:
         reason = (
             ExitReason.STOP_TRAILING
@@ -208,6 +222,25 @@ def compute_stop_trigger(
         )
         return StopTriggerResult(exit_reference=effective_stop, exit_reason=reason)
     return None
+
+
+def compute_stop_trigger(
+    candle: Candle,
+    *,
+    effective_stop: Decimal,
+    initial_stop: Decimal,
+    trail_stop: Decimal,
+) -> StopTriggerResult | None:
+    """Gap stop first, then intraday stop on a fully known daily candle."""
+    gap = compute_gap_stop_at_open(candle, effective_stop=effective_stop)
+    if gap is not None:
+        return gap
+    return compute_intraday_stop(
+        candle,
+        effective_stop=effective_stop,
+        initial_stop=initial_stop,
+        trail_stop=trail_stop,
+    )
 
 
 def compute_exit_accounting(

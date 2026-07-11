@@ -7,7 +7,12 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from backtester.paper_lifecycle import compute_exit_accounting, compute_stop_trigger
+from backtester.paper_lifecycle import (
+    compute_exit_accounting,
+    compute_gap_stop_at_open,
+    compute_intraday_stop,
+    compute_stop_trigger,
+)
 from risk_engine.models import SymbolConstraints
 from strategy_engine.models import Candle, StrategyParameters, TrailingStopState
 
@@ -166,6 +171,7 @@ class StopLifecycleService:
         daily_candles: dict[str, Candle],
         constraints_by_symbol: dict[str, SymbolConstraints],
         cycle_id: UUID | None = None,
+        at_open: bool = False,
     ) -> tuple[StopCloseResult, ...]:
         results: list[StopCloseResult] = []
         for symbol in SYMBOL_PROCESSING_ORDER:
@@ -181,6 +187,36 @@ class StopLifecycleService:
                 process_time=process_time,
                 constraints=constraints_by_symbol.get(symbol),
                 cycle_id=cycle_id,
+                at_open=at_open,
+            )
+            results.append(outcome)
+        return tuple(results)
+
+    def process_intraday_stop_triggers(
+        self,
+        *,
+        process_time: datetime,
+        preview_candles: dict[str, Candle],
+        constraints_by_symbol: dict[str, SymbolConstraints],
+        cycle_id: UUID | None = None,
+    ) -> tuple[StopCloseResult, ...]:
+        """Process intraday stop checks using partial live candle lows."""
+        results: list[StopCloseResult] = []
+        for symbol in SYMBOL_PROCESSING_ORDER:
+            position = self._repo.get_open_position_for_symbol(symbol)
+            if position is None:
+                continue
+            candle = preview_candles.get(symbol)
+            if candle is None or candle.is_closed:
+                continue
+            outcome = self._close_if_stopped(
+                position=position,
+                candle=candle,
+                process_time=process_time,
+                constraints=constraints_by_symbol.get(symbol),
+                cycle_id=cycle_id,
+                at_open=False,
+                intraday_only=True,
             )
             results.append(outcome)
         return tuple(results)
@@ -193,17 +229,32 @@ class StopLifecycleService:
         process_time: datetime,
         constraints: SymbolConstraints | None,
         cycle_id: UUID | None,
+        at_open: bool = False,
+        intraday_only: bool = False,
     ) -> StopCloseResult:
         if constraints is None:
             return StopCloseResult(position.position_id, closed=False, symbol=position.symbol)
 
         simulated = paper_position_to_simulated(position)
-        trigger = compute_stop_trigger(
-            candle,
-            effective_stop=simulated.effective_stop,
-            initial_stop=simulated.initial_stop,
-            trail_stop=simulated.trail_stop,
-        )
+        if at_open:
+            trigger = compute_gap_stop_at_open(
+                candle,
+                effective_stop=simulated.effective_stop,
+            )
+        elif intraday_only:
+            trigger = compute_intraday_stop(
+                candle,
+                effective_stop=simulated.effective_stop,
+                initial_stop=simulated.initial_stop,
+                trail_stop=simulated.trail_stop,
+            )
+        else:
+            trigger = compute_stop_trigger(
+                candle,
+                effective_stop=simulated.effective_stop,
+                initial_stop=simulated.initial_stop,
+                trail_stop=simulated.trail_stop,
+            )
         if trigger is None:
             return StopCloseResult(position.position_id, closed=False, symbol=position.symbol)
 

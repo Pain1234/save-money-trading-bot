@@ -408,7 +408,7 @@ class BacktestEngine:
                 reference_price=open_ref,
             )
 
-            self._check_stop_exit(rt, config, symbol, candle)
+            self._check_stop_exit(rt, config, symbol, candle, at_open=True)
 
     def _check_stop_exit(
         self,
@@ -416,18 +416,25 @@ class BacktestEngine:
         config: BacktestConfig,
         symbol: str,
         candle: Candle,
+        *,
+        at_open: bool = False,
     ) -> None:
         pos = rt.positions.get(symbol)
         if pos is None:
             return
 
         effective = pos.effective_stop
-        trigger = compute_stop_trigger(
-            candle,
-            effective_stop=effective,
-            initial_stop=pos.initial_stop,
-            trail_stop=pos.trail_stop,
-        )
+        if at_open:
+            from backtester.paper_lifecycle import compute_gap_stop_at_open
+
+            trigger = compute_gap_stop_at_open(candle, effective_stop=effective)
+        else:
+            trigger = compute_stop_trigger(
+                candle,
+                effective_stop=effective,
+                initial_stop=pos.initial_stop,
+                trail_stop=pos.trail_stop,
+            )
         if trigger is None:
             return
 
