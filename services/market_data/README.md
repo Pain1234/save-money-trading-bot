@@ -24,6 +24,9 @@ No wallet, orders, private APIs, or trading logic.
 | `bundle.py` | `get_strategy_bundle()` |
 | `service.py` | `MarketDataService` orchestration |
 | `live.py` | Live feed, stale detection, reconnect |
+| `runtime.py` | `HyperliquidMarketDataRuntime` orchestration |
+| `config.py` | Mainnet/testnet typed configuration |
+| `network/` | Async HTTP, WebSocket, retry, Decimal JSON |
 
 ## Data Flow
 
@@ -161,10 +164,15 @@ ruff check services/market_data tests/market_data
 2. Weekly/monthly aggregation requires **complete** periods only.
 3. No synthetic gap filling — backfill must supply real candles.
 4. In-memory repository only in V1 (no PostgreSQL yet).
-5. Hyperliquid adapter parses payloads only; no HTTP in V1.
+5. Hyperliquid public adapter: async HTTP + WebSocket (see [Hyperliquid Adapter V1](../../docs/hyperliquid-public-adapter-v1.md)).
 
-## Non-Goals (V1)
+## Hyperliquid Public Adapter
 
-Signals, indicators, risk, orders, wallet, paper/live trading, dashboard integration.
+- **HTTP:** `POST /info` for `meta` and `candleSnapshot` with pagination
+- **WebSocket:** 9 candle subscriptions (BTC/ETH/SOL × 1d/1w/1M), ping/pong, ack-gated CONNECTED
+- **Config:** `HyperliquidPublicConfig.from_env()` or `for_network(MAINNET|TESTNET)`
+- **Runtime:** `HyperliquidMarketDataRuntime.backfill_symbol()` uses shared ingest path
+- **Live smoke:** `RUN_HYPERLIQUID_LIVE_TESTS=1 pytest -m live`
+- **Limit:** ~5000 candles per snapshot; volume in base unit; no `closed` field — closure from `T`
 
 See also: [Market Data Audit V1 Report](../../docs/market-data-audit-v1.md).

@@ -1,0 +1,107 @@
+# ruff: noqa: E402
+"""Shared Hyperliquid test fixtures."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime
+
+import httpx
+from market_data.config import HyperliquidPublicConfig
+from market_data.network.http_client import HyperliquidHttpClient
+from market_data.providers.hyperliquid import coin_for_symbol, interval_for_timeframe
+
+
+def candle_dict(
+    *,
+    coin: str = "BTC",
+    interval: str = "1d",
+    t: int = 1704067200000,
+    big_t: int = 1704153599000,
+    o: str = "100",
+    h: str = "110",
+    low: str = "90",
+    c: str = "105",
+    v: str = "1000",
+    n: int = 42,
+) -> dict[str, object]:
+    return {
+        "s": coin,
+        "i": interval,
+        "t": t,
+        "T": big_t,
+        "o": o,
+        "h": h,
+        "l": low,
+        "c": c,
+        "v": v,
+        "n": n,
+    }
+
+
+def meta_response() -> dict[str, object]:
+    return {"universe": [{"name": "BTC"}, {"name": "ETH"}, {"name": "SOL"}]}
+
+
+def ws_ack(coin: str, interval: str) -> str:
+    return json.dumps(
+        {
+            "channel": "subscriptionResponse",
+            "data": {"subscription": {"type": "candle", "coin": coin, "interval": interval}},
+        }
+    )
+
+
+def ws_candle(payload: dict[str, object]) -> str:
+    return json.dumps({"channel": "candle", "data": payload})
+
+
+class MockInfoRouter:
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+        self.handlers: dict[str, object] = {}
+
+    def set_meta(self, payload: dict[str, object] | None = None) -> None:
+        self.handlers["meta"] = payload or meta_response()
+
+    def set_snapshot(self, candles: list[dict[str, object]]) -> None:
+        self.handlers["candleSnapshot"] = candles
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        self.requests.append(body)
+        req_type = body.get("type")
+        if req_type == "meta":
+            payload = self.handlers.get("meta", meta_response())
+            return httpx.Response(200, json=payload)
+        if req_type == "candleSnapshot":
+            payload = self.handlers.get("candleSnapshot", [])
+            return httpx.Response(200, json=payload)
+        return httpx.Response(400, text="unknown")
+
+
+def make_http_client(
+    router: MockInfoRouter, config: HyperliquidPublicConfig | None = None
+) -> HyperliquidHttpClient:
+    from market_data.config import HyperliquidNetwork
+
+    config = config or HyperliquidPublicConfig.for_network(HyperliquidNetwork.TESTNET)
+    transport = httpx.MockTransport(router.handle)
+    client = httpx.AsyncClient(transport=transport, base_url=config.http_base_url)
+    return HyperliquidHttpClient(config, client=client)
+
+
+def all_ack_messages(config: HyperliquidPublicConfig) -> list[str]:
+    msgs: list[str] = []
+    for sym in config.symbols:
+        for tf in config.timeframes:
+            msgs.append(ws_ack(coin_for_symbol(sym), interval_for_timeframe(tf)))
+    return msgs
+
+
+async def immediate_sleep(_: float) -> None:
+    return None
+
+
+def fixed_clock(at: datetime):
+    return lambda: at

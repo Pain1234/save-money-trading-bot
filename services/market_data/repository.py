@@ -47,6 +47,33 @@ class InMemoryCandleRepository:
         self._conflicts.append(conflict)
         return False, conflict
 
+    def upsert_live(
+        self,
+        candle: NormalizedCandle,
+        evaluation_time: datetime,
+    ) -> tuple[bool, CandleConflict | None]:
+        """Upsert with open-candle update policy for live feeds."""
+        candle = candle.model_copy(
+            update={
+                "open_time": ensure_utc(candle.open_time),
+                "close_time": ensure_utc(candle.close_time),
+            }
+        )
+        evaluation_time = ensure_utc(evaluation_time)
+        key = candle.key
+        existing = self._store.get(key)
+        if existing is None:
+            self._store[key] = candle
+            return True, None
+        if candles_equal(existing, candle):
+            return False, None
+        if not is_candle_closed(existing.close_time, evaluation_time):
+            self._store[key] = candle
+            return True, None
+        conflict = CandleConflict(key=key, existing=existing, incoming=candle)
+        self._conflicts.append(conflict)
+        return False, conflict
+
     def upsert_many(
         self,
         candles: tuple[NormalizedCandle, ...],

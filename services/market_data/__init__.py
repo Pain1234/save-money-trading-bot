@@ -1,6 +1,7 @@
 """Market Data Service V1 — read-only validated candles for Strategy Engine."""
 
 from market_data.bundle import get_strategy_bundle
+from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig
 from market_data.constants import MARKET_DATA_VERSION
 from market_data.live import LiveFeedProcessor
 from market_data.models import (
@@ -21,6 +22,7 @@ from market_data.models import (
     StrategyDataBundle,
 )
 from market_data.repository import InMemoryCandleRepository
+from market_data.runtime import HyperliquidMarketDataRuntime, HyperliquidRuntimeStatus
 from market_data.service import MarketDataService
 
 __all__ = [
@@ -42,6 +44,10 @@ __all__ = [
     "MarketTimeframe",
     "NormalizedCandle",
     "RawCandle",
+    "HyperliquidMarketDataRuntime",
+    "HyperliquidNetwork",
+    "HyperliquidPublicConfig",
+    "HyperliquidRuntimeStatus",
     "StrategyDataBundle",
     "get_strategy_bundle",
 ]
