@@ -36,6 +36,14 @@ See prior sections: domain, persistence, execution, lifecycle, stops/portfolio, 
 
 See [paper-trading-e2e-soak-v1.md](./paper-trading-e2e-soak-v1.md) for detailed results.
 
+### Production runtime (market-data event lifecycle)
+
+- `market_events.py` — detect `DAILY_OPEN_AVAILABLE`, `DAILY_LIVE_UPDATE`, `DAILY_CLOSED`
+- `scheduler_context.py` — production Evaluation/Fill/Stop contexts from market data
+- `application.py` — runner loop: poll → event bridge → scheduler → commit → readiness
+- `symbol_constraints.py` — Hyperliquid meta `szDecimals` or `PAPER_SYMBOL_CONSTRAINTS_JSON`
+- See [paper-trading-production-runtime-v1.md](./paper-trading-production-runtime-v1.md)
+
 ## PostgreSQL verification status
 
 **Live verified** on local PostgreSQL 16.14 (`localhost:5432`, database `paper_trading_test`).

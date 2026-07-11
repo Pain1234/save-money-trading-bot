@@ -20,6 +20,11 @@ Not implemented: Hyperliquid private API, wallet/signing, real exchange orders (
 | `runtime.py` | Runtime state machine, pause, kill, startup recovery |
 | `lock.py` | PostgreSQL advisory lock |
 | `recovery.py` | Consistency checks, auto-repair, startup recovery |
+| `market_events.py` | Market-data → scheduler event bridge |
+| `scheduler_context.py` | Production scheduler context from market data |
+| `symbol_constraints.py` | Hyperliquid meta / env constraints (fail-closed) |
+| `application.py` | Production runner wiring and event loop |
+| `controlled_market_data.py` | Scriptable market-data runtime for tests |
 | `db/transaction.py` | Nested transaction/savepoint helper |
 | `api.py` | FastAPI read and control endpoints |
 
@@ -148,8 +153,11 @@ python -m services.paper_trading
 ```
 
 Startup order: config validate → PostgreSQL → migration head → advisory lock → recovery →
-Hyperliquid public runtime → market-data readiness → scheduler → optional FastAPI → heartbeat →
-`READY`.
+Hyperliquid public runtime → market-data readiness → **event bridge + scheduler loop** →
+optional FastAPI → heartbeat → `READY`.
+
+See [docs/paper-trading-production-runtime-v1.md](../../docs/paper-trading-production-runtime-v1.md)
+for the market-data event contract, idempotency, look-ahead rules, and integration test.
 
 `funding_enabled` remains `False` in V1 (config rejects `True` fail-closed).
 
