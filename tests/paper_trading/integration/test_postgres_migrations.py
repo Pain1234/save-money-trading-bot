@@ -26,6 +26,7 @@ def test_migration_downgrade_to_base(alembic_config: Config, migrated_engine: En
     command.downgrade(alembic_config, "base")
     inspector = inspect(migrated_engine)
     assert "paper_wallet" not in inspector.get_table_names()
+    command.upgrade(alembic_config, "head")
 
 
 @requires_postgres

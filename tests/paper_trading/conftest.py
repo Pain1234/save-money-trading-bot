@@ -10,7 +10,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 DEFAULT_PG_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/paper_trading_test"
 
@@ -20,6 +20,8 @@ def _postgres_url() -> str:
 
 
 def postgres_available() -> bool:
+    if os.environ.get("PAPER_TRADING_DATABASE_URL") is None:
+        return False
     try:
         engine = create_engine(
             _postgres_url(),
@@ -34,9 +36,19 @@ def postgres_available() -> bool:
         return False
 
 
+_postgres_available_cache: bool | None = None
+
+
+def _is_postgres_available() -> bool:
+    global _postgres_available_cache
+    if _postgres_available_cache is None:
+        _postgres_available_cache = postgres_available()
+    return _postgres_available_cache
+
+
 requires_postgres = pytest.mark.postgres(
     pytest.mark.skipif(
-        not postgres_available(),
+        not _is_postgres_available(),
         reason="PostgreSQL not available at PAPER_TRADING_DATABASE_URL",
     )
 )
@@ -52,7 +64,6 @@ def alembic_config() -> Config:
 
 @pytest.fixture(scope="session")
 def migrated_engine(alembic_config: Config) -> Iterator[Engine]:
-    command.downgrade(alembic_config, "base")
     command.upgrade(alembic_config, "head")
     engine = create_engine(_postgres_url(), pool_pre_ping=True)
     yield engine
@@ -64,8 +75,12 @@ def migrated_engine(alembic_config: Config) -> Iterator[Engine]:
 def db_session(migrated_engine: Engine) -> Iterator[Session]:
     connection = migrated_engine.connect()
     transaction = connection.begin()
-    factory = sessionmaker(bind=connection, autoflush=False, autocommit=False)
-    session = factory()
+    session = Session(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+        autoflush=False,
+        expire_on_commit=False,
+    )
     try:
         yield session
     finally:
