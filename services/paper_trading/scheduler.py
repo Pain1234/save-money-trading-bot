@@ -53,6 +53,10 @@ class JobRunOutcome:
 JobHandler = Callable[..., Any]
 
 
+def _default_market_data_ready() -> bool:
+    return False
+
+
 class PaperTradingScheduler:
     """Idempotent scheduler with PostgreSQL advisory lock gating."""
 
@@ -67,10 +71,12 @@ class PaperTradingScheduler:
         clock: Clock | None = None,
         readiness: ReadinessService | None = None,
         runtime: RuntimeService | None = None,
+        market_data_ready: Callable[[], bool] | None = None,
     ) -> None:
         self._repo = repository
         self._config = config
         self._clock = clock or SystemClock()
+        self._market_data_ready = market_data_ready or _default_market_data_ready
         self._evaluation = evaluation_service
         self._fills = fill_service
         self._stops = stop_service
@@ -89,6 +95,14 @@ class PaperTradingScheduler:
         self._pending_evaluation: dict[str, Any] | None = None
         self._pending_fill_contexts: dict[str, FillProcessingContext] | None = None
         self._pending_stop_context: dict[str, Any] | None = None
+        self._jobs_enabled = False
+
+    @property
+    def jobs_enabled(self) -> bool:
+        return self._jobs_enabled
+
+    def set_jobs_enabled(self, enabled: bool) -> None:
+        self._jobs_enabled = enabled
 
     def register_evaluation_context(self, **kwargs: Any) -> None:
         self._pending_evaluation = kwargs
@@ -142,14 +156,6 @@ class PaperTradingScheduler:
                     cycle_id=cycle_id,
                 ),
             ]
-            if self._config.funding_enabled:
-                outcomes.append(
-                    self.run_job(
-                        SchedulerJobName.FUNDING_PROCESSING,
-                        scheduled_for=scheduled_for,
-                        cycle_id=cycle_id,
-                    )
-                )
             outcomes.append(
                 self.run_job(
                     SchedulerJobName.PORTFOLIO_SNAPSHOT,
@@ -222,6 +228,14 @@ class PaperTradingScheduler:
     ) -> JobRunOutcome:
         if scheduled_for.tzinfo is None:
             raise ValueError("scheduled_for must be timezone-aware UTC")
+        if not self._jobs_enabled and job_name != SchedulerJobName.READINESS_CHECK:
+            return JobRunOutcome(
+                job_name,
+                scheduled_for,
+                SchedulerRunStatus.SKIPPED,
+                skipped=True,
+                error="scheduler_not_ready",
+            )
 
         idem = scheduler_run_key(job_name, scheduled_for)
         existing = self._repo.get_scheduler_run(job_name, scheduled_for)
@@ -284,16 +298,20 @@ class PaperTradingScheduler:
         status: SchedulerRunStatus,
         error: str | None,
     ) -> SchedulerRun:
-        return self._repo.complete_scheduler_run(
-            job_name=job_name,
-            scheduled_for=scheduled_for,
-            status=status,
-            completed_at=self._clock.now(),
-            error=error,
-        )
+        with transaction_scope(self._repo.session):
+            return self._repo.complete_scheduler_run(
+                job_name=job_name,
+                scheduled_for=scheduled_for,
+                status=status,
+                completed_at=self._clock.now(),
+                error=error,
+            )
 
     def _job_readiness_check(self, **kwargs: Any) -> None:
-        self._readiness.evaluate(market_data_ready=True, scheduler_active=True)
+        self._readiness.evaluate(
+            market_data_ready=self._market_data_ready(),
+            scheduler_active=self._jobs_enabled,
+        )
 
     def _job_daily_signal_evaluation(
         self, *, scheduled_for: datetime, cycle_id: UUID | None
@@ -335,12 +353,12 @@ class PaperTradingScheduler:
         ctx = self._pending_stop_context or {}
         self._stops.process_stop_triggers_for_daily_candle(
             process_time=scheduled_for,
+            at_open=True,
             **ctx,
         )
 
     def _job_funding_processing(self, **kwargs: Any) -> None:
-        if not self._config.funding_enabled:
-            return
+        raise RuntimeError("funding processing is not implemented in paper trading V1")
 
     def _job_portfolio_snapshot(self, *, scheduled_for: datetime, cycle_id: UUID | None) -> None:
         from paper_trading.portfolio import PortfolioSnapshotService

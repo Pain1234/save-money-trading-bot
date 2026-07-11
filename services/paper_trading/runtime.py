@@ -86,10 +86,11 @@ class RuntimeService:
     def heartbeat(self) -> RuntimeState:
         now = self._clock.now()
         current = self.get_state()
-        return self._repo.update_runtime_state(
-            heartbeat_at=now,
-            expected_version=current.version,
-        )
+        with transaction_scope(self._repo.session):
+            return self._repo.update_runtime_state(
+                heartbeat_at=now,
+                expected_version=current.version,
+            )
 
     def set_paused(self, paused: bool) -> RuntimeState:
         current = self.get_state()
