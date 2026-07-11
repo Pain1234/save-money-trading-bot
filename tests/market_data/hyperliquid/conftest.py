@@ -4,12 +4,77 @@
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import AsyncIterator, Callable
 from datetime import datetime
 
 import httpx
-from market_data.config import HyperliquidPublicConfig
+import pytest
+from market_data.config import (
+    DEFAULT_TESTNET_HTTP,
+    DEFAULT_TESTNET_WS,
+    HyperliquidNetwork,
+    HyperliquidPublicConfig,
+)
 from market_data.network.http_client import HyperliquidHttpClient
 from market_data.providers.hyperliquid import coin_for_symbol, interval_for_timeframe
+
+LIVE_ENV_FLAG = "RUN_HYPERLIQUID_LIVE_TESTS"
+NETWORK_ENV_FLAG = "HYPERLIQUID_NETWORK"
+
+_FORBIDDEN_SECRET_ENV = (
+    "HYPERLIQUID_PRIVATE_KEY",
+    "PRIVATE_KEY",
+    "WALLET_ADDRESS",
+    "HYPERLIQUID_API_SECRET",
+)
+
+
+def require_testnet_live() -> None:
+    """Skip unless live testnet smoke tests are explicitly enabled."""
+    if os.getenv(LIVE_ENV_FLAG) != "1":
+        pytest.skip(f"{LIVE_ENV_FLAG} not enabled")
+    network = os.getenv(NETWORK_ENV_FLAG, "").strip().lower()
+    if network != "testnet":
+        pytest.skip(
+            f"{NETWORK_ENV_FLAG} must be 'testnet' for live smoke tests (got {network!r})"
+        )
+
+
+def assert_public_read_only_safety(config: HyperliquidPublicConfig) -> None:
+    """Fail closed if secrets are present or endpoints are not public testnet."""
+    for key in _FORBIDDEN_SECRET_ENV:
+        if os.getenv(key):
+            pytest.fail(f"Refusing live smoke test with secret env var: {key}")
+    assert config.network == HyperliquidNetwork.TESTNET
+    assert config.http_base_url == DEFAULT_TESTNET_HTTP
+    assert config.websocket_url == DEFAULT_TESTNET_WS
+    assert "testnet" in config.http_base_url.lower()
+    assert "/exchange" not in config.http_base_url
+
+
+@pytest.fixture
+def live_testnet_config() -> HyperliquidPublicConfig:
+    require_testnet_live()
+    config = HyperliquidPublicConfig.for_network(
+        HyperliquidNetwork.TESTNET,
+        max_http_retries=1,
+        request_timeout_seconds=10.0,
+        connect_timeout_seconds=10.0,
+    )
+    assert_public_read_only_safety(config)
+    return config
+
+
+@pytest.fixture
+async def live_http_client(
+    live_testnet_config: HyperliquidPublicConfig,
+) -> AsyncIterator[HyperliquidHttpClient]:
+    client = HyperliquidHttpClient(live_testnet_config)
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 def candle_dict(
@@ -103,5 +168,5 @@ async def immediate_sleep(_: float) -> None:
     return None
 
 
-def fixed_clock(at: datetime):
+def fixed_clock(at: datetime) -> Callable[[], datetime]:
     return lambda: at

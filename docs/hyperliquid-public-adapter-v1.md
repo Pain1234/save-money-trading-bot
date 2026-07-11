@@ -102,11 +102,27 @@ Readiness requires: meta OK, all subscriptions acked, initial backfill done, no 
 
 ## Live Smoke Tests
 
+Enabled only when **both** environment variables are set:
+
 ```bash
-RUN_HYPERLIQUID_LIVE_TESTS=1 pytest tests/market_data/hyperliquid -m live
+RUN_HYPERLIQUID_LIVE_TESTS=1
+HYPERLIQUID_NETWORK=testnet
 ```
 
-Standard pytest never uses real network.
+```bash
+python -m pytest tests/market_data/hyperliquid -m live -v -s
+```
+
+| Test | Endpoint | Checks |
+|------|----------|--------|
+| `test_live_testnet_fetches_perpetual_meta` | `POST /info` `type=meta` | Universe contains BTC/ETH/SOL |
+| `test_live_testnet_fetches_small_daily_candle_snapshot` | `POST /info` `candleSnapshot` | BTC 1d closed candles, OHLC/volume/timestamps |
+| `test_live_testnet_websocket_subscription_ack` | `wss://…/ws` subscribe BTC/1d | Single subscription ack |
+| `test_live_testnet_ping_pong` | `wss://…/ws` ping | `channel=pong` response |
+
+Guard tests (`test_live_guard_*`) run in the standard suite and verify skip behaviour without network access.
+
+Standard pytest never uses real network unless both env vars are set.
 
 ## Known Limits
 

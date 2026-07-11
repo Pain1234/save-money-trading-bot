@@ -46,12 +46,3 @@ async def test_backfill_symbol_uses_ingest_path() -> None:
     assert len(repo.get_range(MarketSymbol.BTC, MarketTimeframe.DAILY)) == 1
     assert report.status.value in {"VALID", "INCOMPLETE"}
     await runtime.aclose()
-
-
-@pytest.mark.asyncio
-@pytest.mark.live
-async def test_live_smoke_skipped_by_default() -> None:
-    import os
-
-    if os.getenv("RUN_HYPERLIQUID_LIVE_TESTS") != "1":
-        pytest.skip("RUN_HYPERLIQUID_LIVE_TESTS not enabled")
