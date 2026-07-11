@@ -1,0 +1,258 @@
+"""Production scheduler context assembly from market data."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+
+from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle, StrategyDataBundle
+from market_data.service import MarketDataService
+from risk_engine.models import RiskParameters
+from strategy_engine.constants import (
+    MIN_DAILY_CANDLES,
+    MIN_MONTHLY_CANDLES,
+    MIN_WEEKLY_CANDLES,
+)
+from strategy_engine.models import Candle, StrategyParameters
+
+from paper_trading.clock import Clock
+from paper_trading.config import PaperTradingConfig
+from paper_trading.enums import RuntimeStatus
+from paper_trading.lifecycle import (
+    FillProcessingContext,
+    build_entry_gate_context,
+)
+from paper_trading.models import PaperExecutionConfig
+from paper_trading.repository import PaperTradingRepository
+from paper_trading.stops import StopLifecycleService
+from paper_trading.symbol_constraints import SymbolConstraintsProvider
+
+
+class ProductionContextBuilder:
+    """Build scheduler job inputs from persisted market data."""
+
+    def __init__(
+        self,
+        *,
+        market_data: MarketDataService,
+        repository: PaperTradingRepository,
+        config: PaperTradingConfig,
+        constraints: SymbolConstraintsProvider,
+        clock: Clock,
+        strategy_params: StrategyParameters | None = None,
+        risk_params: RiskParameters | None = None,
+        execution_config: PaperExecutionConfig | None = None,
+        market_data_ready: bool = True,
+    ) -> None:
+        self._market_data = market_data
+        self._repo = repository
+        self._config = config
+        self._constraints = constraints
+        self._clock = clock
+        self._strategy_params = strategy_params or StrategyParameters()
+        self._risk_params = risk_params or RiskParameters(
+            risk_per_trade_pct=Decimal("0.005"),
+            max_portfolio_risk_pct=Decimal("0.02"),
+            max_leverage=config.paper_max_leverage,
+        )
+        self._execution_config = execution_config or PaperExecutionConfig.from_trading_config(
+            config
+        )
+        self._market_data_ready = market_data_ready
+
+    def _bundle(
+        self,
+        symbol: str,
+        evaluation_time: datetime,
+        *,
+        backfill: bool = False,
+    ) -> StrategyDataBundle:
+        return self._market_data.build_strategy_bundle(
+            MarketSymbol(symbol),
+            evaluation_time,
+            MIN_DAILY_CANDLES,
+            MIN_WEEKLY_CANDLES,
+            MIN_MONTHLY_CANDLES,
+            backfill=backfill,
+        )
+
+    def _runtime_gates(self) -> tuple[bool, bool, bool]:
+        runtime = self._repo.get_runtime_state()
+        if runtime is None:
+            return False, False, False
+        paused = runtime.status == RuntimeStatus.PAUSED
+        kill = runtime.kill_switch
+        entry_ready = runtime.status == RuntimeStatus.READY and not kill and not paused
+        return entry_ready, paused, kill
+
+    def build_evaluation_context(
+        self,
+        symbol: str,
+        evaluation_time: datetime,
+    ) -> dict[str, object] | None:
+        try:
+            self._constraints.require(symbol)
+        except ValueError:
+            return None
+        bundle = self._bundle(symbol, evaluation_time, backfill=False)
+        if not bundle.is_usable:
+            return None
+        entry_ready, paused, kill = self._runtime_gates()
+        entry_gates = build_entry_gate_context(
+            self._repo,
+            symbol=symbol,
+            entry_ready=entry_ready,
+            market_data_ready=self._market_data_ready,
+            runtime_paused=paused,
+            runtime_kill_switch=kill,
+        )
+        return {
+            "symbols": {
+                symbol: {
+                    "bundle": bundle,
+                    "strategy_params": self._strategy_params,
+                    "config": self._config,
+                    "entry_gates": entry_gates,
+                }
+            }
+        }
+
+    def build_stop_context_for_close(
+        self,
+        symbol: str,
+        evaluation_time: datetime,
+    ) -> dict[str, object] | None:
+        try:
+            constraints = self._constraints.require(symbol)
+        except ValueError:
+            return None
+        bundle = self._bundle(symbol, evaluation_time, backfill=False)
+        if not bundle.daily.candles:
+            return None
+        last_daily = bundle.daily.candles[-1]
+        if not last_daily.is_closed:
+            return None
+        atr_by_symbol: dict[str, Decimal] = {}
+        position = self._repo.get_open_position_for_symbol(symbol)
+        if position is not None:
+            evaluations = self._repo.list_evaluations(limit=100)
+            latest_eval = next((item for item in evaluations if item.symbol == symbol), None)
+            atr_by_symbol[symbol] = StopLifecycleService.atr_for_trailing_update(
+                position,
+                latest_eval,
+            )
+        return {
+            "daily_candles": {symbol: last_daily},
+            "evaluation_atr_by_symbol": atr_by_symbol,
+            "constraints_by_symbol": {symbol: constraints},
+            "strategy_params": self._strategy_params,
+        }
+
+    def build_open_contexts(
+        self,
+        symbol: str,
+        open_candle: NormalizedCandle,
+        evaluation_time: datetime,
+    ) -> tuple[dict[str, FillProcessingContext] | None, dict[str, object] | None]:
+        try:
+            constraints = self._constraints.require(symbol)
+        except ValueError:
+            return None, None
+
+        prior_eval_time = open_candle.open_time
+        bundle = self._bundle(symbol, prior_eval_time, backfill=False)
+        if not bundle.is_usable or not bundle.daily.candles:
+            return None, None
+
+        from strategy_engine.engine import StrategyEngine
+
+        engine = StrategyEngine()
+        strategy_eval = engine.evaluate(
+            bundle.daily,
+            bundle.weekly,
+            bundle.monthly,
+            prior_eval_time,
+            self._strategy_params,
+        )
+        atr14 = strategy_eval.atr
+        if atr14 is None or atr14 <= 0:
+            return None, None
+
+        prior_closes: dict[str, Decimal] = {}
+        repo = self._market_data.repository
+        for sym in self._config.symbols:
+            closed = repo.get_closed_before(
+                MarketSymbol(sym), MarketTimeframe.DAILY, open_candle.open_time
+            )
+            if closed:
+                prior_closes[sym] = closed[-1].close
+
+        day_candle = _open_only_strategy_candle(open_candle)
+        fill_ctx = FillProcessingContext(
+            open_ref=open_candle.open,
+            atr14=atr14,
+            candle_open_time=open_candle.open_time,
+            constraints=constraints,
+            strategy_params=self._strategy_params,
+            risk_params=self._risk_params,
+            execution_config=self._execution_config,
+            day_candles={symbol: day_candle},
+            prior_closes=prior_closes,
+            processed_intent_ids=frozenset(),
+        )
+
+        gap_candle = _gap_check_strategy_candle(open_candle)
+        stop_ctx = {
+            "daily_candles": {symbol: gap_candle},
+            "constraints_by_symbol": {symbol: constraints},
+        }
+        return {symbol: fill_ctx}, stop_ctx
+
+    def build_intraday_stop_context(
+        self,
+        symbol: str,
+        live_candle: NormalizedCandle,
+    ) -> dict[str, object] | None:
+        try:
+            constraints = self._constraints.require(symbol)
+        except ValueError:
+            return None
+        if live_candle.is_closed:
+            return None
+        preview = live_candle.to_strategy_candle()
+        return {
+            "preview_candles": {symbol: preview},
+            "constraints_by_symbol": {symbol: constraints},
+        }
+
+
+def _open_only_strategy_candle(candle: NormalizedCandle) -> Candle:
+    """Open-known candle without look-ahead from future lows."""
+    return Candle(
+        symbol=candle.symbol.value,
+        timeframe=candle.timeframe.to_strategy_timeframe(),
+        open_time=candle.open_time,
+        close_time=candle.close_time,
+        open=candle.open,
+        high=candle.open,
+        low=candle.open,
+        close=candle.open,
+        volume=candle.volume,
+        is_closed=False,
+    )
+
+
+def _gap_check_strategy_candle(candle: NormalizedCandle) -> Candle:
+    """Gap stop uses open only — no intraday low."""
+    return Candle(
+        symbol=candle.symbol.value,
+        timeframe=candle.timeframe.to_strategy_timeframe(),
+        open_time=candle.open_time,
+        close_time=candle.close_time,
+        open=candle.open,
+        high=candle.high,
+        low=candle.open,
+        close=candle.close,
+        volume=candle.volume,
+        is_closed=candle.is_closed,
+    )

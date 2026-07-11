@@ -36,6 +36,7 @@ class SchedulerJobName(StrEnum):
     NEXT_OPEN_FILL_PROCESSING = "next_open_fill_processing"
     DAILY_STOP_UPDATE = "daily_stop_update"
     STOP_TRIGGER_PROCESSING = "stop_trigger_processing"
+    INTRADAY_STOP_PROCESSING = "intraday_stop_processing"
     FUNDING_PROCESSING = "funding_processing"
     PORTFOLIO_SNAPSHOT = "portfolio_snapshot"
     RUNTIME_HEARTBEAT = "runtime_heartbeat"
@@ -88,6 +89,7 @@ class PaperTradingScheduler:
             SchedulerJobName.NEXT_OPEN_FILL_PROCESSING: self._job_next_open_fill_processing,
             SchedulerJobName.DAILY_STOP_UPDATE: self._job_daily_stop_update,
             SchedulerJobName.STOP_TRIGGER_PROCESSING: self._job_stop_trigger_processing,
+            SchedulerJobName.INTRADAY_STOP_PROCESSING: self._job_intraday_stop_processing,
             SchedulerJobName.FUNDING_PROCESSING: self._job_funding_processing,
             SchedulerJobName.PORTFOLIO_SNAPSHOT: self._job_portfolio_snapshot,
             SchedulerJobName.RUNTIME_HEARTBEAT: self._job_runtime_heartbeat,
@@ -313,17 +315,21 @@ class PaperTradingScheduler:
             scheduler_active=self._jobs_enabled,
         )
 
+    def _evaluation_time_for(self, scheduled_for: datetime) -> datetime:
+        return scheduled_for + timedelta(seconds=self._config.evaluation_delay_seconds)
+
     def _job_daily_signal_evaluation(
         self, *, scheduled_for: datetime, cycle_id: UUID | None
     ) -> None:
         ctx = self._pending_evaluation or {}
+        evaluation_time = self._evaluation_time_for(scheduled_for)
         for symbol in SYMBOL_PROCESSING_ORDER:
             symbol_ctx = ctx.get("symbols", {}).get(symbol)
             if symbol_ctx is None:
                 continue
             self._evaluation.evaluate_symbol_for_daily_close(
                 symbol=symbol,
-                evaluation_time=scheduled_for,
+                evaluation_time=evaluation_time,
                 **symbol_ctx,
             )
 
@@ -343,7 +349,7 @@ class PaperTradingScheduler:
     def _job_daily_stop_update(self, *, scheduled_for: datetime, cycle_id: UUID | None) -> None:
         ctx = self._pending_stop_context or {}
         self._stops.update_daily_trailing_stops(
-            evaluation_time=scheduled_for,
+            evaluation_time=self._evaluation_time_for(scheduled_for),
             **ctx,
         )
 
@@ -352,8 +358,20 @@ class PaperTradingScheduler:
     ) -> None:
         ctx = self._pending_stop_context or {}
         self._stops.process_stop_triggers_for_daily_candle(
-            process_time=scheduled_for,
+            process_time=self._clock.now(),
             at_open=True,
+            **ctx,
+        )
+
+    def _job_intraday_stop_processing(
+        self, *, scheduled_for: datetime, cycle_id: UUID | None
+    ) -> None:
+        ctx = self._pending_stop_context or {}
+        if not ctx.get("preview_candles"):
+            raise ValueError("missing intraday preview_candles context")
+        self._stops.process_intraday_stop_triggers(
+            process_time=self._clock.now(),
+            cycle_id=cycle_id,
             **ctx,
         )
 
@@ -364,7 +382,7 @@ class PaperTradingScheduler:
         from paper_trading.portfolio import PortfolioSnapshotService
 
         PortfolioSnapshotService(self._repo).capture_snapshot(
-            evaluation_time=scheduled_for,
+            evaluation_time=self._evaluation_time_for(scheduled_for),
             event="scheduled_snapshot",
             cycle_id=cycle_id,
         )

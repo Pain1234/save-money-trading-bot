@@ -19,15 +19,23 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from paper_trading.app_state import configure_app_state
 from paper_trading.clock import Clock, SystemClock
+from paper_trading.controlled_market_data import ControlledMarketDataRuntime
 from paper_trading.db.session import create_db_engine, create_session_factory
 from paper_trading.enums import RuntimeStatus
 from paper_trading.lock import PostgresAdvisoryLock
+from paper_trading.market_events import MarketEventBridge
 from paper_trading.orchestrator import PaperTradingOrchestrator
 from paper_trading.readiness import ReadinessService
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.runtime import RuntimeService
 from paper_trading.scheduler import PaperTradingScheduler, SchedulerJobName
+from paper_trading.scheduler_context import ProductionContextBuilder
 from paper_trading.service_config import PaperServiceConfig
+from paper_trading.symbol_constraints import (
+    HyperliquidSymbolConstraintsProvider,
+    SymbolConstraintsProvider,
+    load_constraints_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +46,8 @@ class MarketDataRuntime(Protocol):
     async def aclose(self) -> None: ...
 
     def status(self, evaluation_time: datetime) -> Any: ...
+
+    async def process_live(self, evaluation_time: datetime) -> int: ...
 
 
 @dataclass
@@ -53,6 +63,9 @@ class FakeMarketDataRuntime:
     async def aclose(self) -> None:
         self._closed = True
         self._ready = False
+
+    async def process_live(self, evaluation_time: datetime) -> int:
+        return 0
 
     def status(self, evaluation_time: datetime) -> Any:
         from market_data.config import HyperliquidNetwork
@@ -81,7 +94,9 @@ class PaperTradingApplication:
     config: PaperServiceConfig
     clock: Clock = field(default_factory=SystemClock)
     market_data_runtime: MarketDataRuntime | None = None
+    constraints_provider: SymbolConstraintsProvider | None = None
     alembic_config: Config | None = None
+    event_poll_interval_seconds: float = 1.0
 
     _engine: Engine | None = field(default=None, init=False)
     _session_factory: sessionmaker[Session] | None = field(default=None, init=False)
@@ -92,9 +107,14 @@ class PaperTradingApplication:
     _scheduler: PaperTradingScheduler | None = field(default=None, init=False)
     _runtime: RuntimeService | None = field(default=None, init=False)
     _md_runtime: MarketDataRuntime | None = field(default=None, init=False)
+    _market_data_service: MarketDataService | None = field(default=None, init=False)
+    _candle_repository: InMemoryCandleRepository | None = field(default=None, init=False)
+    _event_bridge: MarketEventBridge | None = field(default=None, init=False)
+    _constraints: SymbolConstraintsProvider | None = field(default=None, init=False)
     _tasks: list[asyncio.Task[Any]] = field(default_factory=list, init=False)
     _shutdown_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _started: bool = field(default=False, init=False)
+    _last_loop_error: str | None = field(default=None, init=False)
 
     @property
     def repository(self) -> PaperTradingRepository:
@@ -110,6 +130,24 @@ class PaperTradingApplication:
     def advisory_lock(self) -> PostgresAdvisoryLock:
         assert self._advisory_lock is not None
         return self._advisory_lock
+
+    @property
+    def market_data_service(self) -> MarketDataService | None:
+        return self._market_data_service
+
+    @property
+    def candle_repository(self) -> InMemoryCandleRepository | None:
+        return self._candle_repository
+
+    @property
+    def event_bridge(self) -> MarketEventBridge | None:
+        return self._event_bridge
+
+    @property
+    def controlled_market_data(self) -> ControlledMarketDataRuntime | None:
+        if isinstance(self._md_runtime, ControlledMarketDataRuntime):
+            return self._md_runtime
+        return None
 
     def market_data_ready(self) -> bool:
         if self._md_runtime is None:
@@ -144,12 +182,16 @@ class PaperTradingApplication:
         if recovery.final_status == RuntimeStatus.FAILED:
             raise RuntimeError(f"recovery failed: {recovery.issues}")
 
+        self._constraints = self.constraints_provider or load_constraints_provider(self.config)
         self._md_runtime = self._build_market_data_runtime()
         await self._md_runtime.start(self.clock.now())
+        self._bootstrap_constraints_from_runtime()
 
-        deadline = self.clock.now().timestamp() + self.config.market_data_startup_timeout_seconds
+        max_attempts = int(self.config.market_data_startup_timeout_seconds / 0.25) + 1
+        attempts = 0
         while not self.market_data_ready():
-            if self.clock.now().timestamp() > deadline:
+            attempts += 1
+            if attempts > max_attempts:
                 raise TimeoutError("market data runtime did not become ready")
             await asyncio.sleep(0.25)
             await self._poll_market_data()
@@ -158,6 +200,27 @@ class PaperTradingApplication:
         self._scheduler = self._orchestrator.scheduler
         self._scheduler._market_data_ready = self.market_data_ready  # noqa: SLF001
         self._scheduler.set_jobs_enabled(True)
+
+        if self._candle_repository is not None and self._market_data_service is not None:
+            assert self._constraints is not None
+            context_builder = ProductionContextBuilder(
+                market_data=self._market_data_service,
+                repository=self._repo,
+                config=self.config,
+                constraints=self._constraints,
+                clock=self.clock,
+                market_data_ready=self.market_data_ready(),
+            )
+            self._event_bridge = MarketEventBridge(
+                repository=self._repo,
+                candle_repository=self._candle_repository,
+                scheduler=self._scheduler,
+                context_builder=context_builder,
+                config=self.config,
+                clock=self.clock,
+                advisory_lock=self._advisory_lock,
+                market_data_ready=self.market_data_ready,
+            )
 
         configure_app_state(
             market_data_ready=self.market_data_ready,
@@ -171,28 +234,7 @@ class PaperTradingApplication:
         self._tasks.append(asyncio.create_task(self._heartbeat_loop(), name="paper-heartbeat"))
         self._tasks.append(asyncio.create_task(self._scheduler_loop(), name="paper-scheduler"))
 
-        readiness = ReadinessService(
-            self._repo,
-            self.config,
-            clock=self.clock,
-            db_engine=self._engine,
-            alembic_config=self._alembic_config(),
-        )
-        snapshot = readiness.evaluate(
-            market_data_ready=self.market_data_ready(),
-            advisory_lock=self._advisory_lock,
-            scheduler_active=True,
-        )
-        state = self._runtime.get_state()
-        if snapshot.runtime_readiness:
-            if state.status != RuntimeStatus.READY:
-                self._runtime.transition(RuntimeStatus.READY, last_error="")
-        elif state.status == RuntimeStatus.READY:
-            self._runtime.transition(
-                RuntimeStatus.DEGRADED,
-                last_error=",".join(snapshot.reasons) or "not_ready",
-            )
-
+        self._update_runtime_readiness()
         self._runtime.heartbeat()
         self._started = True
         logger.info("paper_trading_application_started")
@@ -209,7 +251,11 @@ class PaperTradingApplication:
         for task in self._tasks:
             task.cancel()
         if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+            results = await asyncio.gather(*self._tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+                    logger.exception("task_shutdown_error", exc_info=result)
+
         self._tasks.clear()
 
         if self._md_runtime is not None:
@@ -234,10 +280,36 @@ class PaperTradingApplication:
 
     def _build_market_data_runtime(self) -> MarketDataRuntime:
         if self.market_data_runtime is not None:
+            if isinstance(self.market_data_runtime, ControlledMarketDataRuntime):
+                self._market_data_service = self.market_data_runtime.service
+                self._candle_repository = self.market_data_runtime.repository
+            elif isinstance(self.market_data_runtime, HyperliquidMarketDataRuntime):
+                self._market_data_service = self.market_data_runtime._service  # noqa: SLF001
+                self._candle_repository = self.market_data_runtime.repository
             return self.market_data_runtime
         repo = InMemoryCandleRepository()
         service = MarketDataService(repo)
+        self._market_data_service = service
+        self._candle_repository = repo
         return HyperliquidMarketDataRuntime(service, self.config.hyperliquid_public_config())
+
+    def _bootstrap_constraints_from_runtime(self) -> None:
+        if self._constraints is not None:
+            return
+        if isinstance(self._md_runtime, HyperliquidMarketDataRuntime):
+            sz = self._md_runtime._meta_cache.get_sz_decimals()  # noqa: SLF001
+            if sz:
+                self._constraints = HyperliquidSymbolConstraintsProvider(sz)
+                missing = [s for s in self.config.symbols if self._constraints.get(s) is None]
+                if missing:
+                    raise RuntimeError(
+                        f"missing SymbolConstraints from Hyperliquid meta: {missing}"
+                    )
+                return
+        raise RuntimeError(
+            "SymbolConstraints unavailable: set PAPER_SYMBOL_CONSTRAINTS_JSON "
+            "or use Hyperliquid meta"
+        )
 
     def _alembic_config(self) -> Config:
         if self.alembic_config is not None:
@@ -267,8 +339,36 @@ class PaperTradingApplication:
             raise RuntimeError(f"migration not at head: current={current} head={head}")
 
     async def _poll_market_data(self) -> None:
-        if isinstance(self._md_runtime, HyperliquidMarketDataRuntime):
-            await self._md_runtime.process_live(self.clock.now())
+        if self._md_runtime is None:
+            return
+        await self._md_runtime.process_live(self.clock.now())
+
+    def _update_runtime_readiness(self) -> None:
+        assert self._runtime is not None
+        assert self._repo is not None
+        readiness = ReadinessService(
+            self._repo,
+            self.config,
+            clock=self.clock,
+            db_engine=self._engine,
+            alembic_config=self._alembic_config(),
+        )
+        bridge_overflow = self._event_bridge is not None and self._event_bridge.queue_overflow
+        snapshot = readiness.evaluate(
+            market_data_ready=self.market_data_ready() and not bridge_overflow,
+            advisory_lock=self._advisory_lock,
+            scheduler_active=self._scheduler is not None and self._scheduler.jobs_enabled,
+        )
+        state = self._runtime.get_state()
+        if snapshot.runtime_readiness and state.status in {
+            RuntimeStatus.RECOVERING,
+            RuntimeStatus.DEGRADED,
+            RuntimeStatus.STARTING,
+        }:
+            self._runtime.transition(RuntimeStatus.READY, last_error="")
+        elif not snapshot.runtime_readiness and state.status == RuntimeStatus.READY:
+            reason = ",".join(snapshot.reasons) or self._last_loop_error or "not_ready"
+            self._runtime.transition(RuntimeStatus.DEGRADED, last_error=reason)
 
     async def _heartbeat_loop(self) -> None:
         assert self._scheduler is not None
@@ -291,10 +391,26 @@ class PaperTradingApplication:
         while not self._shutdown_event.is_set():
             try:
                 await self._poll_market_data()
-                await asyncio.sleep(1)
+                evaluation_time = self.clock.now()
+
+                if (
+                    self._event_bridge is not None
+                    and self._advisory_lock is not None
+                    and self._repo is not None
+                ):
+                    if self._advisory_lock.held and self.market_data_ready():
+                        outcomes = self._event_bridge.process_after_poll(evaluation_time)
+                        for outcome in outcomes:
+                            if outcome.status.name == "FAILED":
+                                self._last_loop_error = outcome.error
+                        self._repo.session.commit()
+
+                self._update_runtime_readiness()
+                await asyncio.sleep(self.event_poll_interval_seconds)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
+                self._last_loop_error = str(exc)
                 logger.exception("scheduler_loop_error")
                 await asyncio.sleep(1)
 

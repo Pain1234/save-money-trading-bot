@@ -177,6 +177,10 @@ class RecoveryService:
         RecoveryService._recovery_active = True
         repairs: list[str] = []
         try:
+            with transaction_scope(self._repo.session):
+                self._repo.session.execute(text("SET lock_timeout = '5s'"))
+                self._repo.session.execute(text("SET statement_timeout = '30s'"))
+
             runtime = self._runtime.get_state()
             if runtime.status == RuntimeStatus.READY:
                 issues = self.run_consistency_checks()

@@ -35,3 +35,8 @@ class FixedClock:
         from datetime import timedelta
 
         self._fixed_time = self._fixed_time + timedelta(seconds=seconds)
+
+    def advance_to(self, target: datetime) -> None:
+        if target.tzinfo is None:
+            raise ValueError("target must be timezone-aware UTC")
+        self._fixed_time = target.astimezone(UTC)
