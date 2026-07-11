@@ -27,7 +27,12 @@ from paper_trading.db.orm import (
     StrategyEvaluationRow,
     TradeIntentRow,
 )
-from paper_trading.enums import PaperPositionStatus, RuntimeStatus
+from paper_trading.enums import (
+    PaperPositionStatus,
+    RuntimeStatus,
+    SchedulerRunStatus,
+    TradeIntentStatus,
+)
 from paper_trading.mappers import (
     audit_row_to_domain,
     evaluation_row_to_domain,
@@ -55,6 +60,11 @@ from paper_trading.models import (
     SchedulerRun,
     StrategyEvaluationRecord,
     TradeIntent,
+)
+from paper_trading.transitions import TERMINAL_INTENT_STATUSES
+
+NONTERMINAL_INTENT_STATUS_VALUES: tuple[str, ...] = tuple(
+    s.value for s in TradeIntentStatus if s not in TERMINAL_INTENT_STATUSES
 )
 
 
@@ -409,6 +419,36 @@ class PaperTradingRepository:
         ).scalars()
         return tuple(position_row_to_domain(r) for r in rows)
 
+    def get_nonterminal_intent_for_symbol(self, symbol: str) -> TradeIntent | None:
+        row = self._session.execute(
+            select(TradeIntentRow).where(
+                TradeIntentRow.symbol == symbol,
+                TradeIntentRow.status.in_(NONTERMINAL_INTENT_STATUS_VALUES),
+            )
+        ).scalar_one_or_none()
+        return intent_row_to_domain(row) if row else None
+
+    def get_scheduled_intents_for_symbol(
+        self,
+        symbol: str,
+        scheduled_fill_time: datetime,
+    ) -> tuple[TradeIntent, ...]:
+        rows = self._session.execute(
+            select(TradeIntentRow)
+            .where(
+                TradeIntentRow.symbol == symbol,
+                TradeIntentRow.scheduled_fill_time == scheduled_fill_time,
+                TradeIntentRow.status.in_(
+                    [
+                        TradeIntentStatus.SCHEDULED.value,
+                        TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE.value,
+                    ]
+                ),
+            )
+            .order_by(TradeIntentRow.created_at)
+        ).scalars()
+        return tuple(intent_row_to_domain(r) for r in rows)
+
     def get_open_position_for_symbol(self, symbol: str) -> PaperPosition | None:
         row = self._session.execute(
             select(PaperPositionRow).where(
@@ -419,6 +459,83 @@ class PaperTradingRepository:
             )
         ).scalar_one_or_none()
         return position_row_to_domain(row) if row else None
+
+    def insert_or_get_portfolio_snapshot(
+        self, row: PortfolioSnapshotRow
+    ) -> tuple[PortfolioSnapshot, bool]:
+        stmt = (
+            pg_insert(PortfolioSnapshotRow)
+            .values(
+                snapshot_id=row.snapshot_id,
+                evaluation_time=row.evaluation_time,
+                cash=row.cash,
+                margin_used=row.margin_used,
+                equity=row.equity,
+                unrealized_pnl=row.unrealized_pnl,
+                realized_pnl=row.realized_pnl,
+                total_open_risk=row.total_open_risk,
+                open_position_count=row.open_position_count,
+                idempotency_key=row.idempotency_key,
+            )
+            .on_conflict_do_nothing(index_elements=[PortfolioSnapshotRow.idempotency_key])
+            .returning(PortfolioSnapshotRow)
+        )
+        inserted = self._session.execute(stmt).scalar_one_or_none()
+        if inserted is not None:
+            return snapshot_row_to_domain(inserted), True
+        existing = self._session.execute(
+            select(PortfolioSnapshotRow).where(
+                PortfolioSnapshotRow.idempotency_key == row.idempotency_key
+            )
+        ).scalar_one()
+        return snapshot_row_to_domain(existing), False
+
+    def get_scheduler_run(self, job_name: str, scheduled_for: datetime) -> SchedulerRun | None:
+        row = self._session.execute(
+            select(SchedulerRunRow).where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+            )
+        ).scalar_one_or_none()
+        return scheduler_row_to_domain(row) if row else None
+
+    def complete_scheduler_run(
+        self,
+        *,
+        job_name: str,
+        scheduled_for: datetime,
+        status: SchedulerRunStatus,
+        completed_at: datetime,
+        error: str | None = None,
+    ) -> SchedulerRun:
+        self._session.execute(
+            update(SchedulerRunRow)
+            .where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+            )
+            .values(
+                status=status.value,
+                completed_at=completed_at,
+                error=error,
+            )
+        )
+        row = self._session.execute(
+            select(SchedulerRunRow).where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+            )
+        ).scalar_one()
+        self._session.flush()
+        return scheduler_row_to_domain(row)
+
+    def get_running_scheduler_runs(self) -> tuple[SchedulerRun, ...]:
+        rows = self._session.execute(
+            select(SchedulerRunRow).where(
+                SchedulerRunRow.status == SchedulerRunStatus.RUNNING.value
+            )
+        ).scalars()
+        return tuple(scheduler_row_to_domain(r) for r in rows)
 
     def create_portfolio_snapshot(self, row: PortfolioSnapshotRow) -> PortfolioSnapshot:
         self._session.add(row)
