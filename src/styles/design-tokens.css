@@ -1,0 +1,96 @@
+/* ── SAVE-MONEY BOT — Design Tokens (Design-Freeze) ───────────────────────
+   Single source of truth for visual values.
+   Do not change without explicit design approval.
+   CSS viewport px — not physical monitor px.
+────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Colors — surfaces */
+  --ds-color-bg-base: #060e14;
+  --ds-color-bg-elevated: #0a151d;
+  --ds-color-bg-card: #0a151d;
+  --ds-color-bg-card-alt: #0e1a24;
+  --ds-color-bg-card-hover: #101e28;
+  --ds-color-bg-panel: #0a151d;
+
+  /* Colors — borders */
+  --ds-color-border: rgb(36 52 64 / 0.82);
+  --ds-color-border-subtle: rgb(28 40 50 / 0.62);
+  --ds-color-border-faint: rgb(36 52 64 / 0.35);
+
+  /* Colors — brand & status */
+  --ds-color-mint: #42d98b;
+  --ds-color-mint-dim: #2a9d68;
+  --ds-color-mint-muted: #1a4d32;
+  --ds-color-mint-glow: rgba(66, 217, 139, 0.08);
+  --ds-color-mint-glow-strong: rgba(66, 217, 139, 0.12);
+  --ds-color-positive: #42d98b;
+  --ds-color-negative: #f05252;
+  --ds-color-warning: #d9a72e;
+
+  /* Colors — text */
+  --ds-color-text-primary: #edf4f1;
+  --ds-color-text-secondary: #839099;
+  --ds-color-text-muted: #6d7a84;
+
+  /* Colors — effects */
+  --ds-color-selection-bg: rgba(66, 217, 139, 0.2);
+  --ds-color-card-inset: rgb(255 255 255 / 0.035);
+  --ds-color-card-shadow: rgb(0 0 0 / 0.18);
+
+  /* Typography — font families */
+  --ds-font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --ds-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Typography — scale */
+  --ds-text-hero: 26px;
+  --ds-text-kpi: 24px;
+  --ds-text-body: 13px;
+  --ds-text-nav: 13px;
+  --ds-text-panel-title: 13px;
+  --ds-text-label: 11px;
+  --ds-text-table: 12px;
+  --ds-text-table-header: 11px;
+  --ds-text-badge: 10px;
+  --ds-text-caption: 11px;
+  --ds-text-micro: 9px;
+
+  /* Typography — tracking */
+  --ds-tracking-label: 0.05em;
+  --ds-tracking-badge: 0.04em;
+  --ds-tracking-sidebar: 0.05em;
+
+  /* Spacing — shell & layout */
+  --ds-space-shell-top: 14px;
+  --ds-space-shell-x: 18px;
+  --ds-space-shell-bottom: 18px;
+  --ds-space-main-gap: 16px;
+  --ds-space-header-gap: 14px;
+  --ds-space-footer-gap: 14px;
+  --ds-space-block-gap: 14px;
+  --ds-space-grid-gap: 12px;
+  --ds-space-market-stack: 8px;
+  --ds-space-footer-padding-top: 12px;
+
+  /* Spacing — component heights (responsive overrides in globals.css) */
+  --ds-height-navbar: 48px;
+  --ds-height-kpi: 100px;
+  --ds-height-chart: 380px;
+  --ds-height-control-panel: 220px;
+
+  /* Border radii */
+  --ds-radius-card: 10px;
+  --ds-radius-panel: 8px;
+  --ds-radius-button: 6px;
+  --ds-radius-input: 6px;
+  --ds-radius-badge: 4px;
+  --ds-radius-icon: 6px;
+
+  /* Layout — grid columns (frozen) */
+  --ds-sidebar-min: 340px;
+  --ds-sidebar-preferred: 19vw;
+  --ds-sidebar-max: 420px;
+  --ds-chart-market-min: 230px;
+  --ds-chart-market-preferred: 18vw;
+  --ds-chart-market-max: 310px;
+}

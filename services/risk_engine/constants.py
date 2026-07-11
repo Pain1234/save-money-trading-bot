@@ -1,0 +1,12 @@
+"""Specification Freeze 1.0 risk defaults."""
+
+from decimal import Decimal
+
+RISK_SPECIFICATION_VERSION = "1.0.0"
+STRATEGY_VERSION = "1.0.0"
+
+DEFAULT_RISK_PER_TRADE_PCT = Decimal("0.005")
+DEFAULT_MAX_PORTFOLIO_RISK_PCT = Decimal("0.02")
+DEFAULT_MAX_OPEN_POSITIONS = 3
+DEFAULT_MAX_LEVERAGE = Decimal("2.0")
+DEFAULT_RISK_ROUNDING_TOLERANCE = Decimal("0.001")

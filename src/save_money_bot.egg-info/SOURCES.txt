@@ -1,0 +1,7 @@
+README.md
+pyproject.toml
+src/save_money_bot.egg-info/PKG-INFO
+src/save_money_bot.egg-info/SOURCES.txt
+src/save_money_bot.egg-info/dependency_links.txt
+src/save_money_bot.egg-info/requires.txt
+src/save_money_bot.egg-info/top_level.txt
