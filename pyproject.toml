@@ -43,6 +43,7 @@ asyncio_mode = "auto"
 markers = [
     "live: optional live Hyperliquid network smoke tests",
     "postgres: requires PostgreSQL integration database",
+    "soak: long-running deterministic soak tests",
 ]
 
 [tool.mypy]
