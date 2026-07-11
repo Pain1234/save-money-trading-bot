@@ -154,6 +154,7 @@ def position_row_to_domain(row: PaperPositionRow) -> PaperPosition:
         initial_stop=row.initial_stop,
         current_stop=row.current_stop,
         highest_close_since_entry=row.highest_close_since_entry,
+        entry_atr14=row.entry_atr14,
         realized_pnl=row.realized_pnl,
         unrealized_pnl=row.unrealized_pnl,
         margin_reserved=row.margin_reserved,
@@ -188,6 +189,7 @@ def snapshot_row_to_domain(row: PortfolioSnapshotRow) -> PortfolioSnapshot:
         realized_pnl=row.realized_pnl,
         total_open_risk=row.total_open_risk,
         open_position_count=row.open_position_count,
+        idempotency_key=row.idempotency_key,
     )
 
 

@@ -181,6 +181,7 @@ class PaperPosition(BaseModel):
     initial_stop: Decimal
     current_stop: Decimal
     highest_close_since_entry: Decimal
+    entry_atr14: Decimal
     realized_pnl: Decimal = Decimal("0")
     unrealized_pnl: Decimal = Decimal("0")
     margin_reserved: Decimal
@@ -196,11 +197,11 @@ class PaperPosition(BaseModel):
             return None
         return _validate_utc(value)
 
-    @field_validator("quantity", "average_entry_price")
+    @field_validator("quantity", "average_entry_price", "entry_atr14")
     @classmethod
     def validate_positive(cls, value: Decimal) -> Decimal:
         if value <= 0:
-            raise ValueError("quantity and average_entry_price must be > 0")
+            raise ValueError("quantity, average_entry_price and entry_atr14 must be > 0")
         return value
 
     @model_validator(mode="after")
@@ -258,6 +259,7 @@ class PortfolioSnapshot(BaseModel):
     realized_pnl: Decimal
     total_open_risk: Decimal
     open_position_count: int = Field(ge=0)
+    idempotency_key: str
 
     @field_validator("evaluation_time", mode="before")
     @classmethod

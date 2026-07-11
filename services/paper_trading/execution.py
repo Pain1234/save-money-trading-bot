@@ -405,6 +405,7 @@ class PaperFillService:
                 initial_stop=trail.stop_initial,
                 current_stop=trail.effective_stop,
                 highest_close_since_entry=trail.highest_close,
+                entry_atr14=atr14,
                 margin_reserved=calc.accounting.margin_reserved,
                 entry_intent_id=intent.intent_id,
                 opened_at=candle_open_time,

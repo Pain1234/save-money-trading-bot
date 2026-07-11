@@ -196,6 +196,7 @@ class PaperPositionRow(Base):
     initial_stop: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)
     current_stop: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)
     highest_close_since_entry: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)
+    entry_atr14: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)
     realized_pnl: Mapped[Decimal] = mapped_column(
         NUMERIC_MONEY, nullable=False, server_default=text("0")
     )
@@ -215,6 +216,7 @@ class PaperPositionRow(Base):
     __table_args__ = (
         CheckConstraint("quantity > 0", name="ck_paper_positions_quantity_positive"),
         CheckConstraint("average_entry_price > 0", name="ck_paper_positions_entry_positive"),
+        CheckConstraint("entry_atr14 > 0", name="ck_paper_positions_entry_atr_positive"),
         CheckConstraint("current_stop >= initial_stop", name="ck_paper_positions_stop_monotonic"),
         CheckConstraint("version >= 1", name="ck_paper_positions_version"),
         Index(
@@ -261,10 +263,12 @@ class PortfolioSnapshotRow(Base):
     realized_pnl: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)
     total_open_risk: Mapped[Decimal] = mapped_column(NUMERIC_MONEY, nullable=False)
     open_position_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
 
     __table_args__ = (
         CheckConstraint("open_position_count >= 0", name="ck_portfolio_snapshots_open_count"),
         Index("ix_portfolio_snapshots_eval_time", "evaluation_time"),
+        UniqueConstraint("idempotency_key", name="uq_portfolio_snapshots_idempotency"),
     )
 
 

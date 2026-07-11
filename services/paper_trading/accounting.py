@@ -32,7 +32,7 @@ def paper_position_to_simulated(position: PaperPosition) -> SimulatedPosition:
         trail_stop=position.current_stop,
         effective_stop=position.current_stop,
         highest_close=position.highest_close_since_entry,
-        entry_atr14=position.average_entry_price,
+        entry_atr14=position.entry_atr14,
         client_intent_id=str(position.entry_intent_id),
         margin_reserved=position.margin_reserved,
     )

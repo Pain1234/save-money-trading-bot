@@ -27,6 +27,7 @@ def test_paper_equity_matches_backtester_semantics() -> None:
         initial_stop=Decimal("48000"),
         current_stop=Decimal("48000"),
         highest_close_since_entry=Decimal("50000"),
+        entry_atr14=Decimal("1000"),
         margin_reserved=Decimal("2500"),
         entry_intent_id=uuid4(),
         opened_at=utc_dt(2024, 1, 16),
