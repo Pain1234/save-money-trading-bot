@@ -189,7 +189,7 @@ async def test_atomic_open_snapshot_failure_rolls_back_economic_effects(
         gap_run = fresh_repo.get_scheduler_run(gap_job, fill_candle.open_time)
         fill_run = fresh_repo.get_scheduler_run(fill_job, fill_candle.open_time)
         snap_run = fresh_repo.get_scheduler_run(snap_job, fill_candle.open_time)
-        assert gap_run is None or gap_run.status != SchedulerRunStatus.COMPLETED
+        assert gap_run is not None and gap_run.status == SchedulerRunStatus.COMPLETED
         assert fill_run is None or fill_run.status != SchedulerRunStatus.COMPLETED
         assert snap_run is not None and snap_run.status == SchedulerRunStatus.FAILED
         assert not fresh_repo.get_running_scheduler_runs()
@@ -231,6 +231,11 @@ async def test_atomic_open_fill_failure_rolls_back_after_successful_gap(
         ]
         fill_job = daily_open_fill_job_name(symbol, fill_candle.open_time)
         fill_run = fresh_repo.get_scheduler_run(fill_job, fill_candle.open_time)
+        gap_run = fresh_repo.get_scheduler_run(
+            daily_open_gap_job_name(symbol, fill_candle.open_time),
+            fill_candle.open_time,
+        )
+        assert gap_run is not None and gap_run.status == SchedulerRunStatus.COMPLETED
         assert fill_run is not None and fill_run.status == SchedulerRunStatus.FAILED
     finally:
         fresh_session.close()

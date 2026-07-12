@@ -398,11 +398,11 @@ async def test_daily_open_subjob_failure_marks_parent_failed_and_rolls_back_on_c
         assert fill_run is None
         assert snap_run is None
     elif failing_stage == "fill":
-        assert gap_run is None or gap_run.status != SchedulerRunStatus.COMPLETED
+        assert gap_run is not None and gap_run.status == SchedulerRunStatus.COMPLETED
         assert fill_run is not None and fill_run.status == SchedulerRunStatus.FAILED
         assert snap_run is None
     else:
-        assert gap_run is None or gap_run.status != SchedulerRunStatus.COMPLETED
+        assert gap_run is not None and gap_run.status == SchedulerRunStatus.COMPLETED
         assert fill_run is None or fill_run.status != SchedulerRunStatus.COMPLETED
         assert snap_run is not None and snap_run.status == SchedulerRunStatus.FAILED
 

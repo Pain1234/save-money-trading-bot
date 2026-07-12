@@ -794,13 +794,23 @@ class MarketEventBridge:
                 failure.message,
             )
 
+    def _execute_phased_daily_open(
+        self,
+        event: MarketEvent,
+        evaluation_time: datetime,
+    ) -> None:
+        self._handle_daily_open(event, evaluation_time)
+
     def _execute_atomic_daily_open(
         self,
         event: MarketEvent,
         evaluation_time: datetime,
     ) -> None:
-        with transaction_scope(self.repository.session):
-            self._handle_daily_open(event, evaluation_time)
+        self._execute_phased_daily_open(event, evaluation_time)
+
+    def _fill_phase_due(self, scheduled_for: datetime) -> bool:
+        due = scheduled_for + timedelta(seconds=self.config.fill_delay_seconds)
+        return self.clock.now() >= due
 
     def _reactivate_recovery_attempt(
         self,
@@ -1276,37 +1286,36 @@ class MarketEventBridge:
         fill_job = daily_open_fill_job_name(event.symbol, scheduled_for)
         snap_job = daily_open_snapshot_job_name(event.symbol, scheduled_for)
 
-        self._run_open_subjob(
-            gap_job,
-            scheduled_for,
-            lambda: self.scheduler.run_daily_open_gap_stop(
-                scheduled_for=scheduled_for,
-                advisory_lock=self.advisory_lock,
-            ),
-        )
+        with transaction_scope(self.repository.session):
+            self._run_open_subjob(
+                gap_job,
+                scheduled_for,
+                lambda: self.scheduler.run_daily_open_gap_stop(
+                    scheduled_for=scheduled_for,
+                    advisory_lock=self.advisory_lock,
+                ),
+            )
 
-        fill_due = self.clock.now() >= scheduled_for + timedelta(
-            seconds=self.config.fill_delay_seconds
-        )
-        if not fill_due:
+        if not self._fill_phase_due(scheduled_for):
             raise FillNotDue()
 
-        self._run_open_subjob(
-            fill_job,
-            scheduled_for,
-            lambda: self.scheduler.run_daily_open_fill(
-                scheduled_for=scheduled_for,
-                advisory_lock=self.advisory_lock,
-            ),
-        )
-        self._run_open_subjob(
-            snap_job,
-            scheduled_for,
-            lambda: self.scheduler.run_daily_open_snapshot(
-                scheduled_for=scheduled_for,
-                advisory_lock=self.advisory_lock,
-            ),
-        )
+        with transaction_scope(self.repository.session):
+            self._run_open_subjob(
+                fill_job,
+                scheduled_for,
+                lambda: self.scheduler.run_daily_open_fill(
+                    scheduled_for=scheduled_for,
+                    advisory_lock=self.advisory_lock,
+                ),
+            )
+            self._run_open_subjob(
+                snap_job,
+                scheduled_for,
+                lambda: self.scheduler.run_daily_open_snapshot(
+                    scheduled_for=scheduled_for,
+                    advisory_lock=self.advisory_lock,
+                ),
+            )
 
     def _handle_daily_live(self, event: MarketEvent, evaluation_time: datetime) -> None:
         candle = self._latest_daily(event.symbol)
