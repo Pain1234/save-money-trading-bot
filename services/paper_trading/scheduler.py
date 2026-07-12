@@ -115,6 +115,78 @@ class PaperTradingScheduler:
     def register_stop_context(self, **kwargs: Any) -> None:
         self._pending_stop_context = kwargs
 
+    def run_daily_open_gap_stop(
+        self,
+        *,
+        scheduled_for: datetime,
+        advisory_lock: AdvisoryLock,
+        cycle_id: UUID | None = None,
+    ) -> tuple[JobRunOutcome, ...]:
+        return self._run_open_subsequence(
+            scheduled_for=scheduled_for,
+            advisory_lock=advisory_lock,
+            cycle_id=cycle_id,
+            jobs=(SchedulerJobName.STOP_TRIGGER_PROCESSING,),
+        )
+
+    def run_daily_open_fill(
+        self,
+        *,
+        scheduled_for: datetime,
+        advisory_lock: AdvisoryLock,
+        cycle_id: UUID | None = None,
+    ) -> tuple[JobRunOutcome, ...]:
+        return self._run_open_subsequence(
+            scheduled_for=scheduled_for,
+            advisory_lock=advisory_lock,
+            cycle_id=cycle_id,
+            jobs=(SchedulerJobName.NEXT_OPEN_FILL_PROCESSING,),
+        )
+
+    def run_daily_open_snapshot(
+        self,
+        *,
+        scheduled_for: datetime,
+        advisory_lock: AdvisoryLock,
+        cycle_id: UUID | None = None,
+    ) -> tuple[JobRunOutcome, ...]:
+        return self._run_open_subsequence(
+            scheduled_for=scheduled_for,
+            advisory_lock=advisory_lock,
+            cycle_id=cycle_id,
+            jobs=(SchedulerJobName.PORTFOLIO_SNAPSHOT,),
+        )
+
+    def _run_open_subsequence(
+        self,
+        *,
+        scheduled_for: datetime,
+        advisory_lock: AdvisoryLock,
+        cycle_id: UUID | None,
+        jobs: tuple[SchedulerJobName, ...],
+    ) -> tuple[JobRunOutcome, ...]:
+        if scheduled_for.tzinfo is None:
+            raise ValueError("scheduled_for must be timezone-aware UTC")
+        already_held = advisory_lock.held
+        if not advisory_lock.try_acquire():
+            return (
+                JobRunOutcome(
+                    jobs[0],
+                    scheduled_for,
+                    SchedulerRunStatus.SKIPPED,
+                    skipped=True,
+                    error="advisory_lock_not_acquired",
+                ),
+            )
+        try:
+            return tuple(
+                self.run_job(job, scheduled_for=scheduled_for, cycle_id=cycle_id)
+                for job in jobs
+            )
+        finally:
+            if not already_held:
+                advisory_lock.release()
+
     def run_daily_open_sequence(
         self,
         *,
@@ -124,52 +196,33 @@ class PaperTradingScheduler:
     ) -> tuple[JobRunOutcome, ...]:
         if scheduled_for.tzinfo is None:
             raise ValueError("scheduled_for must be timezone-aware UTC")
-        already_held = advisory_lock.held
-        if not advisory_lock.try_acquire():
-            return (
+        gap = self.run_daily_open_gap_stop(
+            scheduled_for=scheduled_for,
+            advisory_lock=advisory_lock,
+            cycle_id=cycle_id,
+        )
+        due = scheduled_for + timedelta(seconds=self._config.fill_delay_seconds)
+        if self._clock.now() < due:
+            return gap + (
                 JobRunOutcome(
                     SchedulerJobName.NEXT_OPEN_FILL_PROCESSING,
                     scheduled_for,
                     SchedulerRunStatus.SKIPPED,
                     skipped=True,
-                    error="advisory_lock_not_acquired",
+                    error="fill_not_due",
                 ),
             )
-        try:
-            due = scheduled_for + timedelta(seconds=self._config.fill_delay_seconds)
-            if self._clock.now() < due:
-                return (
-                    JobRunOutcome(
-                        SchedulerJobName.NEXT_OPEN_FILL_PROCESSING,
-                        scheduled_for,
-                        SchedulerRunStatus.SKIPPED,
-                        skipped=True,
-                        error="fill_not_due",
-                    ),
-                )
-            outcomes = [
-                self.run_job(
-                    SchedulerJobName.NEXT_OPEN_FILL_PROCESSING,
-                    scheduled_for=scheduled_for,
-                    cycle_id=cycle_id,
-                ),
-                self.run_job(
-                    SchedulerJobName.STOP_TRIGGER_PROCESSING,
-                    scheduled_for=scheduled_for,
-                    cycle_id=cycle_id,
-                ),
-            ]
-            outcomes.append(
-                self.run_job(
-                    SchedulerJobName.PORTFOLIO_SNAPSHOT,
-                    scheduled_for=scheduled_for,
-                    cycle_id=cycle_id,
-                )
-            )
-            return tuple(outcomes)
-        finally:
-            if not already_held:
-                advisory_lock.release()
+        fill = self.run_daily_open_fill(
+            scheduled_for=scheduled_for,
+            advisory_lock=advisory_lock,
+            cycle_id=cycle_id,
+        )
+        snap = self.run_daily_open_snapshot(
+            scheduled_for=scheduled_for,
+            advisory_lock=advisory_lock,
+            cycle_id=cycle_id,
+        )
+        return gap + fill + snap
 
     def run_daily_close_sequence(
         self,
