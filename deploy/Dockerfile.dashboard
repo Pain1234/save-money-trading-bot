@@ -23,9 +23,12 @@ RUN useradd --create-home --uid 10001 dashboard \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --chown=dashboard:dashboard --from=builder /app/public ./public
+COPY --chown=dashboard:dashboard --from=builder /app/.next/standalone ./
+COPY --chown=dashboard:dashboard --from=builder /app/.next/static ./.next/static
+
+RUN mkdir -p /app/.next/cache \
+    && chown -R dashboard:dashboard /app/.next/cache
 
 USER dashboard
 EXPOSE 3000
