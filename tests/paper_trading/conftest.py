@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 from alembic import command
@@ -14,9 +16,83 @@ from sqlalchemy.orm import Session
 
 DEFAULT_PG_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/paper_trading_test"
 
+_DEFAULT_SYMBOL_CONSTRAINTS_JSON = json.dumps(
+    {
+        "BTC": {
+            "quantity_step": "0.001",
+            "minimum_quantity": "0.001",
+            "minimum_notional": "10",
+            "price_tick_size": "0.01",
+        },
+        "ETH": {
+            "quantity_step": "0.001",
+            "minimum_quantity": "0.001",
+            "minimum_notional": "10",
+            "price_tick_size": "0.01",
+        },
+        "SOL": {
+            "quantity_step": "0.001",
+            "minimum_quantity": "0.001",
+            "minimum_notional": "10",
+            "price_tick_size": "0.01",
+        },
+    }
+)
+
+_PAPER_TRADING_RESET_TABLES = (
+    "audit_events",
+    "funding_events",
+    "portfolio_snapshots",
+    "position_stop_history",
+    "paper_fills",
+    "paper_orders",
+    "paper_positions",
+    "trade_intents",
+    "strategy_evaluations",
+    "scheduler_runs",
+)
+
 
 def _postgres_url() -> str:
     return os.environ.get("PAPER_TRADING_DATABASE_URL", DEFAULT_PG_URL)
+
+
+def _ensure_postgres_test_env() -> None:
+    os.environ.setdefault("PAPER_SYMBOL_CONSTRAINTS_JSON", _DEFAULT_SYMBOL_CONSTRAINTS_JSON)
+
+
+def _reset_postgres_trading_state(engine: Engine) -> None:
+    tables = ", ".join(_PAPER_TRADING_RESET_TABLES)
+    with engine.connect() as conn:
+        conn.execute(text("SET lock_timeout = '2s'"))
+        conn.execute(text("SET statement_timeout = '5s'"))
+        conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        conn.execute(
+            text(
+                """
+                UPDATE paper_wallet
+                SET cash = :cash,
+                    total_realized_pnl = 0,
+                    total_fees = 0,
+                    total_funding = 0,
+                    total_slippage = 0,
+                    version = 1
+                """
+            ),
+            {"cash": Decimal("100000")},
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE runtime_state
+                SET status = 'STOPPED',
+                    kill_switch = false,
+                    paused = false,
+                    version = 1
+                """
+            )
+        )
+        conn.commit()
 
 
 def postgres_available() -> bool:
@@ -52,6 +128,23 @@ requires_postgres = pytest.mark.postgres(
         reason="PostgreSQL not available at PAPER_TRADING_DATABASE_URL",
     )
 )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    _ensure_postgres_test_env()
+
+
+@pytest.fixture(autouse=True)
+def _reset_postgres_trading_tables_before_test(request: pytest.FixtureRequest) -> Iterator[None]:
+    if "postgres" not in request.node.keywords or not _is_postgres_available():
+        yield
+        return
+    engine = create_engine(_postgres_url(), pool_pre_ping=True)
+    try:
+        _reset_postgres_trading_state(engine)
+    finally:
+        engine.dispose()
+    yield
 
 
 @pytest.fixture(scope="session")
