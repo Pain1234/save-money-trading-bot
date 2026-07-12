@@ -33,6 +33,7 @@ from paper_trading.enums import (
     SchedulerRunStatus,
     TradeIntentStatus,
 )
+from paper_trading.ids import scheduler_run_key
 from paper_trading.mappers import (
     audit_row_to_domain,
     evaluation_row_to_domain,
@@ -397,6 +398,8 @@ class PaperTradingRepository:
                 status=row.status,
                 error=row.error,
                 idempotency_key=row.idempotency_key,
+                recovery_of_run_id=row.recovery_of_run_id,
+                resolved_by_run_id=row.resolved_by_run_id,
             )
             .on_conflict_do_nothing(
                 index_elements=[SchedulerRunRow.job_name, SchedulerRunRow.scheduled_for]
@@ -554,48 +557,66 @@ class PaperTradingRepository:
                 SchedulerRunRow.status == SchedulerRunStatus.FAILED.value,
                 SchedulerRunRow.job_name.like("me:%"),
                 SchedulerRunRow.error.in_(tuple(PERMANENT_CONFIGURATION_ERROR_CODES)),
+                SchedulerRunRow.recovery_of_run_id.is_(None),
+                SchedulerRunRow.resolved_by_run_id.is_(None),
+                ~SchedulerRunRow.job_name.like("%:recovery:%"),
             )
         ).scalars()
         return tuple(scheduler_row_to_domain(row) for row in rows)
 
-    def reopen_scheduler_run_for_recovery(
+    def count_recovery_attempts(self, original_run_id: UUID) -> int:
+        count = self._session.execute(
+            select(SchedulerRunRow.run_id).where(
+                SchedulerRunRow.recovery_of_run_id == original_run_id
+            )
+        ).all()
+        return len(count)
+
+    def get_active_recovery_attempt(self, original_run_id: UUID) -> SchedulerRun | None:
+        row = self._session.execute(
+            select(SchedulerRunRow)
+            .where(
+                SchedulerRunRow.recovery_of_run_id == original_run_id,
+                SchedulerRunRow.status == SchedulerRunStatus.RUNNING.value,
+            )
+            .order_by(SchedulerRunRow.started_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        return scheduler_row_to_domain(row) if row else None
+
+    def create_recovery_attempt(
         self,
         *,
-        job_name: str,
-        scheduled_for: datetime,
-        reopened_at: datetime,
-    ) -> SchedulerRun:
-        from paper_trading.market_event_errors import is_permanent_configuration_error
+        original_run: SchedulerRun,
+        recovery_job_name: str,
+        started_at: datetime,
+    ) -> tuple[SchedulerRun, bool]:
+        row = SchedulerRunRow(
+            run_id=uuid4(),
+            job_name=recovery_job_name,
+            scheduled_for=original_run.scheduled_for,
+            started_at=started_at,
+            status=SchedulerRunStatus.RUNNING.value,
+            idempotency_key=scheduler_run_key(recovery_job_name, original_run.scheduled_for),
+            recovery_of_run_id=original_run.run_id,
+        )
+        return self.insert_or_get_scheduler_run(row)
 
-        existing = self.get_scheduler_run(job_name, scheduled_for)
-        if existing is None:
-            raise ValueError(f"scheduler run missing: {job_name}")
-        if existing.status != SchedulerRunStatus.FAILED:
-            raise ValueError(f"scheduler run not failed: {job_name}")
-        if not is_permanent_configuration_error(existing.error):
-            raise ValueError(f"scheduler run not permanently failed: {job_name}")
-        previous_error = existing.error or "unknown"
+    def mark_run_resolved(
+        self,
+        *,
+        original_run_id: UUID,
+        recovery_run_id: UUID,
+    ) -> None:
         self._session.execute(
             update(SchedulerRunRow)
             .where(
-                SchedulerRunRow.job_name == job_name,
-                SchedulerRunRow.scheduled_for == scheduled_for,
+                SchedulerRunRow.run_id == original_run_id,
+                SchedulerRunRow.resolved_by_run_id.is_(None),
             )
-            .values(
-                status=SchedulerRunStatus.RUNNING.value,
-                completed_at=None,
-                error=f"RECOVERY_PENDING:{previous_error}",
-                started_at=reopened_at,
-            )
+            .values(resolved_by_run_id=recovery_run_id)
         )
-        row = self._session.execute(
-            select(SchedulerRunRow).where(
-                SchedulerRunRow.job_name == job_name,
-                SchedulerRunRow.scheduled_for == scheduled_for,
-            )
-        ).scalar_one()
         self._session.flush()
-        return scheduler_row_to_domain(row)
 
     def delete_scheduler_run_if_running(
         self,
@@ -608,6 +629,7 @@ class PaperTradingRepository:
                 SchedulerRunRow.job_name == job_name,
                 SchedulerRunRow.scheduled_for == scheduled_for,
                 SchedulerRunRow.status == SchedulerRunStatus.RUNNING.value,
+                SchedulerRunRow.completed_at.is_(None),
             )
         )
         self._session.flush()

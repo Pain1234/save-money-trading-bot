@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
 from market_data.repository import InMemoryCandleRepository
@@ -107,6 +107,29 @@ def daily_open_fill_job_name(symbol: str, open_time: datetime) -> str:
 
 def daily_open_snapshot_job_name(symbol: str, open_time: datetime) -> str:
     return f"me:do:snap:{symbol}:{_compact_timestamp(open_time)}"
+
+
+def market_event_recovery_job_name(event: MarketEvent, generation: int) -> str:
+    ts = _compact_timestamp(event.candle_open_time)
+    if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
+        return f"me:do:recovery:{event.symbol}:{ts}:{generation}"
+    if event.event_type == MarketEventType.DAILY_CLOSED:
+        return f"me:dc:recovery:{event.symbol}:{ts}:{generation}"
+    if event.event_type == MarketEventType.WEEKLY_CLOSED:
+        return f"me:wc:recovery:{event.symbol}:{ts}:{generation}"
+    if event.event_type == MarketEventType.MONTHLY_CLOSED:
+        return f"me:mc:recovery:{event.symbol}:{ts}:{generation}"
+    raise ValueError(f"recovery not supported for event type: {event.event_type}")
+
+
+@dataclass(frozen=True)
+class RecoveryContext:
+    original_run_id: UUID
+    original_job_name: str
+    recovery_job_name: str
+    recovery_run_id: UUID
+    scheduled_for: datetime
+    generation: int
 
 
 @dataclass
@@ -409,7 +432,9 @@ class MarketEventBridge:
     max_events_per_poll: int = DEFAULT_MAX_EVENTS_PER_POLL
     _queue_overflow: bool = field(default=False, init=False)
     _deferred_events: bool = field(default=False, init=False)
-    _recovery_pending: set[tuple[str, datetime]] = field(default_factory=set, init=False)
+    _recovery_pending: dict[tuple[str, datetime], RecoveryContext] = field(
+        default_factory=dict, init=False
+    )
     _fairness_cursor: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
@@ -522,10 +547,52 @@ class MarketEventBridge:
             raise ValueError(f"no recoverable permanent failure for {job_name}")
         if not is_permanent_configuration_error(existing.error):
             raise ValueError(f"scheduler run is not a permanent configuration failure: {job_name}")
+        if existing.resolved_by_run_id is not None:
+            raise ValueError(f"permanent failure already recovered for {job_name}")
         self.context_builder.validate_symbol_configuration(event.symbol)
         if self.detector is not None:
             self.detector.clear_terminal_failed(event)
-        self._recovery_pending.add((job_name, scheduled_for))
+        generation = self.repository.count_recovery_attempts(existing.run_id) + 1
+        recovery_job_name = market_event_recovery_job_name(event, generation)
+        attempt, _created = self.repository.create_recovery_attempt(
+            original_run=existing,
+            recovery_job_name=recovery_job_name,
+            started_at=self.clock.now(),
+        )
+        self._recovery_pending[(job_name, scheduled_for)] = RecoveryContext(
+            original_run_id=existing.run_id,
+            original_job_name=job_name,
+            recovery_job_name=recovery_job_name,
+            recovery_run_id=attempt.run_id,
+            scheduled_for=scheduled_for,
+            generation=generation,
+        )
+
+    def _active_recovery_context(
+        self,
+        job_name: str,
+        scheduled_for: datetime,
+    ) -> RecoveryContext | None:
+        key = (job_name, scheduled_for)
+        pending = self._recovery_pending.get(key)
+        if pending is not None:
+            return pending
+        existing = self.repository.get_scheduler_run(job_name, scheduled_for)
+        if existing is None:
+            return None
+        attempt = self.repository.get_active_recovery_attempt(existing.run_id)
+        if attempt is None:
+            return None
+        context = RecoveryContext(
+            original_run_id=existing.run_id,
+            original_job_name=job_name,
+            recovery_job_name=attempt.job_name,
+            recovery_run_id=attempt.run_id,
+            scheduled_for=scheduled_for,
+            generation=self.repository.count_recovery_attempts(existing.run_id),
+        )
+        self._recovery_pending[key] = context
+        return context
 
     def _terminal_failed_outcome(
         self,
@@ -543,22 +610,6 @@ class MarketEventBridge:
             terminal_failed=True,
         )
 
-    def _maybe_begin_recovery(
-        self,
-        job_name: str,
-        scheduled_for: datetime,
-    ) -> bool:
-        key = (job_name, scheduled_for)
-        if key not in self._recovery_pending:
-            return False
-        self.repository.reopen_scheduler_run_for_recovery(
-            job_name=job_name,
-            scheduled_for=scheduled_for,
-            reopened_at=self.clock.now(),
-        )
-        self._recovery_pending.discard(key)
-        return True
-
     def _maybe_short_circuit_permanent_failure(
         self,
         event: MarketEvent,
@@ -570,7 +621,9 @@ class MarketEventBridge:
             return None
         if not is_permanent_configuration_error(existing.error):
             return None
-        if self._maybe_begin_recovery(job_name, scheduled_for):
+        if existing.resolved_by_run_id is not None:
+            return None
+        if self._active_recovery_context(job_name, scheduled_for) is not None:
             return None
         return self._terminal_failed_outcome(
             event,
@@ -647,9 +700,13 @@ class MarketEventBridge:
         event: MarketEvent,
         *,
         error: MarketEventProcessingError,
+        release_job_name: str | None = None,
     ) -> EventProcessOutcome:
         job_name = market_event_job_name(event)
-        self._release_uncommitted_scheduler_run(job_name, event.scheduled_for)
+        self._release_uncommitted_scheduler_run(
+            release_job_name or job_name,
+            event.scheduled_for,
+        )
         return EventProcessOutcome(
             event=event,
             job_name=job_name,
@@ -658,6 +715,24 @@ class MarketEventBridge:
             error=error.code,
             deferred=True,
             retryable=True,
+        )
+
+    def _fail_daily_open_parent(
+        self,
+        parent_job: str,
+        scheduled_for: datetime,
+        error: str,
+    ) -> None:
+        existing = self.repository.get_scheduler_run(parent_job, scheduled_for)
+        if existing is not None and existing.status == SchedulerRunStatus.COMPLETED:
+            return
+        if existing is None:
+            self._ensure_scheduler_run(parent_job, scheduled_for)
+        self._complete_market_event(
+            parent_job,
+            scheduled_for,
+            SchedulerRunStatus.FAILED,
+            error,
         )
 
     def _release_uncommitted_scheduler_run(
@@ -783,6 +858,9 @@ class MarketEventBridge:
         )
         if short_circuit is not None:
             return short_circuit
+        recovery = self._active_recovery_context(parent_job, scheduled_for)
+        if recovery is not None:
+            return self._process_daily_open_recovery(event, evaluation_time, recovery)
         if self._daily_open_terminal_complete(event.symbol, scheduled_for):
             self._ensure_parent_run_completed(parent_job, scheduled_for)
             return self._persisted_outcome(
@@ -817,6 +895,95 @@ class MarketEventBridge:
                 extra={"symbol": event.symbol, "error": exc.code},
             )
             return self._mark_permanent_failure(event, parent_job, scheduled_for, exc)
+        except Exception as exc:
+            logger.exception(
+                "daily_open_processing_failed",
+                extra={"symbol": event.symbol, "job_name": parent_job},
+            )
+            self._fail_daily_open_parent(parent_job, scheduled_for, str(exc))
+            return self._persisted_outcome(
+                event, parent_job, scheduled_for, skipped=False
+            )
+
+    def _process_daily_open_recovery(
+        self,
+        event: MarketEvent,
+        evaluation_time: datetime,
+        recovery: RecoveryContext,
+    ) -> EventProcessOutcome:
+        scheduled_for = recovery.scheduled_for
+        recovery_job = recovery.recovery_job_name
+        parent_job = recovery.original_job_name
+        self._ensure_scheduler_run(recovery_job, scheduled_for)
+        try:
+            self._handle_daily_open(event, evaluation_time)
+            self._complete_market_event(
+                recovery_job, scheduled_for, SchedulerRunStatus.COMPLETED, None
+            )
+            self.repository.mark_run_resolved(
+                original_run_id=recovery.original_run_id,
+                recovery_run_id=recovery.recovery_run_id,
+            )
+            self._recovery_pending.pop((parent_job, scheduled_for), None)
+            return EventProcessOutcome(
+                event=event,
+                job_name=parent_job,
+                status=SchedulerRunStatus.COMPLETED,
+                skipped=False,
+            )
+        except FillNotDue as exc:
+            return self._deferred_outcome(
+                event, error=exc, release_job_name=recovery_job
+            )
+        except RetryableContextNotReady as exc:
+            logger.warning(
+                "daily_open_recovery_deferred",
+                extra={"symbol": event.symbol, "error": exc.code},
+            )
+            return self._deferred_outcome(
+                event, error=exc, release_job_name=recovery_job
+            )
+        except RetryableSchedulerDeferred as exc:
+            logger.warning(
+                "daily_open_recovery_scheduler_deferred",
+                extra={"symbol": event.symbol, "error": exc.code},
+            )
+            return self._deferred_outcome(
+                event, error=exc, release_job_name=recovery_job
+            )
+        except PermanentConfigurationFailure as exc:
+            logger.error(
+                "daily_open_recovery_permanent_configuration_failure",
+                extra={"symbol": event.symbol, "error": exc.code},
+            )
+            self._complete_market_event(
+                recovery_job, scheduled_for, SchedulerRunStatus.FAILED, exc.code
+            )
+            self._recovery_pending.pop((parent_job, scheduled_for), None)
+            return EventProcessOutcome(
+                event=event,
+                job_name=parent_job,
+                status=SchedulerRunStatus.FAILED,
+                skipped=False,
+                error=exc.code,
+                terminal_failed=True,
+            )
+        except Exception as exc:
+            logger.exception(
+                "daily_open_recovery_failed",
+                extra={"symbol": event.symbol, "recovery_job": recovery_job},
+            )
+            self._complete_market_event(
+                recovery_job, scheduled_for, SchedulerRunStatus.FAILED, str(exc)
+            )
+            self._recovery_pending.pop((parent_job, scheduled_for), None)
+            return EventProcessOutcome(
+                event=event,
+                job_name=parent_job,
+                status=SchedulerRunStatus.FAILED,
+                skipped=False,
+                error=str(exc),
+            )
 
     def _ensure_parent_run_completed(self, job_name: str, scheduled_for: datetime) -> None:
         existing = self.repository.get_scheduler_run(job_name, scheduled_for)

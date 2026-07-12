@@ -220,6 +220,8 @@ def scheduler_row_to_domain(row: SchedulerRunRow) -> SchedulerRun:
         status=SchedulerRunStatus(row.status),
         error=row.error,
         idempotency_key=row.idempotency_key,
+        recovery_of_run_id=row.recovery_of_run_id,
+        resolved_by_run_id=row.resolved_by_run_id,
     )
 
 

@@ -309,6 +309,8 @@ class SchedulerRun(BaseModel):
     status: SchedulerRunStatus
     error: str | None = None
     idempotency_key: str
+    recovery_of_run_id: UUID | None = None
+    resolved_by_run_id: UUID | None = None
 
     @field_validator("scheduled_for", "started_at", "completed_at", mode="before")
     @classmethod

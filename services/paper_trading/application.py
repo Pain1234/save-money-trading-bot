@@ -357,6 +357,29 @@ class PaperTradingApplication:
             return
         await self._md_runtime.process_live(self.clock.now())
 
+    def _process_committed_market_event_poll(self, evaluation_time: datetime) -> None:
+        """Run one market-event poll with a single outer commit/rollback boundary."""
+        assert self._event_bridge is not None
+        assert self._repo is not None
+        try:
+            poll_result = self._event_bridge.process_after_poll(evaluation_time)
+            for outcome in poll_result.outcomes:
+                if outcome.deferred or outcome.retryable:
+                    continue
+                if outcome.status.name == "FAILED":
+                    self._last_loop_error = outcome.error
+            if poll_result.permanent_failures:
+                self._last_loop_error = poll_result.permanent_failures[0].error
+            self._repo.session.commit()
+        except Exception:
+            self._repo.session.rollback()
+            raise
+        else:
+            self._event_bridge.acknowledge_committed(poll_result.events_to_ack)
+            self._event_bridge.acknowledge_terminal_failed_committed(
+                poll_result.events_terminal_failed
+            )
+
     def _update_runtime_readiness(self) -> None:
         assert self._runtime is not None
         assert self._repo is not None
@@ -427,23 +450,7 @@ class PaperTradingApplication:
                     and self._repo is not None
                 ):
                     if self._advisory_lock.held and self.market_data_ready():
-                        poll_result = self._event_bridge.process_after_poll(evaluation_time)
-                        for outcome in poll_result.outcomes:
-                            if outcome.deferred or outcome.retryable:
-                                continue
-                            if outcome.status.name == "FAILED":
-                                self._last_loop_error = outcome.error
-                        if poll_result.permanent_failures:
-                            self._last_loop_error = poll_result.permanent_failures[0].error
-                        try:
-                            self._repo.session.commit()
-                            self._event_bridge.acknowledge_committed(poll_result.events_to_ack)
-                            self._event_bridge.acknowledge_terminal_failed_committed(
-                                poll_result.events_terminal_failed
-                            )
-                        except Exception:
-                            self._repo.session.rollback()
-                            raise
+                        self._process_committed_market_event_poll(evaluation_time)
 
                 self._update_runtime_readiness()
                 await asyncio.sleep(self.event_poll_interval_seconds)

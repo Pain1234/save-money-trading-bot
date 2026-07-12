@@ -330,10 +330,21 @@ class SchedulerRunRow(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    recovery_of_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scheduler_runs.run_id"),
+        nullable=True,
+    )
+    resolved_by_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("scheduler_runs.run_id"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("job_name", "scheduled_for", name="uq_scheduler_job_scheduled_for"),
         Index("ix_scheduler_runs_running", "status", "started_at"),
+        Index("ix_scheduler_runs_recovery_of", "recovery_of_run_id"),
     )
 
 

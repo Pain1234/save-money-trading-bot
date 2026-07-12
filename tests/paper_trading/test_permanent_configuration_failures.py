@@ -19,7 +19,6 @@ from paper_trading.market_event_errors import (
     PERMANENT_CONFIGURATION_INVALID_QUANTITY_STEP,
     PERMANENT_CONFIGURATION_INVALID_TICK_SIZE,
     PermanentConfigurationFailure,
-    is_permanent_configuration_error,
 )
 from paper_trading.market_events import (
     MarketEventBridge,
@@ -77,6 +76,8 @@ def _repo_with_permanent_tracking() -> MagicMock:
             status=SchedulerRunStatus(statuses.get(key, row.status)),
             error=errors.get(key),
             idempotency_key=row.idempotency_key,
+            recovery_of_run_id=getattr(row, "recovery_of_run_id", None),
+            resolved_by_run_id=getattr(row, "resolved_by_run_id", None),
         )
 
     def insert_or_get(job_row: SchedulerRunRow) -> tuple[SchedulerRunRow, bool]:
@@ -109,6 +110,10 @@ def _repo_with_permanent_tracking() -> MagicMock:
         for (job_name, scheduled_for), row in runs.items():
             if not job_name.startswith("me:"):
                 continue
+            if ":recovery:" in job_name:
+                continue
+            if getattr(row, "resolved_by_run_id", None) is not None:
+                continue
             error = errors.get((job_name, scheduled_for))
             status = statuses.get((job_name, scheduled_for), row.status)
             if status != SchedulerRunStatus.FAILED.value:
@@ -120,29 +125,66 @@ def _repo_with_permanent_tracking() -> MagicMock:
                 result.append(run)
         return tuple(result)
 
-    def reopen_scheduler_run_for_recovery(
+    def create_recovery_attempt(
         *,
-        job_name: str,
-        scheduled_for: datetime,
-        reopened_at: datetime,
-    ) -> SchedulerRun:
-        key = (job_name, scheduled_for)
-        error = errors.get(key)
-        if error is None or not is_permanent_configuration_error(error):
-            raise ValueError("not permanently failed")
-        statuses[key] = SchedulerRunStatus.RUNNING.value
-        runs[key].status = SchedulerRunStatus.RUNNING.value
-        errors[key] = f"RECOVERY_PENDING:{error}"
-        runs[key].started_at = reopened_at
-        run = get_run(job_name, scheduled_for)
+        original_run: SchedulerRun,
+        recovery_job_name: str,
+        started_at: datetime,
+    ) -> tuple[SchedulerRun, bool]:
+        key = (recovery_job_name, original_run.scheduled_for)
+        if key in runs:
+            run = get_run(recovery_job_name, original_run.scheduled_for)
+            assert run is not None
+            return run, False
+        row = SchedulerRunRow(
+            run_id=__import__("uuid").uuid4(),
+            job_name=recovery_job_name,
+            scheduled_for=original_run.scheduled_for,
+            started_at=started_at,
+            status=SchedulerRunStatus.RUNNING.value,
+            idempotency_key=f"{recovery_job_name}:recovery",
+            recovery_of_run_id=original_run.run_id,
+        )
+        runs[key] = row
+        statuses[key] = row.status
+        run = get_run(recovery_job_name, original_run.scheduled_for)
         assert run is not None
-        return run
+        return run, True
+
+    def count_recovery_attempts(original_run_id) -> int:
+        return sum(
+            1
+            for (job_name, _scheduled_for), row in runs.items()
+            if getattr(row, "recovery_of_run_id", None) == original_run_id
+            or (
+                job_name.startswith("me:")
+                and ":recovery:" in job_name
+            )
+        )
+
+    def get_active_recovery_attempt(original_run_id):
+        for (job_name, scheduled_for), row in runs.items():
+            if ":recovery:" not in job_name:
+                continue
+            if statuses.get((job_name, scheduled_for), row.status) != SchedulerRunStatus.RUNNING.value:
+                continue
+            return get_run(job_name, scheduled_for)
+        return None
+
+    def mark_run_resolved(*, original_run_id, recovery_run_id) -> None:
+        for _key, row in runs.items():
+            if row.run_id == original_run_id:
+                row.resolved_by_run_id = recovery_run_id
 
     repo.get_scheduler_run.side_effect = get_run
     repo.insert_or_get_scheduler_run.side_effect = insert_or_get
     repo.complete_scheduler_run.side_effect = complete_run
     repo.list_permanent_configuration_failures.side_effect = list_permanent_configuration_failures
-    repo.reopen_scheduler_run_for_recovery.side_effect = reopen_scheduler_run_for_recovery
+    repo.create_recovery_attempt.side_effect = create_recovery_attempt
+    repo.count_recovery_attempts.side_effect = count_recovery_attempts
+    repo.get_active_recovery_attempt.side_effect = get_active_recovery_attempt
+    repo.mark_run_resolved.side_effect = mark_run_resolved
+    repo.delete_scheduler_run_if_running.return_value = False
     repo.get_running_scheduler_runs.return_value = ()
     return repo
 
