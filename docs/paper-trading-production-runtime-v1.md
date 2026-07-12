@@ -13,10 +13,11 @@ No wallet, signing, or private exchange endpoints are used.
 ```
 HyperliquidMarketDataRuntime.process_live()
   → InMemoryCandleRepository
-  → MarketEventDetector.detect()
+  → MarketEventDetector.detect_candidates()
   → MarketEventBridge.process_after_poll()
   → ProductionContextBuilder (Evaluation / Fill / Stop contexts)
   → PaperTradingScheduler sequences / jobs
+  → MarketEventDetector.acknowledge_completed() on terminal success
   → PostgreSQL (fills, positions, wallet, scheduler_runs)
 ```
 
@@ -24,7 +25,7 @@ HyperliquidMarketDataRuntime.process_live()
 
 | Module | Role |
 |--------|------|
-| `market_events.py` | Event detection, idempotent bridge, overflow fail-closed |
+| `market_events.py` | Candidate detection, deferred retry, post-success acknowledgement |
 | `scheduler_context.py` | Production scheduler inputs from market data |
 | `symbol_constraints.py` | Hyperliquid `szDecimals` or env JSON (fail-closed) |
 | `controlled_market_data.py` | Scriptable runtime for integration tests |
@@ -34,7 +35,15 @@ HyperliquidMarketDataRuntime.process_live()
 
 | Event | Trigger | Actions |
 |-------|---------|---------|
-| `DAILY_OPEN_AVAILABLE` | New daily candle; open known | Next-open fills, gap stops (`at_open=True`), snapshot |
+| `DAILY_OPEN_AVAILABLE` | New daily candle; open known | Gap stop at open, entry fill after `fill_delay_seconds`, snapshot |
+
+Daily open subjobs (independent idempotency):
+
+- `me:do:gap:{symbol}:{open_time}` — gap stop at open (not delayed by fill)
+- `me:do:fill:{symbol}:{open_time}` — entry fill when due
+- `me:do:snap:{symbol}:{open_time}` — portfolio snapshot after economic change
+
+The umbrella key `me:do:{symbol}:{open_time}` tracks overall open lifecycle completion.
 | `DAILY_LIVE_UPDATE` | Open candle low changes | Intraday stop only (no trailing, no gap re-check) |
 | `DAILY_CLOSED` | Daily closed **and** `clock.now() >= evaluation_due_at` | Evaluation + intent, trailing stop, snapshot |
 | `WEEKLY_CLOSED` / `MONTHLY_CLOSED` | Higher TF closed | Marker only; series ready for later evaluation |
@@ -51,7 +60,8 @@ HyperliquidMarketDataRuntime.process_live()
 
 Deterministic scheduler job names (no `hash()`):
 
-- `me:do:{symbol}:{open_time}` — daily open
+- `me:do:{symbol}:{open_time}` — daily open lifecycle marker
+- `me:do:gap:{symbol}:{open_time}` / `me:do:fill:{symbol}:{open_time}` / `me:do:snap:{symbol}:{open_time}` — open subjobs
 - `me:dl:{symbol}:{open_time}:{low_digest}` — daily live update
 - `me:dc:{symbol}:{open_time}` — daily closed evaluation
 - `me:wc:{symbol}:{open_time}` / `me:mc:{symbol}:{open_time}` — higher TF markers
@@ -76,22 +86,49 @@ Completed market-event runs skip reprocessing on restart, WebSocket replay, and 
 
 Construction requires an explicit `market_data_ready` callable (no default `True`). Missing readiness source fails closed at construction time; a `False` runtime snapshot blocks entry gates.
 
-Missing constraints → context build returns `None` → event processing fails closed.
+Construction requires an explicit `market_data_ready` callable (no default `True`). Missing readiness source fails closed at construction time; a `False` runtime snapshot blocks entry gates.
+
+Open-context errors are typed (no string matching):
+
+- `RETRYABLE_CONTEXT_NOT_READY` — transient bundle/ATR/DB visibility; event stays retryable, runtime may be `DEGRADED`
+- `PERMANENT_CONFIGURATION_FAILURE` — missing/invalid constraints; `FAILED` run, `entry_readiness=False`
+- `FILL_NOT_DUE` — gap may complete; fill/snapshot deferred until `open_time + fill_delay_seconds`
+
+## Event lifecycle semantics
+
+1. `detect_candidates()` emits events without irreversible tracker mutation.
+2. Bridge checks capacity, builds context, runs scheduler jobs/subjobs.
+3. `acknowledge_completed(event)` runs only after terminal success (`COMPLETED` subjobs for open).
+4. Transient failures return deferred outcomes — no terminal `FAILED`, tracker unchanged, retry on next poll.
+5. Queue overflow processes the first `max_events_per_poll` batch; unprocessed candidates re-emit on the next poll.
+
+Tracker fields (`daily_open_ack_time`, etc.) update only via acknowledgement.
 
 ## Runner loop
 
 1. Poll live market data (`process_live`)
-2. Detect and classify events (bounded: default 256/poll)
-3. Build contexts and run scheduler sequences
-4. Commit repository session
-5. Update runtime readiness (`READY` / `DEGRADED` on disconnect or overflow)
-6. Heartbeat on separate task
-7. Graceful shutdown cancels tasks, releases advisory lock
+2. Detect event candidates (bounded: default 256/poll)
+3. Build contexts and run scheduler sequences / open subjobs
+4. Acknowledge completed events; leave deferred/backlog events unacknowledged
+5. Commit repository session
+6. Update runtime readiness (`READY` / `DEGRADED` on disconnect, deferred backlog, or overflow)
+7. Heartbeat on separate task
+8. Graceful shutdown cancels tasks, releases advisory lock
 
 ### Backpressure
 
 If detected events exceed `max_events_per_poll`, the bridge sets `queue_overflow=True`,
-returns `event_queue_overflow`, and readiness goes fail-closed.
+processes the first batch only, and leaves remaining candidates for the next poll.
+Readiness goes `DEGRADED` while backlog or deferred critical events remain.
+
+## PostgreSQL test concurrency
+
+The postgres fixture truncates shared tables in `paper_trading_test`. Do **not** run postgres-marked
+paper-trading tests with pytest-xdist workers against the same database. Release gates:
+
+```bash
+python -m pytest tests/paper_trading -m postgres -n 1 -vv
+```
 
 ## Symbol constraints
 

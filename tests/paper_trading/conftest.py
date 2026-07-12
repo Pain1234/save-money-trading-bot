@@ -150,6 +150,14 @@ requires_postgres = pytest.mark.postgres(
 
 def pytest_configure(config: pytest.Config) -> None:
     _ensure_postgres_test_env()
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker is not None:
+        raise RuntimeError(
+            "PostgreSQL paper-trading tests are not safe with pytest-xdist workers "
+            f"({worker!r}) against a shared database. Run release gates with "
+            "`python -m pytest tests/paper_trading -m postgres -n 1` or assign "
+            "one database per worker."
+        )
 
 
 @pytest.fixture(autouse=True)
