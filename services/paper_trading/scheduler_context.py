@@ -23,6 +23,10 @@ from paper_trading.lifecycle import (
     FillProcessingContext,
     build_entry_gate_context,
 )
+from paper_trading.market_event_errors import (
+    PermanentConfigurationFailure,
+    RetryableContextNotReady,
+)
 from paper_trading.models import PaperExecutionConfig
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.stops import StopLifecycleService
@@ -93,14 +97,18 @@ class ProductionContextBuilder:
         self,
         symbol: str,
         evaluation_time: datetime,
-    ) -> dict[str, object] | None:
+    ) -> dict[str, object]:
         try:
             self._constraints.require(symbol)
-        except ValueError:
-            return None
+        except ValueError as exc:
+            raise PermanentConfigurationFailure(
+                f"missing symbol constraints for {symbol}"
+            ) from exc
         bundle = self._bundle(symbol, evaluation_time, backfill=False)
         if not bundle.is_usable:
-            return None
+            raise RetryableContextNotReady(
+                f"strategy bundle not usable for {symbol} at {evaluation_time.isoformat()}"
+            )
         entry_ready, paused, kill = self._runtime_gates()
         entry_gates = build_entry_gate_context(
             self._repo,
@@ -125,17 +133,23 @@ class ProductionContextBuilder:
         self,
         symbol: str,
         evaluation_time: datetime,
-    ) -> dict[str, object] | None:
+    ) -> dict[str, object]:
         try:
             constraints = self._constraints.require(symbol)
-        except ValueError:
-            return None
+        except ValueError as exc:
+            raise PermanentConfigurationFailure(
+                f"missing symbol constraints for {symbol}"
+            ) from exc
         bundle = self._bundle(symbol, evaluation_time, backfill=False)
         if not bundle.daily.candles:
-            return None
+            raise RetryableContextNotReady(
+                f"daily history missing for {symbol} at {evaluation_time.isoformat()}"
+            )
         last_daily = bundle.daily.candles[-1]
         if not last_daily.is_closed:
-            return None
+            raise RetryableContextNotReady(
+                f"latest daily candle not closed for {symbol}"
+            )
         atr_by_symbol: dict[str, Decimal] = {}
         position = self._repo.get_open_position_for_symbol(symbol)
         if position is not None:
@@ -157,16 +171,20 @@ class ProductionContextBuilder:
         symbol: str,
         open_candle: NormalizedCandle,
         evaluation_time: datetime,
-    ) -> tuple[dict[str, FillProcessingContext] | None, dict[str, object] | None]:
+    ) -> tuple[dict[str, FillProcessingContext], dict[str, object]]:
         try:
             constraints = self._constraints.require(symbol)
-        except ValueError:
-            return None, None
+        except ValueError as exc:
+            raise PermanentConfigurationFailure(
+                f"missing symbol constraints for {symbol}"
+            ) from exc
 
         prior_eval_time = open_candle.open_time
         bundle = self._bundle(symbol, prior_eval_time, backfill=False)
         if not bundle.is_usable or not bundle.daily.candles:
-            return None, None
+            raise RetryableContextNotReady(
+                f"strategy bundle not usable for {symbol} at {prior_eval_time.isoformat()}"
+            )
 
         from strategy_engine.engine import StrategyEngine
 
@@ -180,7 +198,9 @@ class ProductionContextBuilder:
         )
         atr14 = strategy_eval.atr
         if atr14 is None or atr14 <= 0:
-            return None, None
+            raise RetryableContextNotReady(
+                f"atr14 not available for {symbol} at {prior_eval_time.isoformat()}"
+            )
 
         prior_closes: dict[str, Decimal] = {}
         repo = self._market_data.repository
@@ -216,13 +236,15 @@ class ProductionContextBuilder:
         self,
         symbol: str,
         live_candle: NormalizedCandle,
-    ) -> dict[str, object] | None:
+    ) -> dict[str, object]:
         try:
             constraints = self._constraints.require(symbol)
-        except ValueError:
-            return None
+        except ValueError as exc:
+            raise PermanentConfigurationFailure(
+                f"missing symbol constraints for {symbol}"
+            ) from exc
         if live_candle.is_closed:
-            return None
+            raise RetryableContextNotReady(f"live candle closed for {symbol}")
         preview = live_candle.to_strategy_candle()
         return {
             "preview_candles": {symbol: preview},
