@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +15,7 @@ sys.path.insert(0, str(ROOT / "services"))
 sys.path.insert(0, str(ROOT))
 
 from paper_trading.accounting_verification import verify_accounting_independent
+from paper_trading.database_url import resolve_database_url_from_env
 from paper_trading.repository import PaperTradingRepository
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
@@ -26,10 +26,10 @@ INITIAL_CASH = Decimal("100000")
 
 
 def _resolve_database_url(env_name: str) -> str:
-    url = os.environ.get(env_name)
-    if not url:
-        raise SystemExit(f"missing environment variable {env_name}")
-    return url
+    try:
+        return resolve_database_url_from_env(env_name)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def verify(database_url: str) -> dict[str, object]:

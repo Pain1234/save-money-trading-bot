@@ -27,7 +27,7 @@ def test_valid_config() -> None:
 
 
 def test_rejects_non_postgresql_url() -> None:
-    with pytest.raises(ValueError, match="PostgreSQL"):
+    with pytest.raises(ValueError, match="unsupported database URL scheme"):
         PaperTradingConfig(database_url="sqlite:///test.db")
 
 

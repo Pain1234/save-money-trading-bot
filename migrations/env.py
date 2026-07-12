@@ -11,6 +11,7 @@ from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "services"))
 
+from paper_trading.database_url import resolve_migration_database_url  # noqa: E402
 from paper_trading.db import orm as _orm  # noqa: F401, E402
 from paper_trading.db.base import Base  # noqa: E402
 
@@ -23,9 +24,9 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.environ.get(
-        "PAPER_TRADING_DATABASE_URL",
-        config.get_main_option("sqlalchemy.url"),
+    return resolve_migration_database_url(
+        env_url=os.environ.get("PAPER_TRADING_DATABASE_URL"),
+        fallback_url=config.get_main_option("sqlalchemy.url"),
     )
 
 

@@ -106,7 +106,12 @@ def _reset_postgres_trading_state(engine: Engine) -> None:
 
 
 def _postgres_url() -> str:
-    return os.environ.get("PAPER_TRADING_DATABASE_URL", DEFAULT_PG_URL)
+    from paper_trading.database_url import resolve_database_url_from_env
+
+    return resolve_database_url_from_env(
+        "PAPER_TRADING_DATABASE_URL",
+        default=DEFAULT_PG_URL,
+    )
 
 
 def _ensure_postgres_test_env() -> None:

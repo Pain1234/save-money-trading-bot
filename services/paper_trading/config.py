@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from paper_trading.database_url import normalize_postgresql_url, resolve_database_url_from_env
 from paper_trading.enums import KillSwitchClosePolicy
 
 ALLOWED_SYMBOLS: frozenset[str] = frozenset({"BTC", "ETH", "SOL"})
@@ -45,6 +46,13 @@ class PaperTradingConfig(BaseModel):
     kill_switch_close_policy: KillSwitchClosePolicy = KillSwitchClosePolicy.FREEZE
     funding_enabled: bool = False
     symbols: tuple[str, ...] = DEFAULT_SYMBOLS
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: object) -> object:
+        if isinstance(value, str):
+            return normalize_postgresql_url(value)
+        return value
 
     @field_validator("database_url")
     @classmethod
@@ -106,9 +114,9 @@ class PaperTradingConfig(BaseModel):
         import os
 
         data: dict[str, object] = {
-            "database_url": os.environ.get(
+            "database_url": resolve_database_url_from_env(
                 "PAPER_TRADING_DATABASE_URL",
-                "postgresql://postgres:postgres@localhost:5432/paper_trading_test",
+                default="postgresql://postgres:postgres@localhost:5432/paper_trading_test",
             ),
             "paper_initial_equity": Decimal(
                 os.environ.get("PAPER_INITIAL_EQUITY", "100000")

@@ -7,8 +7,13 @@ import sys
 
 from sqlalchemy import create_engine, inspect, text
 
-URL = os.environ.get("PAPER_TRADING_DATABASE_URL")
-if not URL:
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "services"))
+
+from paper_trading.database_url import resolve_database_url_from_env
+
+try:
+    URL = resolve_database_url_from_env("PAPER_TRADING_DATABASE_URL")
+except ValueError:
     print("PAPER_TRADING_DATABASE_URL not set", file=sys.stderr)
     sys.exit(1)
 
