@@ -32,8 +32,9 @@ async def test_live_public_data_soak() -> None:
     from paper_trading.scheduler import SchedulerJobName
     from paper_trading.service_config import PaperServiceConfig
     from paper_trading.soak_window import (
-        capture_soak_started_at,
-        list_failed_market_event_runs_since,
+        complete_soak_run,
+        create_soak_run,
+        list_failed_market_event_runs_for_soak,
         unexpected_failed_market_event_runs,
     )
 
@@ -52,7 +53,7 @@ async def test_live_public_data_soak() -> None:
     command.upgrade(alembic_cfg, "head")
 
     prep_engine = create_engine(db_url, pool_pre_ping=True)
-    soak_started_at = capture_soak_started_at(prep_engine)
+    soak_run_id = create_soak_run(prep_engine)
     try:
         with prep_engine.connect() as conn:
             db_name = conn.execute(text("SELECT current_database()")).scalar_one()
@@ -69,7 +70,11 @@ async def test_live_public_data_soak() -> None:
         prep_engine.dispose()
 
     config = PaperServiceConfig.from_env(database_url=db_url)
-    app = PaperTradingApplication(config=config, alembic_config=alembic_cfg)
+    app = PaperTradingApplication(
+        config=config,
+        alembic_config=alembic_cfg,
+        active_soak_run_id=soak_run_id,
+    )
     md_runtime: HyperliquidMarketDataRuntime | None = None
     started_at = time.monotonic()
 
@@ -143,9 +148,9 @@ async def test_live_public_data_soak() -> None:
             running = conn.execute(
                 text("SELECT COUNT(*) FROM scheduler_runs WHERE status = 'RUNNING'")
             ).scalar_one()
-            failed_market_events = list_failed_market_event_runs_since(
+            failed_market_events = list_failed_market_event_runs_for_soak(
                 conn,
-                soak_started_at=soak_started_at,
+                soak_run_id=soak_run_id,
             )
         assert running == 0
 
@@ -160,6 +165,8 @@ async def test_live_public_data_soak() -> None:
         )
         for _job_name, error in failed_market_events:
             assert error is None or "missing open context" not in error.lower()
+
+        complete_soak_run(verify_engine, soak_run_id)
 
         lock = PostgresAdvisoryLock(verify_engine, config.advisory_lock_id)
         assert lock.try_acquire()

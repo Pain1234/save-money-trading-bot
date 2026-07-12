@@ -168,6 +168,9 @@ def test_queue_overflow_processes_partial_batch() -> None:
     repo.get_scheduler_run.side_effect = get_scheduler_run
     repo.insert_or_get_scheduler_run.side_effect = insert_or_get_scheduler_run
     repo.complete_scheduler_run.side_effect = complete_scheduler_run
+    from tests.paper_trading.bridge_test_helpers import wire_fairness_repo_mock
+
+    wire_fairness_repo_mock(repo)
     candle_repo = InMemoryCandleRepository()
     candle_repo.upsert(
         _daily("BTC", utc_dt(2024, 1, 16), is_closed=False, low="95")

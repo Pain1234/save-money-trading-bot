@@ -340,12 +340,27 @@ class SchedulerRunRow(Base):
         ForeignKey("scheduler_runs.run_id"),
         nullable=True,
     )
+    soak_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("soak_runs.soak_run_id"),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("job_name", "scheduled_for", name="uq_scheduler_job_scheduled_for"),
         Index("ix_scheduler_runs_running", "status", "started_at"),
         Index("ix_scheduler_runs_recovery_of", "recovery_of_run_id"),
+        Index("ix_scheduler_runs_soak_run_id", "soak_run_id"),
     )
+
+
+class SoakRunRow(Base):
+    __tablename__ = "soak_runs"
+
+    soak_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'ACTIVE'"))
 
 
 FAIRNESS_CURSOR_SINGLETON_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")

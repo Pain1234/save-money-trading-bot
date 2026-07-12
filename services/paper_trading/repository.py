@@ -82,10 +82,14 @@ class PaperTradingRepository:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._active_soak_run_id: UUID | None = None
 
     @property
     def session(self) -> Session:
         return self._session
+
+    def set_active_soak_run_id(self, soak_run_id: UUID | None) -> None:
+        self._active_soak_run_id = soak_run_id
 
     def get_runtime_state(self) -> RuntimeState | None:
         row = self._session.get(RuntimeStateRow, RUNTIME_SINGLETON_ID)
@@ -391,6 +395,9 @@ class PaperTradingRepository:
         return funding_row_to_domain(existing), False
 
     def insert_or_get_scheduler_run(self, row: SchedulerRunRow) -> tuple[SchedulerRun, bool]:
+        soak_run_id = (
+            row.soak_run_id if row.soak_run_id is not None else self._active_soak_run_id
+        )
         stmt = (
             pg_insert(SchedulerRunRow)
             .values(
@@ -404,6 +411,7 @@ class PaperTradingRepository:
                 idempotency_key=row.idempotency_key,
                 recovery_of_run_id=row.recovery_of_run_id,
                 resolved_by_run_id=row.resolved_by_run_id,
+                soak_run_id=soak_run_id,
             )
             .on_conflict_do_nothing(
                 index_elements=[SchedulerRunRow.job_name, SchedulerRunRow.scheduled_for]

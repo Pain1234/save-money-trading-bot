@@ -233,7 +233,8 @@ def _reset_inmemory_lock() -> Iterator[None]:
 
 @pytest.fixture
 def clean_production_db(migrated_engine: Engine) -> None:
-    """Clear stuck scheduler runs before production runner integration tests."""
+    """Clear stuck scheduler runs and fairness deferrals before integration tests."""
+    fairness_cursor_id = "00000000-0000-0000-0000-000000000010"
     try:
         with migrated_engine.connect() as conn:
             conn.execute(text("SET lock_timeout = '1s'"))
@@ -243,6 +244,15 @@ def clean_production_db(migrated_engine: Engine) -> None:
                     "UPDATE scheduler_runs SET status = 'FAILED', error = 'test_cleanup' "
                     "WHERE status = 'RUNNING'"
                 )
+            )
+            conn.execute(text("DELETE FROM market_event_group_state"))
+            conn.execute(
+                text(
+                    "UPDATE market_event_fairness_cursor "
+                    "SET group_rotation_cursor = 0, updated_at = clock_timestamp() "
+                    "WHERE cursor_id = :cursor_id"
+                ),
+                {"cursor_id": fairness_cursor_id},
             )
             conn.commit()
     except Exception:

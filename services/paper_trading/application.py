@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
+from uuid import UUID
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -96,6 +97,7 @@ class PaperTradingApplication:
     market_data_runtime: MarketDataRuntime | None = None
     constraints_provider: SymbolConstraintsProvider | None = None
     alembic_config: Config | None = None
+    active_soak_run_id: UUID | None = None
     event_poll_interval_seconds: float = 1.0
 
     _engine: Engine | None = field(default=None, init=False)
@@ -175,6 +177,8 @@ class PaperTradingApplication:
         self._session_factory = create_session_factory(self._engine)
         self._session = self._session_factory()
         self._repo = PaperTradingRepository(self._session)
+        if self.active_soak_run_id is not None:
+            self._repo.set_active_soak_run_id(self.active_soak_run_id)
         self._runtime = RuntimeService(self._repo, clock=self.clock)
         self._advisory_lock = PostgresAdvisoryLock(self._engine, self.config.advisory_lock_id)
 

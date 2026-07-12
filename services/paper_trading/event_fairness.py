@@ -80,12 +80,15 @@ def eligible_group_keys(
     evaluation_time: datetime,
     group_states: dict[str, MarketEventGroupState],
 ) -> list[str]:
-    return [
-        key
-        for key in group_keys
-        if group_states.get(key) is None
-        or group_states[key].next_attempt_at <= evaluation_time
-    ]
+    eligible: list[str] = []
+    for key in group_keys:
+        state = group_states.get(key)
+        if not isinstance(state, MarketEventGroupState):
+            eligible.append(key)
+            continue
+        if state.next_attempt_at <= evaluation_time:
+            eligible.append(key)
+    return eligible
 
 
 def compute_retry_backoff_seconds(defer_count: int) -> int:

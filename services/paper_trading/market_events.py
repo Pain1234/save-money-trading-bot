@@ -454,13 +454,18 @@ class MarketEventBridge:
         total_candidates = len(candidates)
         grouped = group_events(cast(Sequence[FairnessEvent], candidates))
         all_group_keys = ordered_group_keys(grouped)
-        group_states = self.repository.list_market_event_group_states()
+        raw_group_states = self.repository.list_market_event_group_states()
+        group_states = (
+            raw_group_states if isinstance(raw_group_states, dict) else {}
+        )
         eligible_keys = eligible_group_keys(
             all_group_keys,
             evaluation_time=evaluation_time,
             group_states=group_states,
         )
         rotation_cursor = self.repository.get_fairness_group_rotation_cursor()
+        if not isinstance(rotation_cursor, int):
+            rotation_cursor = 0
         self._queue_overflow = total_candidates > self.max_events_per_poll
         if self._queue_overflow:
             logger.error(

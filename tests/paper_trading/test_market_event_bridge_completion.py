@@ -24,6 +24,7 @@ from paper_trading.market_events import (
 from paper_trading.models import SchedulerRun
 from paper_trading.scheduler import SchedulerJobName
 
+from tests.paper_trading.bridge_test_helpers import wire_fairness_repo_mock
 from tests.paper_trading.conftest_execution import utc_dt
 
 
@@ -73,6 +74,7 @@ def _build_bridge(
     clock: FixedClock,
     scheduler: MagicMock | None = None,
 ) -> MarketEventBridge:
+    wire_fairness_repo_mock(repo)
     scheduler = scheduler or MagicMock()
     context_builder = MagicMock()
     context_builder.build_evaluation_context.return_value = {"symbols": {}}
@@ -162,6 +164,7 @@ def test_replay_completed_event_returns_completed_without_rerun() -> None:
 
 def test_missing_context_returns_deferred_outcome() -> None:
     repo = MagicMock()
+    wire_fairness_repo_mock(repo)
     repo.get_scheduler_run.return_value = None
     repo.insert_or_get_scheduler_run.return_value = (
         SchedulerRunRow(

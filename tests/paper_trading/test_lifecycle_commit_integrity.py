@@ -30,6 +30,7 @@ from paper_trading.scheduler import JobRunOutcome, SchedulerJobName
 from paper_trading.scheduler_context import ProductionContextBuilder
 from sqlalchemy.orm import sessionmaker
 
+from tests.paper_trading.bridge_test_helpers import wire_fairness_repo_mock
 from tests.paper_trading.conftest import _postgres_url, requires_postgres
 from tests.paper_trading.conftest_execution import utc_dt
 from tests.paper_trading.e2e.helpers import build_breakout_historical_bundle
@@ -351,6 +352,7 @@ async def test_advisory_lock_loss_defers_open_subjob(
     assert gap_run is None or gap_run.status != SchedulerRunStatus.COMPLETED
 
     bridge.scheduler.run_daily_open_gap_stop = real_gap  # type: ignore[method-assign]
+    clock.advance_to(clock.now() + timedelta(seconds=2))
     success = _poll(bridge, clock.now())
     _commit_and_ack(bridge, repo, success)
     assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 1
@@ -377,6 +379,7 @@ def test_scheduler_not_ready_is_deferred() -> None:
     )
     repo = MagicMock()
     repo.get_scheduler_run.return_value = None
+    wire_fairness_repo_mock(repo)
     repo.insert_or_get_scheduler_run.return_value = (
         SchedulerRunRow(
             run_id=__import__("uuid").uuid4(),
@@ -602,6 +605,7 @@ async def test_daily_close_lock_loss_deferred(
     assert len(repo.list_evaluations(limit=10)) == 0
 
     bridge.scheduler.run_daily_close_sequence = real_close  # type: ignore[method-assign]
+    clock.advance_to(clock.now() + timedelta(seconds=2))
     success = _poll(bridge, clock.now())
     _commit_and_ack(bridge, repo, success)
     assert len(repo.list_evaluations(limit=10)) >= 1

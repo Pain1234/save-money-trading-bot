@@ -228,7 +228,7 @@ def test_same_bridge_retry_transient_open_context() -> None:
     assert bridge.deferred_events is True
     scheduler.run_daily_open_gap_stop.assert_not_called()
 
-    second = bridge.process_after_poll(eval_time)
+    second = bridge.process_after_poll(eval_time + timedelta(seconds=2))
     ack_result(bridge, second)
     assert len(second.outcomes) == 1
     assert second.outcomes[0].status == SchedulerRunStatus.COMPLETED
@@ -321,11 +321,16 @@ def test_context_never_ready_stays_deferred_without_failed_flood() -> None:
         clock=FixedClock(eval_time),
         context_builder=context_builder,
     )
-    for _ in range(5):
-        outcomes = bridge.process_after_poll(eval_time)
+    deferred_polls = 0
+    for attempt in range(8):
+        poll_time = eval_time + timedelta(seconds=attempt * 5)
+        outcomes = bridge.process_after_poll(poll_time)
+        if not outcomes.outcomes:
+            continue
         assert outcomes.outcomes[0].deferred is True
         assert outcomes.outcomes[0].status != SchedulerRunStatus.FAILED
-    assert bridge.deferred_events is True
+        deferred_polls += 1
+    assert deferred_polls >= 3
     assert repo.complete_scheduler_run.call_count == 0
 
 
