@@ -52,6 +52,7 @@ from paper_trading.mappers import (
     stop_event_row_to_domain,
     wallet_row_to_domain,
 )
+from paper_trading.market_event_errors import is_retryable_market_event_error
 from paper_trading.models import (
     AuditEvent,
     FundingEventRecord,
@@ -585,16 +586,44 @@ class PaperTradingRepository:
         return len(count)
 
     def get_active_recovery_attempt(self, original_run_id: UUID) -> SchedulerRun | None:
-        row = self._session.execute(
+        rows = self._session.execute(
             select(SchedulerRunRow)
             .where(
                 SchedulerRunRow.recovery_of_run_id == original_run_id,
-                SchedulerRunRow.status == SchedulerRunStatus.RUNNING.value,
             )
             .order_by(SchedulerRunRow.started_at.desc())
-            .limit(1)
-        ).scalar_one_or_none()
-        return scheduler_row_to_domain(row) if row else None
+        ).scalars()
+        for row in rows:
+            if row.status == SchedulerRunStatus.RUNNING.value:
+                return scheduler_row_to_domain(row)
+            if (
+                row.status == SchedulerRunStatus.SKIPPED.value
+                and is_retryable_market_event_error(row.error)
+            ):
+                return scheduler_row_to_domain(row)
+        return None
+
+    def reactivate_scheduler_run(
+        self,
+        *,
+        job_name: str,
+        scheduled_for: datetime,
+        started_at: datetime,
+    ) -> None:
+        self._session.execute(
+            update(SchedulerRunRow)
+            .where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+            )
+            .values(
+                status=SchedulerRunStatus.RUNNING.value,
+                error=None,
+                started_at=started_at,
+                completed_at=None,
+            )
+        )
+        self._session.flush()
 
     def create_recovery_attempt(
         self,

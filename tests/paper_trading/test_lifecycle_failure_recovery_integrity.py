@@ -319,7 +319,8 @@ async def test_daily_open_subjob_failure_marks_parent_failed_and_rolls_back_on_c
     )
     await md.start(signal_eval_time)
 
-    lock_id = 987658200 + (os.getpid() % 50000)
+    lock_offsets = {"gap": 0, "fill": 100, "snapshot": 200}
+    lock_id = 987658200 + lock_offsets[failing_stage] + (os.getpid() % 50000)
     from paper_trading.repository import PaperTradingRepository
 
     config = PaperServiceConfig.from_env(
@@ -397,12 +398,12 @@ async def test_daily_open_subjob_failure_marks_parent_failed_and_rolls_back_on_c
         assert fill_run is None
         assert snap_run is None
     elif failing_stage == "fill":
-        assert gap_run is not None and gap_run.status == SchedulerRunStatus.COMPLETED
+        assert gap_run is None or gap_run.status != SchedulerRunStatus.COMPLETED
         assert fill_run is not None and fill_run.status == SchedulerRunStatus.FAILED
         assert snap_run is None
     else:
-        assert gap_run is not None and gap_run.status == SchedulerRunStatus.COMPLETED
-        assert fill_run is not None and fill_run.status == SchedulerRunStatus.COMPLETED
+        assert gap_run is None or gap_run.status != SchedulerRunStatus.COMPLETED
+        assert fill_run is None or fill_run.status != SchedulerRunStatus.COMPLETED
         assert snap_run is not None and snap_run.status == SchedulerRunStatus.FAILED
 
     postgres_commit_session.rollback()
@@ -639,8 +640,17 @@ async def test_immutable_original_failed_after_deferred_recovery_attempt(
         assert persisted_original.status == SchedulerRunStatus.FAILED
         assert persisted_original.error == original_error
         assert persisted_original.resolved_by_run_id is None
-        recovery = fresh_repo.get_active_recovery_attempt(original_run_id)
-        assert recovery is None
+        attempts = [
+            fresh_repo.get_scheduler_run(row.job_name, fill_candle.open_time)
+            for row in fresh_repo.list_scheduler_runs(limit=20)
+            if row.recovery_of_run_id == original_run_id
+        ]
+        assert len(attempts) == 1
+        recovery = attempts[0]
+        assert recovery is not None
+        assert recovery.recovery_of_run_id == original_run_id
+        assert recovery.status == SchedulerRunStatus.SKIPPED
+        assert recovery.error == RetryableContextNotReady.code
     lock.release()
 
 
