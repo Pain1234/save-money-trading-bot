@@ -6,6 +6,7 @@ import math
 from decimal import Decimal
 
 from strategy_engine.models import ReasonCode, SignalIntentKind
+from trading_constraints.validation import validate_symbol_constraints_core
 
 from risk_engine.constants import (
     DEFAULT_MAX_LEVERAGE,
@@ -54,20 +55,14 @@ def validate_account(account: AccountState) -> RiskError | None:
 
 
 def validate_constraints(constraints: SymbolConstraints) -> RiskError | None:
-    for name, val in (
-        ("quantity_step", constraints.quantity_step),
-        ("minimum_quantity", constraints.minimum_quantity),
-        ("minimum_notional", constraints.minimum_notional),
-        ("price_tick_size", constraints.price_tick_size),
-    ):
-        invalid = val < 0 if name == "minimum_notional" else val <= 0
-        if not _is_finite(val) or invalid:
-            return RiskError(
-                code=ReasonCode.RC_REJECT_DATA,
-                message=f"Invalid {name}",
-                details={name: str(val)},
-            )
-    return None
+    violation = validate_symbol_constraints_core(constraints)
+    if violation is None:
+        return None
+    return RiskError(
+        code=ReasonCode.RC_REJECT_DATA,
+        message=violation.message,
+        details={"field": violation.field, "code": violation.code},
+    )
 
 
 def validate_parameters(params: RiskParameters) -> RiskError | None:

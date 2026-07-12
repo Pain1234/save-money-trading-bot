@@ -25,6 +25,7 @@ from risk_engine.engine import RiskEngine
 from risk_engine.models import RiskParameters, SymbolConstraints
 from sqlalchemy import select
 from strategy_engine.models import Candle, StrategyParameters, TrailingStopState
+from trading_constraints.validation import validate_symbol_constraints_core
 
 from paper_trading.accounting import paper_position_to_simulated
 from paper_trading.db.orm import PaperFillRow, PaperOrderRow, PaperPositionRow, TradeIntentRow
@@ -108,8 +109,11 @@ class MissingSymbolConstraintsError(ValueError):
 def validate_symbol_constraints(constraints: SymbolConstraints | None) -> SymbolConstraints:
     if constraints is None:
         raise MissingSymbolConstraintsError("SymbolConstraints must be explicitly provided")
-    if constraints.quantity_step <= 0 or constraints.price_tick_size <= 0:
-        raise MissingSymbolConstraintsError("Invalid SymbolConstraints: step and tick must be > 0")
+    violation = validate_symbol_constraints_core(constraints)
+    if violation is not None:
+        raise MissingSymbolConstraintsError(
+            f"Invalid SymbolConstraints: {violation.message}"
+        )
     return constraints
 
 
