@@ -61,7 +61,7 @@ def _build_bridge(
         config=config,
         constraints=constraints,
         clock=clock,
-        market_data_ready=True,
+        market_data_ready=lambda: md.status(clock.now()).readiness,
     )
     return MarketEventBridge(
         repository=repo,

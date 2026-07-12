@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 
@@ -42,8 +43,10 @@ class ProductionContextBuilder:
         strategy_params: StrategyParameters | None = None,
         risk_params: RiskParameters | None = None,
         execution_config: PaperExecutionConfig | None = None,
-        market_data_ready: bool = True,
+        market_data_ready: Callable[[], bool] | None = None,
     ) -> None:
+        if market_data_ready is None:
+            raise ValueError("market_data_ready source is required")
         self._market_data = market_data
         self._repo = repository
         self._config = config
@@ -103,7 +106,7 @@ class ProductionContextBuilder:
             self._repo,
             symbol=symbol,
             entry_ready=entry_ready,
-            market_data_ready=self._market_data_ready,
+            market_data_ready=self._market_data_ready(),
             runtime_paused=paused,
             runtime_kill_switch=kill,
         )
