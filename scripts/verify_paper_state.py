@@ -12,15 +12,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services"))
-sys.path.insert(0, str(ROOT))
 
 from paper_trading.accounting_verification import verify_accounting_independent
 from paper_trading.database_url import resolve_database_url_from_env
 from paper_trading.repository import PaperTradingRepository
+from paper_trading.state_verification import assert_state_invariants
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
-
-from tests.paper_trading.soak.helpers import assert_soak_invariants
 
 INITIAL_CASH = Decimal("100000")
 
@@ -38,7 +36,7 @@ def verify(database_url: str) -> dict[str, object]:
     with Session(engine) as session:
         repo = PaperTradingRepository(session)
         try:
-            assert_soak_invariants(repo)
+            assert_state_invariants(repo)
         except AssertionError as exc:
             issues.append(str(exc))
         issues.extend(verify_accounting_independent(repo, initial_cash=INITIAL_CASH))
