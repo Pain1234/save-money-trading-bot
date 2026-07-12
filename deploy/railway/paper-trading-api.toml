@@ -1,0 +1,10 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/Dockerfile.paper-python"
+
+[deploy]
+startCommand = "deploy/scripts/start-api.sh"
+restartPolicyType = "ALWAYS"
+numReplicas = 1
+healthcheckPath = "/health"
+healthcheckTimeout = 30

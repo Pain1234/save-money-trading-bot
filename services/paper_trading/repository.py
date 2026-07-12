@@ -889,6 +889,50 @@ class PaperTradingRepository:
         ).scalars()
         return tuple(stop_event_row_to_domain(r) for r in rows)
 
+    def list_stop_events(
+        self,
+        *,
+        limit: int,
+        after_evaluation_time: datetime | None = None,
+        after_stop_event_id: UUID | None = None,
+    ) -> tuple[PositionStopEvent, ...]:
+        stmt = select(PositionStopHistoryRow).order_by(
+            PositionStopHistoryRow.evaluation_time.desc(),
+            PositionStopHistoryRow.stop_event_id.desc(),
+        )
+        if after_evaluation_time is not None and after_stop_event_id is not None:
+            stmt = stmt.where(
+                (PositionStopHistoryRow.evaluation_time < after_evaluation_time)
+                | (
+                    (PositionStopHistoryRow.evaluation_time == after_evaluation_time)
+                    & (PositionStopHistoryRow.stop_event_id < after_stop_event_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(stop_event_row_to_domain(r) for r in rows)
+
+    def list_portfolio_snapshots(
+        self,
+        *,
+        limit: int,
+        after_evaluation_time: datetime | None = None,
+        after_snapshot_id: UUID | None = None,
+    ) -> tuple[PortfolioSnapshot, ...]:
+        stmt = select(PortfolioSnapshotRow).order_by(
+            PortfolioSnapshotRow.evaluation_time.desc(),
+            PortfolioSnapshotRow.snapshot_id.desc(),
+        )
+        if after_evaluation_time is not None and after_snapshot_id is not None:
+            stmt = stmt.where(
+                (PortfolioSnapshotRow.evaluation_time < after_evaluation_time)
+                | (
+                    (PortfolioSnapshotRow.evaluation_time == after_evaluation_time)
+                    & (PortfolioSnapshotRow.snapshot_id < after_snapshot_id)
+                )
+            )
+        rows = self._session.execute(stmt.limit(limit)).scalars()
+        return tuple(snapshot_row_to_domain(r) for r in rows)
+
     def update_order_status(
         self,
         paper_order_id: UUID,

@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/Dockerfile.paper-python"
+
+[deploy]
+startCommand = "deploy/scripts/start-worker.sh"
+preDeployCommand = "deploy/scripts/pre-deploy-migrate.sh"
+restartPolicyType = "ALWAYS"
+numReplicas = 1

@@ -1,0 +1,10 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/Dockerfile.dashboard"
+
+[deploy]
+startCommand = "node server.js"
+restartPolicyType = "ALWAYS"
+numReplicas = 1
+healthcheckPath = "/login"
+healthcheckTimeout = 60
