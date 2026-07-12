@@ -367,21 +367,32 @@ class PaperTradingApplication:
             db_engine=self._engine,
             alembic_config=self._alembic_config(),
         )
-        bridge_overflow = self._event_bridge is not None and self._event_bridge.queue_overflow
+        bridge = self._event_bridge
+        bridge_overflow = bridge is not None and bridge.queue_overflow
+        bridge_backlog = bridge is not None and bridge.has_event_backlog
         snapshot = readiness.evaluate(
             market_data_ready=self.market_data_ready() and not bridge_overflow,
             advisory_lock=self._advisory_lock,
             scheduler_active=self._scheduler is not None and self._scheduler.jobs_enabled,
         )
+        runtime_ready = snapshot.runtime_readiness and not bridge_backlog
         state = self._runtime.get_state()
-        if snapshot.runtime_readiness and state.status in {
+        if runtime_ready and state.status in {
             RuntimeStatus.RECOVERING,
             RuntimeStatus.DEGRADED,
             RuntimeStatus.STARTING,
         }:
             self._runtime.transition(RuntimeStatus.READY, last_error="")
-        elif not snapshot.runtime_readiness and state.status == RuntimeStatus.READY:
-            reason = ",".join(snapshot.reasons) or self._last_loop_error or "not_ready"
+        elif not runtime_ready and state.status == RuntimeStatus.READY:
+            if bridge_backlog:
+                if bridge is not None and bridge.deferred_events:
+                    reason = "deferred_market_events"
+                elif bridge_overflow:
+                    reason = "event_queue_overflow"
+                else:
+                    reason = "event_backlog"
+            else:
+                reason = ",".join(snapshot.reasons) or self._last_loop_error or "not_ready"
             self._runtime.transition(RuntimeStatus.DEGRADED, last_error=reason)
 
     async def _heartbeat_loop(self) -> None:
@@ -415,6 +426,8 @@ class PaperTradingApplication:
                     if self._advisory_lock.held and self.market_data_ready():
                         outcomes = self._event_bridge.process_after_poll(evaluation_time)
                         for outcome in outcomes:
+                            if outcome.deferred or outcome.retryable:
+                                continue
                             if outcome.status.name == "FAILED":
                                 self._last_loop_error = outcome.error
                         self._repo.session.commit()
