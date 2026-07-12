@@ -348,12 +348,49 @@ class MarketEventDetector:
 def _sort_market_events(events: list[MarketEvent]) -> list[MarketEvent]:
     return sorted(
         events,
-        key=lambda event: (
-            _SYMBOL_ORDER.get(event.symbol, 99),
-            _EVENT_ORDER.get(event.event_type.value, 99),
-            event.candle_open_time,
-        ),
+        key=_market_event_sort_key,
     )
+
+
+def _market_event_sort_key(event: MarketEvent) -> tuple[int, int, datetime]:
+    return (
+        _SYMBOL_ORDER.get(event.symbol, 99),
+        _EVENT_ORDER.get(event.event_type.value, 99),
+        event.candle_open_time,
+    )
+
+
+def _select_fair_candidate_batch(
+    candidates: list[MarketEvent],
+    *,
+    max_events_per_poll: int,
+    fairness_cursor: int,
+) -> tuple[list[MarketEvent], int, bool]:
+    """Rotate batch start so persistently deferred head events cannot starve tail."""
+    total = len(candidates)
+    if total == 0:
+        return [], fairness_cursor, False
+    if total <= max_events_per_poll:
+        return candidates, fairness_cursor, False
+
+    start = fairness_cursor % total
+    batch = [candidates[(start + offset) % total] for offset in range(max_events_per_poll)]
+    return batch, start, True
+
+
+def _advance_fairness_cursor(
+    *,
+    cursor: int,
+    candidate_count: int,
+    batch_size: int,
+    had_overflow: bool,
+    outcomes: tuple[EventProcessOutcome, ...],
+) -> int:
+    if not had_overflow or candidate_count == 0:
+        return cursor
+    if any(outcome.deferred or outcome.retryable for outcome in outcomes):
+        return (cursor + 1) % candidate_count
+    return (cursor + batch_size) % candidate_count
 
 
 @dataclass
@@ -373,6 +410,7 @@ class MarketEventBridge:
     _queue_overflow: bool = field(default=False, init=False)
     _deferred_events: bool = field(default=False, init=False)
     _recovery_pending: set[tuple[str, datetime]] = field(default_factory=set, init=False)
+    _fairness_cursor: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         if self.detector is None:
@@ -413,13 +451,18 @@ class MarketEventBridge:
         )
         candidates = _sort_market_events(candidates)
         total_candidates = len(candidates)
-        self._queue_overflow = total_candidates > self.max_events_per_poll
+        batch, _start, overflow = _select_fair_candidate_batch(
+            candidates,
+            max_events_per_poll=self.max_events_per_poll,
+            fairness_cursor=self._fairness_cursor,
+        )
+        self._queue_overflow = overflow or total_candidates > self.max_events_per_poll
         if self._queue_overflow:
             logger.error(
                 "market_event_queue_overflow",
                 extra={"count": total_candidates, "max": self.max_events_per_poll},
             )
-            candidates = candidates[: self.max_events_per_poll]
+        candidates = batch
 
         outcomes: list[EventProcessOutcome] = []
         events_to_ack: list[MarketEvent] = []
@@ -436,6 +479,13 @@ class MarketEventBridge:
             if outcome.status == SchedulerRunStatus.FAILED and not outcome.deferred:
                 permanent_failures.append(outcome)
             outcomes.append(outcome)
+        self._fairness_cursor = _advance_fairness_cursor(
+            cursor=self._fairness_cursor,
+            candidate_count=total_candidates,
+            batch_size=len(candidates),
+            had_overflow=self._queue_overflow,
+            outcomes=tuple(outcomes),
+        )
         return BridgePollResult(
             outcomes=tuple(outcomes),
             events_to_ack=tuple(events_to_ack),

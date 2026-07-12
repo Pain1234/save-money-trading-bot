@@ -31,6 +31,11 @@ async def test_live_public_data_soak() -> None:
     from paper_trading.lock import PostgresAdvisoryLock
     from paper_trading.scheduler import SchedulerJobName
     from paper_trading.service_config import PaperServiceConfig
+    from paper_trading.soak_window import (
+        capture_soak_started_at,
+        list_failed_market_event_runs_since,
+        unexpected_failed_market_event_runs,
+    )
 
     from scripts.verify_paper_state import verify
 
@@ -38,18 +43,21 @@ async def test_live_public_data_soak() -> None:
     if not db_url:
         pytest.skip("PAPER_TRADING_DATABASE_URL required for live soak")
 
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    alembic_cfg = Config(os.path.join(root, "alembic.ini"))
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    from alembic import command
+
+    command.upgrade(alembic_cfg, "head")
+
     prep_engine = create_engine(db_url, pool_pre_ping=True)
+    soak_started_at = capture_soak_started_at(prep_engine)
     try:
         with prep_engine.connect() as conn:
             db_name = conn.execute(text("SELECT current_database()")).scalar_one()
             if db_name != "paper_trading_test":
                 pytest.skip("live soak prep requires paper_trading_test database")
-            conn.execute(
-                text(
-                    "UPDATE scheduler_runs SET status = 'FAILED', error = 'live_soak_prep' "
-                    "WHERE status = 'RUNNING'"
-                )
-            )
             conn.execute(
                 text(
                     "UPDATE runtime_state SET status = 'STOPPED' "
@@ -59,10 +67,6 @@ async def test_live_public_data_soak() -> None:
             conn.commit()
     finally:
         prep_engine.dispose()
-
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-    alembic_cfg = Config(os.path.join(root, "alembic.ini"))
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
     config = PaperServiceConfig.from_env(database_url=db_url)
     app = PaperTradingApplication(config=config, alembic_config=alembic_cfg)
@@ -139,31 +143,19 @@ async def test_live_public_data_soak() -> None:
             running = conn.execute(
                 text("SELECT COUNT(*) FROM scheduler_runs WHERE status = 'RUNNING'")
             ).scalar_one()
-            failed_market_events = conn.execute(
-                text(
-                    """
-                    SELECT job_name, error
-                    FROM scheduler_runs
-                    WHERE status = 'FAILED'
-                      AND (
-                        job_name LIKE 'me:do:%'
-                        OR job_name LIKE 'me:dl:%'
-                        OR job_name LIKE 'me:dc:%'
-                      )
-                    ORDER BY job_name
-                    """
-                )
-            ).fetchall()
+            failed_market_events = list_failed_market_event_runs_since(
+                conn,
+                soak_started_at=soak_started_at,
+            )
         assert running == 0
 
         allowed_failed_market_events: set[tuple[str, str | None]] = set()
-        unexpected_failed = [
-            (row[0], row[1])
-            for row in failed_market_events
-            if (row[0], row[1]) not in allowed_failed_market_events
-        ]
+        unexpected_failed = unexpected_failed_market_event_runs(
+            failed_market_events,
+            allowed=allowed_failed_market_events,
+        )
         assert not unexpected_failed, (
-            "unexpected FAILED market event scheduler runs: "
+            "unexpected FAILED market event scheduler runs in current soak window: "
             f"{unexpected_failed!r}"
         )
         for _job_name, error in failed_market_events:

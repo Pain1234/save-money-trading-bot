@@ -221,7 +221,7 @@ def test_marker_event_creates_scheduler_run_before_complete() -> None:
         True,
     )
     completed = _completed_run("me:wc:BTC:20240115T000000Z", utc_dt(2024, 1, 15))
-    repo.get_scheduler_run.side_effect = [None, None, completed]
+    repo.get_scheduler_run.side_effect = [None, None, None, completed]
 
     candle_repo = InMemoryCandleRepository()
     candle_repo.upsert(
