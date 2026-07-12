@@ -149,6 +149,18 @@ class PaperTradingApplication:
             return self._md_runtime
         return None
 
+    @property
+    def is_started(self) -> bool:
+        return self._started
+
+    @property
+    def background_tasks(self) -> tuple[asyncio.Task[Any], ...]:
+        return tuple(self._tasks)
+
+    @property
+    def database_engine(self) -> Engine | None:
+        return self._engine
+
     def market_data_ready(self) -> bool:
         if self._md_runtime is None:
             return False
@@ -209,7 +221,7 @@ class PaperTradingApplication:
                 config=self.config,
                 constraints=self._constraints,
                 clock=self.clock,
-                market_data_ready=self.market_data_ready(),
+                market_data_ready=self.market_data_ready,
             )
             self._event_bridge = MarketEventBridge(
                 repository=self._repo,
@@ -266,8 +278,10 @@ class PaperTradingApplication:
 
         if self._session is not None:
             self._session.close()
+            self._session = None
         if self._engine is not None:
             self._engine.dispose()
+            self._engine = None
 
         if self._runtime is not None:
             state = self._runtime.get_state()

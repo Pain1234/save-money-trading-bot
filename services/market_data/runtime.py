@@ -98,6 +98,31 @@ class HyperliquidMarketDataRuntime:
         await self._http.aclose()
         self._started = False
 
+    @property
+    def meta_loaded(self) -> bool:
+        return self._meta_ok
+
+    @property
+    def backfill_complete(self) -> bool:
+        return self._backfill_ok and self._initial_backfill_done
+
+    @property
+    def is_shutdown(self) -> bool:
+        return not self._started
+
+    @property
+    def http_closed(self) -> bool:
+        return self._http.is_closed
+
+    @property
+    def websocket_disconnected(self) -> bool:
+        from market_data.models import ConnectionStatus
+
+        return self._ws.status in {
+            ConnectionStatus.DISCONNECTED,
+            ConnectionStatus.SHUTDOWN,
+        }
+
     def _record_failure(self, exc: BaseException) -> None:
         self._last_error = str(exc)
         self._meta_ok = False

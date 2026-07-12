@@ -57,6 +57,10 @@ class HyperliquidHttpClient:
         if self._owns_client:
             await self._client.aclose()
 
+    @property
+    def is_closed(self) -> bool:
+        return self._client.is_closed
+
     async def post_info(self, body: dict[str, Any], *, request_id: str | None = None) -> Any:
         async def _call() -> Any:
             async with self._limiter.acquire():
