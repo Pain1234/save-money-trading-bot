@@ -28,7 +28,8 @@ async def test_runner_startup_shutdown_with_fake_market_data(
     await app.start()
     runtime = app.repository.get_runtime_state()
     assert runtime is not None
-    assert runtime.status in {RuntimeStatus.READY, RuntimeStatus.DEGRADED}
+    assert runtime.status == RuntimeStatus.READY
+    assert not runtime.last_error
     assert app.advisory_lock.held is True
     assert app.market_data_ready() is True
 

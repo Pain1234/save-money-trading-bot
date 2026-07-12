@@ -27,6 +27,7 @@ from paper_trading.lock import PostgresAdvisoryLock
 from paper_trading.market_events import MarketEventBridge
 from paper_trading.orchestrator import PaperTradingOrchestrator
 from paper_trading.readiness import ReadinessService
+from paper_trading.recovery import RecoveryService
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.runtime import RuntimeService
 from paper_trading.scheduler import PaperTradingScheduler, SchedulerJobName
@@ -250,8 +251,8 @@ class PaperTradingApplication:
         self._tasks.append(asyncio.create_task(self._heartbeat_loop(), name="paper-heartbeat"))
         self._tasks.append(asyncio.create_task(self._scheduler_loop(), name="paper-scheduler"))
 
-        self._update_runtime_readiness()
         self._runtime.heartbeat()
+        self._update_runtime_readiness()
         self._started = True
         logger.info("paper_trading_application_started")
 
@@ -398,19 +399,44 @@ class PaperTradingApplication:
         bridge_overflow = bridge is not None and bridge.queue_overflow
         bridge_backlog = bridge is not None and bridge.has_event_backlog
         bridge_permanent = bridge is not None and bridge.has_permanent_failures
-        snapshot = readiness.evaluate(
-            market_data_ready=self.market_data_ready() and not bridge_overflow,
+        market_data_ok = self.market_data_ready() and not bridge_overflow
+        scheduler_active = self._scheduler is not None and self._scheduler.jobs_enabled
+        recovery_active = RecoveryService.is_recovery_active()
+
+        promotion = readiness.evaluate_ready_promotion(
+            market_data_ready=market_data_ok,
             advisory_lock=self._advisory_lock,
-            scheduler_active=self._scheduler is not None and self._scheduler.jobs_enabled,
+            scheduler_active=scheduler_active,
+            recovery_active=recovery_active,
+        )
+        snapshot = readiness.evaluate(
+            market_data_ready=market_data_ok,
+            advisory_lock=self._advisory_lock,
+            scheduler_active=scheduler_active,
+            recovery_active=recovery_active,
         )
         runtime_ready = snapshot.runtime_readiness and not bridge_backlog
+        promotion_ready = promotion.ready and not bridge_backlog and not bridge_permanent
         state = self._runtime.get_state()
-        if runtime_ready and not bridge_permanent and state.status in {
+        promotable_statuses = {
             RuntimeStatus.RECOVERING,
             RuntimeStatus.DEGRADED,
             RuntimeStatus.STARTING,
-        }:
+            RuntimeStatus.SYNCING,
+        }
+        if promotion_ready and state.status in promotable_statuses:
             self._runtime.transition(RuntimeStatus.READY, last_error="")
+        elif state.status == RuntimeStatus.DEGRADED and not promotion_ready:
+            reason = self._readiness_failure_reason(
+                promotion.reasons,
+                snapshot.reasons,
+                bridge_permanent=bridge_permanent,
+                bridge_backlog=bridge_backlog,
+                bridge=bridge,
+                bridge_overflow=bridge_overflow,
+            )
+            if reason and state.last_error != reason:
+                self._runtime.transition(RuntimeStatus.DEGRADED, last_error=reason)
         elif (not runtime_ready or bridge_permanent) and state.status == RuntimeStatus.READY:
             if bridge_permanent:
                 reason = "permanent_configuration_failure"
@@ -424,6 +450,30 @@ class PaperTradingApplication:
             else:
                 reason = ",".join(snapshot.reasons) or self._last_loop_error or "not_ready"
             self._runtime.transition(RuntimeStatus.DEGRADED, last_error=reason)
+
+    def _readiness_failure_reason(
+        self,
+        promotion_reasons: tuple[str, ...],
+        evaluate_reasons: tuple[str, ...],
+        *,
+        bridge_permanent: bool,
+        bridge_backlog: bool,
+        bridge: MarketEventBridge | None,
+        bridge_overflow: bool,
+    ) -> str:
+        if bridge_permanent:
+            return "permanent_configuration_failure"
+        if bridge_backlog:
+            if bridge is not None and bridge.deferred_events:
+                return "deferred_market_events"
+            if bridge_overflow:
+                return "event_queue_overflow"
+            return "event_backlog"
+        if promotion_reasons:
+            return ",".join(promotion_reasons)
+        if evaluate_reasons:
+            return ",".join(evaluate_reasons)
+        return self._last_loop_error or "not_ready"
 
     async def _heartbeat_loop(self) -> None:
         assert self._scheduler is not None

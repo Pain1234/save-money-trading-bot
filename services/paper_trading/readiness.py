@@ -26,6 +26,24 @@ class ReadinessSnapshot:
     reasons: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class PromotionReadinessSnapshot:
+    """Operational readiness for promoting STARTING/RECOVERING/SYNCING/DEGRADED -> READY."""
+
+    ready: bool
+    reasons: tuple[str, ...]
+
+
+_PROMOTABLE_RUNTIME_STATUSES = frozenset(
+    {
+        RuntimeStatus.STARTING,
+        RuntimeStatus.RECOVERING,
+        RuntimeStatus.SYNCING,
+        RuntimeStatus.DEGRADED,
+    }
+)
+
+
 class ReadinessService:
     """Evaluate liveness, runtime readiness, and entry readiness separately."""
 
@@ -74,6 +92,38 @@ class ReadinessService:
             reasons=tuple(reasons),
         )
 
+    def evaluate_ready_promotion(
+        self,
+        *,
+        market_data_ready: bool,
+        advisory_lock: AdvisoryLock | None = None,
+        scheduler_active: bool = False,
+        recovery_active: bool = False,
+    ) -> PromotionReadinessSnapshot:
+        """Check whether a non-READY runtime may be promoted to READY.
+
+        Unlike ``evaluate()``, this does not require ``runtime.status == READY`` or
+        an empty ``last_error`` — only operational prerequisites for promotion.
+        """
+        reasons: list[str] = []
+        runtime = self._repo.get_runtime_state()
+        if runtime is None:
+            return PromotionReadinessSnapshot(False, ("runtime_state_missing",))
+
+        if runtime.status not in _PROMOTABLE_RUNTIME_STATUSES:
+            reasons.append("runtime_not_promotable")
+            return PromotionReadinessSnapshot(False, tuple(reasons))
+
+        ready = self._operational_readiness(
+            runtime,
+            market_data_ready=market_data_ready,
+            advisory_lock=advisory_lock,
+            scheduler_active=scheduler_active,
+            recovery_active=recovery_active,
+            reasons=reasons,
+        )
+        return PromotionReadinessSnapshot(ready, tuple(reasons))
+
     def _process_liveness(self, runtime: RuntimeState, reasons: list[str]) -> bool:
         if runtime.status in {RuntimeStatus.FAILED, RuntimeStatus.STOPPED}:
             reasons.append("runtime_not_live")
@@ -90,10 +140,33 @@ class ReadinessService:
         recovery_active: bool,
         reasons: list[str],
     ) -> bool:
-        ok = True
+        ok = self._operational_readiness(
+            runtime,
+            market_data_ready=market_data_ready,
+            advisory_lock=advisory_lock,
+            scheduler_active=scheduler_active,
+            recovery_active=recovery_active,
+            reasons=reasons,
+        )
         if runtime.status != RuntimeStatus.READY:
             reasons.append("runtime_not_ready")
             ok = False
+        if runtime.last_error:
+            reasons.append("last_error_set")
+            ok = False
+        return ok
+
+    def _operational_readiness(
+        self,
+        runtime: RuntimeState,
+        *,
+        market_data_ready: bool,
+        advisory_lock: AdvisoryLock | None,
+        scheduler_active: bool,
+        recovery_active: bool,
+        reasons: list[str],
+    ) -> bool:
+        ok = True
         if not market_data_ready:
             reasons.append("market_data_not_ready")
             ok = False
@@ -106,9 +179,6 @@ class ReadinessService:
             ok = False
         if self._config.scheduler_enabled and not scheduler_active:
             reasons.append("scheduler_not_active")
-            ok = False
-        if runtime.last_error:
-            reasons.append("last_error_set")
             ok = False
         if recovery_active:
             reasons.append("recovery_active")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -12,15 +13,14 @@ from paper_trading.enums import RuntimeStatus
 from paper_trading.models import PaperWalletState, RuntimeState
 from paper_trading.readonly_api import app
 
-from tests.paper_trading.conftest_execution import utc_dt
-
 
 @pytest.fixture
 def readonly_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    now = datetime.now(UTC)
     runtime = RuntimeState(
         instance_id=uuid4(),
         status=RuntimeStatus.READY,
-        heartbeat_at=utc_dt(2024, 1, 16),
+        heartbeat_at=now,
         version=1,
     )
     wallet = PaperWalletState(
@@ -31,7 +31,7 @@ def readonly_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         total_funding=Decimal("0"),
         total_slippage=Decimal("0"),
         version=1,
-        updated_at=utc_dt(2024, 1, 16),
+        updated_at=now,
     )
 
     repo = MagicMock()
@@ -82,3 +82,13 @@ def test_readonly_wallet_no_secrets(readonly_client: TestClient) -> None:
 def test_readonly_pagination_limit(readonly_client: TestClient) -> None:
     response = readonly_client.get("/api/v1/fills?limit=200")
     assert response.status_code == 400
+
+
+def test_readonly_ready_worker_reports_full_readiness(readonly_client: TestClient) -> None:
+    body = readonly_client.get("/api/v1/status").json()
+    readiness = body["readiness"]
+    assert body["display_status"] == "READY"
+    assert readiness["market_data_ready"] is True
+    assert readiness["runtime_readiness"] is True
+    assert readiness["entry_readiness"] is True
+    assert readiness["last_error"] is None
