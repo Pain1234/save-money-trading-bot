@@ -348,6 +348,35 @@ class SchedulerRunRow(Base):
     )
 
 
+FAIRNESS_CURSOR_SINGLETON_ID = uuid.UUID("00000000-0000-0000-0000-000000000010")
+
+
+class MarketEventFairnessCursorRow(Base):
+    __tablename__ = "market_event_fairness_cursor"
+
+    cursor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    group_rotation_cursor: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MarketEventGroupStateRow(Base):
+    __tablename__ = "market_event_group_state"
+
+    group_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    group_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    defer_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("defer_count >= 0", name="ck_market_event_group_defer_count"),
+        Index("ix_market_event_group_state_next_attempt", "next_attempt_at"),
+    )
+
+
 class PaperWalletRow(Base):
     __tablename__ = "paper_wallet"
 

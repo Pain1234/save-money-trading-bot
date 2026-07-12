@@ -334,6 +334,7 @@ async def test_production_lifecycle_transient_open_context_retry(
         assert not first.events_to_ack
         assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 0
 
+        clock.advance_to(clock.now() + timedelta(seconds=2))
         second = poll_commit_ack(bridge, repo, clock.now())
         assert any(o.status == SchedulerRunStatus.COMPLETED for o in second.outcomes)
         assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 1

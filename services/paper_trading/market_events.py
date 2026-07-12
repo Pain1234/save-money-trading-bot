@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import cast
 from uuid import UUID, uuid4
 
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
@@ -22,6 +23,15 @@ from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import SchedulerRunRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import SchedulerRunStatus
+from paper_trading.event_fairness import (
+    FairnessEvent,
+    MarketEventGroupState,
+    advance_group_rotation_cursor,
+    eligible_group_keys,
+    group_events,
+    next_retry_at,
+    ordered_group_keys,
+)
 from paper_trading.ids import scheduler_run_key
 from paper_trading.lock import AdvisoryLock
 from paper_trading.market_event_errors import (
@@ -383,39 +393,6 @@ def _market_event_sort_key(event: MarketEvent) -> tuple[int, int, datetime]:
     )
 
 
-def _select_fair_candidate_batch(
-    candidates: list[MarketEvent],
-    *,
-    max_events_per_poll: int,
-    fairness_cursor: int,
-) -> tuple[list[MarketEvent], int, bool]:
-    """Rotate batch start so persistently deferred head events cannot starve tail."""
-    total = len(candidates)
-    if total == 0:
-        return [], fairness_cursor, False
-    if total <= max_events_per_poll:
-        return candidates, fairness_cursor, False
-
-    start = fairness_cursor % total
-    batch = [candidates[(start + offset) % total] for offset in range(max_events_per_poll)]
-    return batch, start, True
-
-
-def _advance_fairness_cursor(
-    *,
-    cursor: int,
-    candidate_count: int,
-    batch_size: int,
-    had_overflow: bool,
-    outcomes: tuple[EventProcessOutcome, ...],
-) -> int:
-    if not had_overflow or candidate_count == 0:
-        return cursor
-    if any(outcome.deferred or outcome.retryable for outcome in outcomes):
-        return (cursor + 1) % candidate_count
-    return (cursor + batch_size) % candidate_count
-
-
 @dataclass
 class MarketEventBridge:
     """Bridge Hyperliquid market data events to scheduler lifecycle jobs."""
@@ -435,7 +412,6 @@ class MarketEventBridge:
     _recovery_pending: dict[tuple[str, datetime], RecoveryContext] = field(
         default_factory=dict, init=False
     )
-    _fairness_cursor: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         if self.detector is None:
@@ -476,41 +452,79 @@ class MarketEventBridge:
         )
         candidates = _sort_market_events(candidates)
         total_candidates = len(candidates)
-        batch, _start, overflow = _select_fair_candidate_batch(
-            candidates,
-            max_events_per_poll=self.max_events_per_poll,
-            fairness_cursor=self._fairness_cursor,
+        grouped = group_events(cast(Sequence[FairnessEvent], candidates))
+        all_group_keys = ordered_group_keys(grouped)
+        group_states = self.repository.list_market_event_group_states()
+        eligible_keys = eligible_group_keys(
+            all_group_keys,
+            evaluation_time=evaluation_time,
+            group_states=group_states,
         )
-        self._queue_overflow = overflow or total_candidates > self.max_events_per_poll
+        rotation_cursor = self.repository.get_fairness_group_rotation_cursor()
+        self._queue_overflow = total_candidates > self.max_events_per_poll
         if self._queue_overflow:
             logger.error(
                 "market_event_queue_overflow",
                 extra={"count": total_candidates, "max": self.max_events_per_poll},
             )
-        candidates = batch
 
         outcomes: list[EventProcessOutcome] = []
         events_to_ack: list[MarketEvent] = []
         events_terminal_failed: list[MarketEvent] = []
         permanent_failures: list[EventProcessOutcome] = []
-        for event in candidates:
-            outcome = self._process_event(event, evaluation_time)
-            if self._should_ack(outcome):
-                events_to_ack.append(event)
-            if outcome.terminal_failed:
-                events_terminal_failed.append(event)
-            if outcome.deferred or outcome.retryable:
-                self._deferred_events = True
-            if outcome.status == SchedulerRunStatus.FAILED and not outcome.deferred:
-                permanent_failures.append(outcome)
-            outcomes.append(outcome)
-        self._fairness_cursor = _advance_fairness_cursor(
-            cursor=self._fairness_cursor,
-            candidate_count=total_candidates,
-            batch_size=len(candidates),
-            had_overflow=self._queue_overflow,
-            outcomes=tuple(outcomes),
+        processed_count = 0
+        had_deferred = False
+        groups_rotated = 0
+
+        if eligible_keys:
+            start_index = rotation_cursor % len(eligible_keys)
+            for offset in range(len(eligible_keys)):
+                if processed_count >= self.max_events_per_poll:
+                    break
+                group_key = eligible_keys[(start_index + offset) % len(eligible_keys)]
+                group_candidates = cast(list[MarketEvent], grouped[group_key])
+                groups_rotated += 1
+                group_blocked = False
+                for event in group_candidates:
+                    if processed_count >= self.max_events_per_poll:
+                        break
+                    if group_blocked:
+                        break
+                    outcome = self._process_event(event, evaluation_time)
+                    processed_count += 1
+                    if self._should_ack(outcome):
+                        events_to_ack.append(event)
+                    if outcome.terminal_failed:
+                        events_terminal_failed.append(event)
+                        self._clear_group_fairness_state(group_key)
+                    if outcome.deferred or outcome.retryable:
+                        self._deferred_events = True
+                        had_deferred = True
+                        group_blocked = True
+                        self._record_group_deferred(
+                            event=event,
+                            group_key=group_key,
+                            evaluation_time=evaluation_time,
+                            group_states=group_states,
+                        )
+                    elif outcome.status == SchedulerRunStatus.FAILED and not outcome.deferred:
+                        permanent_failures.append(outcome)
+                        self._clear_group_fairness_state(group_key)
+                    elif outcome.status == SchedulerRunStatus.COMPLETED and not outcome.deferred:
+                        self._clear_group_fairness_state(group_key)
+                    outcomes.append(outcome)
+
+        new_cursor = advance_group_rotation_cursor(
+            cursor=rotation_cursor,
+            eligible_group_count=len(eligible_keys),
+            groups_rotated=groups_rotated,
+            had_deferred=had_deferred,
         )
+        self.repository.set_fairness_group_rotation_cursor(
+            cursor=new_cursor,
+            updated_at=evaluation_time,
+        )
+
         return BridgePollResult(
             outcomes=tuple(outcomes),
             events_to_ack=tuple(events_to_ack),
@@ -518,6 +532,41 @@ class MarketEventBridge:
             deferred_events=self._deferred_events,
             permanent_failures=tuple(permanent_failures),
         )
+
+    def _record_group_deferred(
+        self,
+        *,
+        event: MarketEvent,
+        group_key: str,
+        evaluation_time: datetime,
+        group_states: dict[str, MarketEventGroupState],
+    ) -> None:
+        existing = group_states.get(group_key)
+        defer_count = (existing.defer_count + 1) if existing is not None else 1
+        retry_at = next_retry_at(
+            evaluation_time=evaluation_time,
+            defer_count=defer_count,
+        )
+        with transaction_scope(self.repository.session):
+            self.repository.upsert_market_event_group_deferred(
+                group_key=group_key,
+                event_type=event.event_type.value,
+                group_time=event.candle_open_time,
+                next_attempt_at=retry_at,
+                defer_count=defer_count,
+                updated_at=evaluation_time,
+            )
+        group_states[group_key] = MarketEventGroupState(
+            group_key=group_key,
+            event_type=event.event_type.value,
+            group_time=event.candle_open_time,
+            next_attempt_at=retry_at,
+            defer_count=defer_count,
+        )
+
+    def _clear_group_fairness_state(self, group_key: str) -> None:
+        with transaction_scope(self.repository.session):
+            self.repository.delete_market_event_group_state(group_key)
 
     def acknowledge_committed(self, events: tuple[MarketEvent, ...]) -> None:
         """Apply detector ack only after the outer session commit succeeded."""

@@ -13,9 +13,12 @@ from sqlalchemy.orm import Session
 
 from paper_trading.audit import new_audit_event
 from paper_trading.db.orm import (
+    FAIRNESS_CURSOR_SINGLETON_ID,
     RUNTIME_SINGLETON_ID,
     WALLET_SINGLETON_ID,
     FundingEventRow,
+    MarketEventFairnessCursorRow,
+    MarketEventGroupStateRow,
     PaperFillRow,
     PaperOrderRow,
     PaperPositionRow,
@@ -33,6 +36,7 @@ from paper_trading.enums import (
     SchedulerRunStatus,
     TradeIntentStatus,
 )
+from paper_trading.event_fairness import MarketEventGroupState
 from paper_trading.ids import scheduler_run_key
 from paper_trading.mappers import (
     audit_row_to_domain,
@@ -972,3 +976,78 @@ class PaperTradingRepository:
 
     def new_position_row(self, **kwargs: Any) -> PaperPositionRow:
         return PaperPositionRow(position_id=uuid4(), **kwargs)
+
+    def get_fairness_group_rotation_cursor(self) -> int:
+        row = self._session.get(MarketEventFairnessCursorRow, FAIRNESS_CURSOR_SINGLETON_ID)
+        if row is None:
+            return 0
+        return int(row.group_rotation_cursor)
+
+    def set_fairness_group_rotation_cursor(
+        self,
+        *,
+        cursor: int,
+        updated_at: datetime,
+    ) -> None:
+        row = self._session.get(MarketEventFairnessCursorRow, FAIRNESS_CURSOR_SINGLETON_ID)
+        if row is None:
+            self._session.add(
+                MarketEventFairnessCursorRow(
+                    cursor_id=FAIRNESS_CURSOR_SINGLETON_ID,
+                    group_rotation_cursor=cursor,
+                    updated_at=updated_at,
+                )
+            )
+        else:
+            row.group_rotation_cursor = cursor
+            row.updated_at = updated_at
+        self._session.flush()
+
+    def list_market_event_group_states(self) -> dict[str, MarketEventGroupState]:
+        rows = self._session.execute(select(MarketEventGroupStateRow)).scalars()
+        return {
+            row.group_key: MarketEventGroupState(
+                group_key=row.group_key,
+                event_type=row.event_type,
+                group_time=row.group_time,
+                next_attempt_at=row.next_attempt_at,
+                defer_count=row.defer_count,
+            )
+            for row in rows
+        }
+
+    def upsert_market_event_group_deferred(
+        self,
+        *,
+        group_key: str,
+        event_type: str,
+        group_time: datetime,
+        next_attempt_at: datetime,
+        defer_count: int,
+        updated_at: datetime,
+    ) -> None:
+        existing = self._session.get(MarketEventGroupStateRow, group_key)
+        if existing is None:
+            self._session.add(
+                MarketEventGroupStateRow(
+                    group_key=group_key,
+                    event_type=event_type,
+                    group_time=group_time,
+                    next_attempt_at=next_attempt_at,
+                    defer_count=defer_count,
+                    updated_at=updated_at,
+                )
+            )
+        else:
+            existing.event_type = event_type
+            existing.group_time = group_time
+            existing.next_attempt_at = next_attempt_at
+            existing.defer_count = defer_count
+            existing.updated_at = updated_at
+        self._session.flush()
+
+    def delete_market_event_group_state(self, group_key: str) -> None:
+        row = self._session.get(MarketEventGroupStateRow, group_key)
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()

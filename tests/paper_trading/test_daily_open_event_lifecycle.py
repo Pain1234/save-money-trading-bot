@@ -13,6 +13,7 @@ from market_data.timeframes import daily_close
 from paper_trading.clock import FixedClock
 from paper_trading.db.orm import SchedulerRunRow
 from paper_trading.enums import SchedulerRunStatus
+from paper_trading.event_fairness import MarketEventGroupState
 from paper_trading.market_event_errors import (
     FillNotDue,
     PermanentConfigurationFailure,
@@ -155,6 +156,39 @@ def _repo_with_subjob_tracking() -> MagicMock:
     repo.get_scheduler_run.side_effect = get_run
     repo.insert_or_get_scheduler_run.side_effect = insert_or_get
     repo.complete_scheduler_run.side_effect = complete_run
+    fairness_cursor = {"value": 0}
+    group_states: dict[str, MarketEventGroupState] = {}
+
+    repo.get_fairness_group_rotation_cursor.side_effect = lambda: fairness_cursor["value"]
+    repo.set_fairness_group_rotation_cursor.side_effect = (
+        lambda *, cursor, updated_at: fairness_cursor.update(value=cursor)
+    )
+    repo.list_market_event_group_states.side_effect = lambda: dict(group_states)
+    repo.delete_market_event_group_state.side_effect = lambda group_key: group_states.pop(
+        group_key, None
+    )
+
+    def upsert_group_deferred(
+        *,
+        group_key: str,
+        event_type: str,
+        group_time: datetime,
+        next_attempt_at: datetime,
+        defer_count: int,
+        updated_at: datetime,
+    ) -> None:
+        group_states[group_key] = MarketEventGroupState(
+            group_key=group_key,
+            event_type=event_type,
+            group_time=group_time,
+            next_attempt_at=next_attempt_at,
+            defer_count=defer_count,
+        )
+
+    repo.upsert_market_event_group_deferred.side_effect = upsert_group_deferred
+    repo.list_permanent_configuration_failures.return_value = ()
+    repo.get_running_scheduler_runs.return_value = ()
+    repo.delete_scheduler_run_if_running.return_value = False
     return repo
 
 
