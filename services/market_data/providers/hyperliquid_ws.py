@@ -177,6 +177,8 @@ class HyperliquidWebSocketFeed:
         while not self._shutdown and self._conn is not None:
             try:
                 await self._read_once()
+            except asyncio.CancelledError:
+                raise
             except HyperliquidWebSocketError as exc:
                 self._background_error = str(exc)
                 if not self._shutdown:
@@ -202,7 +204,13 @@ class HyperliquidWebSocketFeed:
                     break
             try:
                 await self._conn.send(dumps_message({"method": "ping"}))
+            except asyncio.CancelledError:
+                raise
             except HyperliquidWebSocketError as exc:
+                self._background_error = str(exc)
+                self._status = ConnectionStatus.RECONNECTING
+                break
+            except Exception as exc:
                 self._background_error = str(exc)
                 self._status = ConnectionStatus.RECONNECTING
                 break

@@ -476,14 +476,32 @@ class PaperTradingApplication:
         return self._last_loop_error or "not_ready"
 
     async def _heartbeat_loop(self) -> None:
+        """Persist worker liveness while market data is unavailable.
+
+        Trading/runtime readiness heartbeats require full market-data readiness.
+        When market data is degraded, we still write ``heartbeat_at`` so dashboards
+        can distinguish a live worker with stale market data from a dead process.
+        """
         assert self._scheduler is not None
         while not self._shutdown_event.is_set():
             try:
-                if self.market_data_ready() and self._advisory_lock is not None:
-                    if self._advisory_lock.try_acquire() or self._advisory_lock.held:
+                if self._advisory_lock is not None and (
+                    self._advisory_lock.try_acquire() or self._advisory_lock.held
+                ):
+                    if self.market_data_ready():
                         self._scheduler.run_job(
                             SchedulerJobName.RUNTIME_HEARTBEAT,
                             scheduled_for=self.clock.now(),
+                        )
+                    elif self._runtime is not None:
+                        self._runtime.heartbeat()
+                        logger.info(
+                            "worker_liveness_heartbeat",
+                            extra={
+                                "event_type": "worker_liveness_heartbeat",
+                                "market_data_ready": False,
+                                "reason": self._last_loop_error or "market_data_not_ready",
+                            },
                         )
                 await asyncio.sleep(self.config.heartbeat_interval_seconds)
             except asyncio.CancelledError:

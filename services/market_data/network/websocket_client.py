@@ -13,6 +13,13 @@ from market_data.network.json_utils import loads_decimal
 ConnectFn = Callable[[str], Awaitable["WebSocketConnection"]]
 
 
+def wrap_websocket_transport_error(exc: BaseException) -> HyperliquidWebSocketError:
+    """Map transport-layer WebSocket failures to a retryable domain error."""
+    if isinstance(exc, HyperliquidWebSocketError):
+        return exc
+    return HyperliquidWebSocketError(f"{type(exc).__name__}: {exc}")
+
+
 class WebSocketConnection(Protocol):
     async def send(self, message: str) -> None: ...
 
@@ -66,14 +73,29 @@ class _WebsocketsWrapper:
         self._conn = conn
 
     async def send(self, message: str) -> None:
-        await self._conn.send(message)
+        try:
+            await self._conn.send(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise wrap_websocket_transport_error(exc) from exc
 
     async def recv(self) -> str:
-        msg = await self._conn.recv()
-        return str(msg)
+        try:
+            msg = await self._conn.recv()
+            return str(msg)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise wrap_websocket_transport_error(exc) from exc
 
     async def close(self) -> None:
-        await self._conn.close()
+        try:
+            await self._conn.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise wrap_websocket_transport_error(exc) from exc
 
 
 def dumps_message(payload: dict[str, Any]) -> str:

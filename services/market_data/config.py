@@ -36,6 +36,7 @@ class HyperliquidPublicConfig(BaseModel):
     subscription_ack_timeout_seconds: float = Field(default=10.0, gt=0)
     reconnect_initial_delay_seconds: float = Field(default=1.0, gt=0)
     reconnect_max_delay_seconds: float = Field(default=30.0, gt=0)
+    reconnect_total_timeout_seconds: float = Field(default=120.0, gt=0)
     max_reconnect_attempts: int | None = None
     max_http_retries: int = Field(default=3, ge=0)
     max_pagination_pages: int = Field(default=20, ge=1)
@@ -103,6 +104,8 @@ class HyperliquidPublicConfig(BaseModel):
             updates["reconnect_initial_delay_seconds"] = float(initial)
         if maximum := os.getenv("HYPERLIQUID_RECONNECT_MAX_SECONDS"):
             updates["reconnect_max_delay_seconds"] = float(maximum)
+        if total := os.getenv("HYPERLIQUID_RECONNECT_TOTAL_TIMEOUT_SECONDS"):
+            updates["reconnect_total_timeout_seconds"] = float(total)
         if concurrency := os.getenv("HYPERLIQUID_MAX_HTTP_CONCURRENCY"):
             updates["max_http_concurrency"] = int(concurrency)
         if backfill_days := os.getenv("HYPERLIQUID_INITIAL_BACKFILL_DAYS"):

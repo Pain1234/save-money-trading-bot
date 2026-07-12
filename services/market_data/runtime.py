@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,6 +27,7 @@ from market_data.models import (
     NormalizedCandle,
     RawCandle,
 )
+from market_data.network.errors import HyperliquidWebSocketError
 from market_data.network.http_client import HyperliquidHttpClient
 from market_data.providers.hyperliquid import coin_for_symbol
 from market_data.providers.hyperliquid_historical import HyperliquidHistoricalProvider
@@ -240,38 +242,92 @@ class HyperliquidMarketDataRuntime:
         result = ingest_live_raw(self.repository, events, evaluation_time)
         return result.inserted
 
+    def _record_reconnect_failure(self, exc: BaseException) -> None:
+        self._last_error = str(exc)
+
     async def _ensure_connected(self, evaluation_time: datetime) -> None:
         if self._ws.status != ConnectionStatus.RECONNECTING:
             return
-        async with self._reconnect_lock:
-            if self._ws.status == ConnectionStatus.RECONNECTING:
-                await self.reconnect(evaluation_time)
+        await self.reconnect(evaluation_time)
 
     async def reconnect(self, evaluation_time: datetime) -> None:
         evaluation_time = ensure_utc(evaluation_time)
         async with self._reconnect_lock:
+            if self._ws.status != ConnectionStatus.RECONNECTING:
+                return
+            previous_status = self._ws.status
+            started = time.monotonic()
+            logger.info(
+                "market_data_reconnect_started",
+                extra={
+                    "event_type": "market_data_reconnect_started",
+                    "reconnect_count": self._ws.reconnect_count + 1,
+                    "previous_status": previous_status.value,
+                },
+            )
             self._ws.begin_buffer()
             try:
-                await self._ws.reconnect()
-                for symbol, timeframe in all_subscriptions(self._config):
-                    latest = self.repository.get_latest(symbol, timeframe)
-                    if latest is None:
-                        continue
-                    await self.backfill_symbol(
-                        symbol,
-                        timeframe,
-                        latest.open_time,
-                        evaluation_time,
-                        evaluation_time,
-                    )
-                buffered = self._ws.end_buffer()
-                ingest_live_raw(self.repository, buffered, evaluation_time)
-                self._refresh_strategy_bundle_readiness(evaluation_time)
-                self._last_error = None
-            except Exception as exc:
-                self._record_failure(exc)
+                async with asyncio.timeout(self._config.reconnect_total_timeout_seconds):
+                    await self._ws.reconnect()
+                    for symbol, timeframe in all_subscriptions(self._config):
+                        latest = self.repository.get_latest(symbol, timeframe)
+                        if latest is None:
+                            continue
+                        await self.backfill_symbol(
+                            symbol,
+                            timeframe,
+                            latest.open_time,
+                            evaluation_time,
+                            evaluation_time,
+                        )
+                    buffered = self._ws.end_buffer()
+                    ingest_live_raw(self.repository, buffered, evaluation_time)
+                    self._refresh_strategy_bundle_readiness(evaluation_time)
+                    self._last_error = None
+            except TimeoutError:
+                elapsed = time.monotonic() - started
+                error = HyperliquidWebSocketError(
+                    f"reconnect exceeded {self._config.reconnect_total_timeout_seconds}s"
+                )
+                self._record_reconnect_failure(error)
                 self._ws.discard_buffer()
+                logger.warning(
+                    "market_data_reconnect_timeout",
+                    extra={
+                        "event_type": "market_data_reconnect_timeout",
+                        "reconnect_count": self._ws.reconnect_count,
+                        "previous_status": previous_status.value,
+                        "duration_seconds": round(elapsed, 3),
+                        "error_class": type(error).__name__,
+                    },
+                )
+                raise error from None
+            except Exception as exc:
+                elapsed = time.monotonic() - started
+                self._record_reconnect_failure(exc)
+                self._ws.discard_buffer()
+                logger.warning(
+                    "market_data_reconnect_failed",
+                    extra={
+                        "event_type": "market_data_reconnect_failed",
+                        "reconnect_count": self._ws.reconnect_count,
+                        "previous_status": previous_status.value,
+                        "duration_seconds": round(elapsed, 3),
+                        "error_class": type(exc).__name__,
+                    },
+                )
                 raise
+            else:
+                elapsed = time.monotonic() - started
+                logger.info(
+                    "market_data_reconnect_succeeded",
+                    extra={
+                        "event_type": "market_data_reconnect_succeeded",
+                        "reconnect_count": self._ws.reconnect_count,
+                        "previous_status": previous_status.value,
+                        "duration_seconds": round(elapsed, 3),
+                    },
+                )
 
     def status(self, evaluation_time: datetime) -> HyperliquidRuntimeStatus:
         evaluation_time = ensure_utc(evaluation_time)
