@@ -52,18 +52,28 @@ _PAPER_TRADING_RESET_TABLES = (
     "scheduler_runs",
 )
 
-
-def _postgres_url() -> str:
-    return os.environ.get("PAPER_TRADING_DATABASE_URL", DEFAULT_PG_URL)
+ALLOWED_POSTGRES_TEST_DATABASE = "paper_trading_test"
 
 
-def _ensure_postgres_test_env() -> None:
-    os.environ.setdefault("PAPER_SYMBOL_CONSTRAINTS_JSON", _DEFAULT_SYMBOL_CONSTRAINTS_JSON)
+def assert_postgres_test_database_safe(connection) -> tuple[str, str]:
+    """Fail closed before destructive test resets unless connected DB is the test database."""
+    row = connection.execute(
+        text("SELECT current_database(), current_user")
+    ).one()
+    db_name, db_user = str(row[0]), str(row[1])
+    if db_name != ALLOWED_POSTGRES_TEST_DATABASE:
+        raise RuntimeError(
+            "Refusing destructive postgres reset: connected database is "
+            f"{db_name!r}, expected {ALLOWED_POSTGRES_TEST_DATABASE!r}. "
+            "No tables were modified."
+        )
+    return db_name, db_user
 
 
 def _reset_postgres_trading_state(engine: Engine) -> None:
     tables = ", ".join(_PAPER_TRADING_RESET_TABLES)
     with engine.connect() as conn:
+        assert_postgres_test_database_safe(conn)
         conn.execute(text("SET lock_timeout = '2s'"))
         conn.execute(text("SET statement_timeout = '5s'"))
         conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
@@ -93,6 +103,14 @@ def _reset_postgres_trading_state(engine: Engine) -> None:
             )
         )
         conn.commit()
+
+
+def _postgres_url() -> str:
+    return os.environ.get("PAPER_TRADING_DATABASE_URL", DEFAULT_PG_URL)
+
+
+def _ensure_postgres_test_env() -> None:
+    os.environ.setdefault("PAPER_SYMBOL_CONSTRAINTS_JSON", _DEFAULT_SYMBOL_CONSTRAINTS_JSON)
 
 
 def postgres_available() -> bool:
