@@ -42,14 +42,18 @@ def _signal_bundle():
     return symbol, bundle, signal, due
 
 
-def _clear_market_event_runs(engine, signal) -> None:
+def _daily_closed_job_name(signal) -> str:
     event = MarketEvent(
         event_type=MarketEventType.DAILY_CLOSED,
         symbol="BTC",
         candle_open_time=signal.open_time,
         provider_received_at=signal.open_time,
     )
-    job_name = market_event_job_name(event)
+    return market_event_job_name(event)
+
+
+def _clear_market_event_runs(engine, signal) -> None:
+    job_name = _daily_closed_job_name(signal)
     with engine.connect() as conn:
         conn.execute(
             text("DELETE FROM scheduler_runs WHERE job_name = :job_name"),
@@ -58,24 +62,37 @@ def _clear_market_event_runs(engine, signal) -> None:
         conn.commit()
 
 
-@pytest.mark.postgres
-@pytest.mark.asyncio
-async def test_clock_one_microsecond_before_due_no_completed_evaluation(
+def _enqueue_closed_signal(md, signal) -> None:
+    from paper_trading.controlled_market_data import raw_daily
+
+    md.enqueue_raw(
+        raw_daily(
+            "BTC",
+            signal.open_time,
+            open_=str(signal.open),
+            high=str(signal.high),
+            low=str(signal.low),
+            close=str(signal.close),
+            volume=str(signal.volume),
+            is_closed=True,
+        )
+    )
+
+
+async def _setup_bridge_at_time(
     migrated_engine,
     postgres_commit_session,
-    clean_production_db,
-    postgres_runtime_writable,
-) -> None:
-    """evaluation_due_at = close_time + delay; earlier clock must not complete evaluation."""
-    from paper_trading.controlled_market_data import ControlledMarketDataRuntime, raw_daily
+    *,
+    clock: FixedClock,
+    lock_id_offset: int,
+):
+    from paper_trading.controlled_market_data import ControlledMarketDataRuntime
     from paper_trading.lock import PostgresAdvisoryLock
     from paper_trading.repository import PaperTradingRepository
     from paper_trading.service_config import PaperServiceConfig
 
     symbol, bundle, signal, due = _signal_bundle()
-    before_due = due - timedelta(microseconds=1)
     _clear_market_event_runs(migrated_engine, signal)
-    clock = FixedClock(before_due)
 
     md = ControlledMarketDataRuntime.create()
     ingest_historical_bundle(
@@ -83,11 +100,11 @@ async def test_clock_one_microsecond_before_due_no_completed_evaluation(
         bundle,
         symbol,
         daily_count=len(bundle.daily[symbol]) - 2,
-        evaluation_time=before_due - timedelta(seconds=1),
+        evaluation_time=clock.now() - timedelta(seconds=1),
     )
-    await md.start(before_due)
+    await md.start(clock.now())
 
-    lock_id = 987656000 + (os.getpid() % 50000)
+    lock_id = 987656000 + (os.getpid() % 50000) + lock_id_offset
     config = PaperServiceConfig.from_env(
         database_url=_postgres_url(),
         symbols=(symbol,),
@@ -99,28 +116,86 @@ async def test_clock_one_microsecond_before_due_no_completed_evaluation(
     assert lock.try_acquire()
     _set_runtime_ready(repo)
     bridge = _build_bridge(repo, md, config, clock, lock)
+    return symbol, bundle, signal, due, md, repo, lock, bridge
 
-    md.enqueue_raw(
-        raw_daily(
-            symbol,
-            signal.open_time,
-            open_=str(signal.open),
-            high=str(signal.high),
-            low=str(signal.low),
-            close=str(signal.close),
-            volume=str(signal.volume),
-            is_closed=True,
-        )
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_clock_one_microsecond_before_due_no_completed_evaluation(
+    migrated_engine,
+    postgres_commit_session,
+    clean_production_db,
+    postgres_runtime_writable,
+) -> None:
+    """Polls before evaluation_due_at must not consume the event or create FAILED runs."""
+    symbol, bundle, signal, due = _signal_bundle()
+    before_due = due - timedelta(microseconds=1)
+    symbol, bundle, signal, due, md, repo, lock, bridge = await _setup_bridge_at_time(
+        migrated_engine,
+        postgres_commit_session,
+        clock=FixedClock(before_due),
+        lock_id_offset=0,
     )
-    await md.process_live(clock.now())
-    outcomes = bridge.process_after_poll(clock.now())
+
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(before_due)
+    outcomes = bridge.process_after_poll(before_due)
     repo.session.commit()
 
     daily_outcomes = [o for o in outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
-    assert daily_outcomes
-    assert all(o.status == SchedulerRunStatus.FAILED for o in daily_outcomes)
+    assert not daily_outcomes
     assert len(repo.list_evaluations(limit=10)) == 0
     assert len(repo.list_intents(limit=10)) == 0
+    failed_runs = [
+        r
+        for r in repo.list_scheduler_runs(limit=20)
+        if r.job_name == _daily_closed_job_name(signal)
+        and r.status == SchedulerRunStatus.FAILED
+    ]
+    assert not failed_runs
+    lock.release()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_same_bridge_instance_retries_at_due(
+    migrated_engine,
+    postgres_commit_session,
+    clean_production_db,
+    postgres_runtime_writable,
+) -> None:
+    """Same detector/bridge instance must emit and complete exactly once when clock reaches due."""
+    symbol, bundle, signal, due = _signal_bundle()
+    before_due = due - timedelta(microseconds=1)
+    symbol, bundle, signal, due, md, repo, lock, bridge = await _setup_bridge_at_time(
+        migrated_engine,
+        postgres_commit_session,
+        clock=FixedClock(before_due),
+        lock_id_offset=1,
+    )
+
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(before_due)
+    before_outcomes = bridge.process_after_poll(before_due)
+    repo.session.commit()
+    assert not any(
+        o.event.event_type == MarketEventType.DAILY_CLOSED for o in before_outcomes
+    )
+
+    clock = bridge.clock
+    assert isinstance(clock, FixedClock)
+    clock.advance_to(due)
+    await md.process_live(due)
+    at_due_outcomes = bridge.process_after_poll(due)
+    repo.session.commit()
+
+    daily_outcomes = [
+        o for o in at_due_outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED
+    ]
+    assert len(daily_outcomes) == 1
+    assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
+    assert len(repo.list_evaluations(limit=10)) == 1
+    assert len(repo.list_intents(limit=10)) >= 1
     lock.release()
 
 
@@ -132,52 +207,17 @@ async def test_clock_exactly_at_due_one_completed_evaluation(
     clean_production_db,
     postgres_runtime_writable,
 ) -> None:
-    from paper_trading.controlled_market_data import ControlledMarketDataRuntime, raw_daily
-    from paper_trading.lock import PostgresAdvisoryLock
-    from paper_trading.repository import PaperTradingRepository
-    from paper_trading.service_config import PaperServiceConfig
-
     symbol, bundle, signal, due = _signal_bundle()
-    _clear_market_event_runs(migrated_engine, signal)
-    clock = FixedClock(due)
-
-    md = ControlledMarketDataRuntime.create()
-    ingest_historical_bundle(
-        md,
-        bundle,
-        symbol,
-        daily_count=len(bundle.daily[symbol]) - 2,
-        evaluation_time=due - timedelta(seconds=1),
+    symbol, bundle, signal, due, md, repo, lock, bridge = await _setup_bridge_at_time(
+        migrated_engine,
+        postgres_commit_session,
+        clock=FixedClock(due),
+        lock_id_offset=2,
     )
-    await md.start(due)
 
-    lock_id = 987656000 + (os.getpid() % 50000) + 1
-    config = PaperServiceConfig.from_env(
-        database_url=_postgres_url(),
-        symbols=(symbol,),
-        evaluation_delay_seconds=5,
-        advisory_lock_id=lock_id,
-    )
-    repo = PaperTradingRepository(postgres_commit_session)
-    lock = PostgresAdvisoryLock(migrated_engine, lock_id)
-    assert lock.try_acquire()
-    _set_runtime_ready(repo)
-    bridge = _build_bridge(repo, md, config, clock, lock)
-
-    md.enqueue_raw(
-        raw_daily(
-            symbol,
-            signal.open_time,
-            open_=str(signal.open),
-            high=str(signal.high),
-            low=str(signal.low),
-            close=str(signal.close),
-            volume=str(signal.volume),
-            is_closed=True,
-        )
-    )
-    await md.process_live(clock.now())
-    outcomes = bridge.process_after_poll(clock.now())
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(due)
+    outcomes = bridge.process_after_poll(due)
     repo.session.commit()
 
     daily_outcomes = [o for o in outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
@@ -189,20 +229,85 @@ async def test_clock_exactly_at_due_one_completed_evaluation(
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
+async def test_multiple_polls_before_due_no_failed_runs(
+    migrated_engine,
+    postgres_commit_session,
+    clean_production_db,
+    postgres_runtime_writable,
+) -> None:
+    symbol, bundle, signal, due = _signal_bundle()
+    before_due = due - timedelta(seconds=2)
+    symbol, bundle, signal, due, md, repo, lock, bridge = await _setup_bridge_at_time(
+        migrated_engine,
+        postgres_commit_session,
+        clock=FixedClock(before_due),
+        lock_id_offset=3,
+    )
+
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(before_due)
+    for offset in (0, 1, 2):
+        poll_time = before_due + timedelta(microseconds=offset)
+        bridge.process_after_poll(poll_time)
+    repo.session.commit()
+
+    job_name = _daily_closed_job_name(signal)
+    daily_runs = [r for r in repo.list_scheduler_runs(limit=50) if r.job_name == job_name]
+    assert not daily_runs
+    assert len(repo.list_evaluations(limit=10)) == 0
+    lock.release()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
 async def test_replay_after_completed_no_second_evaluation(
     migrated_engine,
     postgres_commit_session,
     clean_production_db,
     postgres_runtime_writable,
 ) -> None:
-    from paper_trading.controlled_market_data import ControlledMarketDataRuntime, raw_daily
+    symbol, bundle, signal, due = _signal_bundle()
+    symbol, bundle, signal, due, md, repo, lock, bridge = await _setup_bridge_at_time(
+        migrated_engine,
+        postgres_commit_session,
+        clock=FixedClock(due),
+        lock_id_offset=4,
+    )
+
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(due)
+    bridge.process_after_poll(due)
+    repo.session.commit()
+    eval_count = len(repo.list_evaluations(limit=10))
+
+    outcomes2 = bridge.process_after_poll(due)
+    repo.session.commit()
+
+    daily2 = [o for o in outcomes2 if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    if daily2:
+        assert daily2[0].status == SchedulerRunStatus.COMPLETED
+        assert daily2[0].skipped is True
+    assert len(repo.list_evaluations(limit=10)) == eval_count
+    lock.release()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_restart_between_close_and_due_single_evaluation(
+    migrated_engine,
+    postgres_commit_session,
+    clean_production_db,
+    postgres_runtime_writable,
+) -> None:
+    """Fresh detector after restart must still evaluate exactly once after due."""
+    from paper_trading.controlled_market_data import ControlledMarketDataRuntime
     from paper_trading.lock import PostgresAdvisoryLock
     from paper_trading.repository import PaperTradingRepository
     from paper_trading.service_config import PaperServiceConfig
 
     symbol, bundle, signal, due = _signal_bundle()
+    before_due = due - timedelta(seconds=3)
     _clear_market_event_runs(migrated_engine, signal)
-    clock = FixedClock(due)
 
     md = ControlledMarketDataRuntime.create()
     ingest_historical_bundle(
@@ -210,11 +315,13 @@ async def test_replay_after_completed_no_second_evaluation(
         bundle,
         symbol,
         daily_count=len(bundle.daily[symbol]) - 2,
-        evaluation_time=due - timedelta(seconds=1),
+        evaluation_time=before_due - timedelta(seconds=1),
     )
-    await md.start(due)
+    await md.start(before_due)
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(before_due)
 
-    lock_id = 987656000 + (os.getpid() % 50000) + 2
+    lock_id = 987656000 + (os.getpid() % 50000) + 5
     config = PaperServiceConfig.from_env(
         database_url=_postgres_url(),
         symbols=(symbol,),
@@ -225,33 +332,69 @@ async def test_replay_after_completed_no_second_evaluation(
     lock = PostgresAdvisoryLock(migrated_engine, lock_id)
     assert lock.try_acquire()
     _set_runtime_ready(repo)
-    bridge = _build_bridge(repo, md, config, clock, lock)
 
-    md.enqueue_raw(
-        raw_daily(
-            symbol,
-            signal.open_time,
-            open_=str(signal.open),
-            high=str(signal.high),
-            low=str(signal.low),
-            close=str(signal.close),
-            volume=str(signal.volume),
-            is_closed=True,
-        )
+    pre_restart_clock = FixedClock(before_due)
+    pre_bridge = _build_bridge(repo, md, config, pre_restart_clock, lock)
+    pre_bridge.process_after_poll(before_due)
+    repo.session.commit()
+    assert len(repo.list_evaluations(limit=10)) == 0
+
+    post_restart_clock = FixedClock(due)
+    post_bridge = _build_bridge(repo, md, config, post_restart_clock, lock)
+    await md.process_live(due)
+    outcomes = post_bridge.process_after_poll(due)
+    repo.session.commit()
+
+    daily_outcomes = [o for o in outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    assert len(daily_outcomes) == 1
+    assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
+    assert len(repo.list_evaluations(limit=10)) == 1
+    lock.release()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_provider_close_within_delay_window_evaluates_after_due(
+    migrated_engine,
+    postgres_commit_session,
+    clean_production_db,
+    postgres_runtime_writable,
+) -> None:
+    """Provider close inside the 5s delay window keeps runtime ready; evaluation runs after due."""
+    from paper_trading.enums import RuntimeStatus
+
+    symbol, bundle, signal, due = _signal_bundle()
+    received_at = signal.close_time + timedelta(seconds=2)
+    symbol, bundle, signal, due, md, repo, lock, bridge = await _setup_bridge_at_time(
+        migrated_engine,
+        postgres_commit_session,
+        clock=FixedClock(received_at),
+        lock_id_offset=6,
     )
-    await md.process_live(clock.now())
-    bridge.process_after_poll(clock.now())
-    repo.session.commit()
-    eval_count = len(repo.list_evaluations(limit=10))
 
-    outcomes2 = bridge.process_after_poll(clock.now())
+    _enqueue_closed_signal(md, signal)
+    await md.process_live(received_at)
+    early_outcomes = bridge.process_after_poll(received_at)
     repo.session.commit()
 
-    daily2 = [o for o in outcomes2 if o.event.event_type == MarketEventType.DAILY_CLOSED]
-    if daily2:
-        assert daily2[0].status == SchedulerRunStatus.COMPLETED
-        assert daily2[0].skipped is True
-    assert len(repo.list_evaluations(limit=10)) == eval_count
+    assert not any(
+        o.event.event_type == MarketEventType.DAILY_CLOSED for o in early_outcomes
+    )
+    runtime = repo.get_runtime_state()
+    assert runtime is not None
+    assert runtime.status == RuntimeStatus.READY
+    assert len(repo.list_evaluations(limit=10)) == 0
+
+    assert isinstance(bridge.clock, FixedClock)
+    bridge.clock.advance_to(due)
+    await md.process_live(due)
+    due_outcomes = bridge.process_after_poll(due)
+    repo.session.commit()
+
+    daily_outcomes = [o for o in due_outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    assert len(daily_outcomes) == 1
+    assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
+    assert len(repo.list_evaluations(limit=10)) == 1
     lock.release()
 
 
@@ -289,9 +432,14 @@ def test_handle_daily_closed_unit_before_due_raises() -> None:
         clock=clock,
         advisory_lock=advisory_lock,
         market_data_ready=lambda: True,
-        detector=MarketEventDetector(symbols=("BTC",)),
+        detector=MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5),
     )
-    event = bridge.detector.detect(candle_repo, clock.now())[0]
+    event = MarketEvent(
+        event_type=MarketEventType.DAILY_CLOSED,
+        symbol="BTC",
+        candle_open_time=open_time,
+        provider_received_at=clock.now(),
+    )
     with pytest.raises(RuntimeError, match="daily evaluation not due"):
         bridge._handle_daily_closed(event, clock.now())  # noqa: SLF001
     scheduler.run_daily_close_sequence.assert_not_called()

@@ -101,6 +101,7 @@ class MarketEventDetector:
     """Detect lifecycle events by diffing candle repository state."""
 
     symbols: tuple[str, ...]
+    evaluation_delay_seconds: int = 5
     _trackers: dict[str, SymbolSeriesTracker] = field(default_factory=dict)
 
     def detect(
@@ -195,7 +196,12 @@ class MarketEventDetector:
             )
 
         closed = is_candle_closed(candle.close_time, evaluation_time) and candle.is_closed
-        if closed and tracker.daily_closed_open_time != open_time:
+        due = candle.close_time + timedelta(seconds=self.evaluation_delay_seconds)
+        if (
+            closed
+            and evaluation_time >= due
+            and tracker.daily_closed_open_time != open_time
+        ):
             tracker.daily_closed_open_time = open_time
             events.append(
                 MarketEvent(
@@ -250,7 +256,10 @@ class MarketEventBridge:
 
     def __post_init__(self) -> None:
         if self.detector is None:
-            self.detector = MarketEventDetector(symbols=self.config.symbols)
+            self.detector = MarketEventDetector(
+                symbols=self.config.symbols,
+                evaluation_delay_seconds=self.config.evaluation_delay_seconds,
+            )
 
     @property
     def queue_overflow(self) -> bool:

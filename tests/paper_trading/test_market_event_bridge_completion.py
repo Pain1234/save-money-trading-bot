@@ -62,6 +62,10 @@ def _completed_run(job_name: str, scheduled_for: datetime) -> SchedulerRun:
     )
 
 
+def _due_eval_time(open_time: datetime) -> datetime:
+    return daily_close(open_time) + timedelta(seconds=5)
+
+
 def _build_bridge(
     *,
     repo: MagicMock,
@@ -93,7 +97,7 @@ def _build_bridge(
         clock=clock,
         advisory_lock=advisory_lock,
         market_data_ready=lambda: True,
-        detector=MarketEventDetector(symbols=("BTC",)),
+        detector=MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5),
     )
 
 
@@ -117,7 +121,7 @@ def test_daily_closed_returns_persisted_completed_outcome() -> None:
     candle_repo = InMemoryCandleRepository()
     open_time = utc_dt(2024, 1, 15)
     candle_repo.upsert(_daily("BTC", open_time, is_closed=True))
-    eval_time = utc_dt(2024, 1, 16)
+    eval_time = _due_eval_time(open_time)
     clock = FixedClock(eval_time)
     bridge = _build_bridge(repo=repo, candle_repo=candle_repo, clock=clock)
 
@@ -136,7 +140,7 @@ def test_replay_completed_event_returns_completed_without_rerun() -> None:
 
     candle_repo = InMemoryCandleRepository()
     candle_repo.upsert(_daily("BTC", scheduled_for, is_closed=True))
-    eval_time = utc_dt(2024, 1, 16)
+    eval_time = _due_eval_time(scheduled_for)
     bridge = _build_bridge(
         repo=repo,
         candle_repo=candle_repo,
@@ -179,7 +183,7 @@ def test_missing_context_persists_failed_outcome() -> None:
     candle_repo = InMemoryCandleRepository()
     open_time = utc_dt(2024, 1, 15)
     candle_repo.upsert(_daily("BTC", open_time, is_closed=True))
-    eval_time = utc_dt(2024, 1, 16)
+    eval_time = _due_eval_time(open_time)
     context_builder = MagicMock()
     context_builder.build_evaluation_context.return_value = None
     context_builder.build_stop_context_for_close.return_value = {"daily_candles": {}}
@@ -194,7 +198,7 @@ def test_missing_context_persists_failed_outcome() -> None:
         clock=FixedClock(eval_time),
         advisory_lock=advisory_lock,
         market_data_ready=lambda: True,
-        detector=MarketEventDetector(symbols=("BTC",)),
+        detector=MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5),
     )
 
     outcomes = bridge.process_after_poll(eval_time)
@@ -249,10 +253,11 @@ def test_marker_event_creates_scheduler_run_before_complete() -> None:
 
 def test_backfilled_closed_candle_does_not_emit_daily_open() -> None:
     repo = InMemoryCandleRepository()
-    detector = MarketEventDetector(symbols=("BTC",))
+    detector = MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5)
     open_time = utc_dt(2024, 1, 16)
     repo.upsert(_daily("BTC", open_time, is_closed=True))
-    events = detector.detect(repo, utc_dt(2024, 1, 17))
+    eval_time = _due_eval_time(open_time)
+    events = detector.detect(repo, eval_time)
     assert any(e.event_type == MarketEventType.DAILY_CLOSED for e in events)
     assert not any(e.event_type == MarketEventType.DAILY_OPEN_AVAILABLE for e in events)
 

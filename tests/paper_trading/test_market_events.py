@@ -80,14 +80,38 @@ def test_live_update_does_not_emit_trailing_event() -> None:
 
 def test_closed_candle_emits_daily_closed_once() -> None:
     repo = InMemoryCandleRepository()
-    detector = MarketEventDetector(symbols=("BTC",))
+    detector = MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5)
     open_time = utc_dt(2024, 1, 15)
     repo.upsert(_daily("BTC", open_time, is_closed=True))
-    eval_time = utc_dt(2024, 1, 16)
-    first = detector.detect(repo, eval_time)
-    second = detector.detect(repo, eval_time + timedelta(hours=1))
+    due = daily_close(open_time) + timedelta(seconds=5)
+    first = detector.detect(repo, due)
+    second = detector.detect(repo, due + timedelta(hours=1))
     assert len([e for e in first if e.event_type == MarketEventType.DAILY_CLOSED]) == 1
     assert len([e for e in second if e.event_type == MarketEventType.DAILY_CLOSED]) == 0
+
+
+def test_daily_closed_not_emitted_before_evaluation_due() -> None:
+    repo = InMemoryCandleRepository()
+    detector = MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5)
+    open_time = utc_dt(2024, 1, 15)
+    repo.upsert(_daily("BTC", open_time, is_closed=True))
+    due = daily_close(open_time) + timedelta(seconds=5)
+    before_due = due - timedelta(microseconds=1)
+    events = detector.detect(repo, before_due)
+    assert not any(e.event_type == MarketEventType.DAILY_CLOSED for e in events)
+    assert detector._trackers["BTC"].daily_closed_open_time is None  # noqa: SLF001
+
+
+def test_daily_closed_emitted_at_due_on_same_detector_instance() -> None:
+    repo = InMemoryCandleRepository()
+    detector = MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5)
+    open_time = utc_dt(2024, 1, 15)
+    repo.upsert(_daily("BTC", open_time, is_closed=True))
+    due = daily_close(open_time) + timedelta(seconds=5)
+    before = detector.detect(repo, due - timedelta(microseconds=1))
+    assert not any(e.event_type == MarketEventType.DAILY_CLOSED for e in before)
+    at_due = detector.detect(repo, due)
+    assert len([e for e in at_due if e.event_type == MarketEventType.DAILY_CLOSED]) == 1
 
 
 def test_queue_overflow_is_fail_closed() -> None:
