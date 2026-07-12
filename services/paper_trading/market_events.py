@@ -648,15 +648,28 @@ class MarketEventBridge:
         *,
         error: MarketEventProcessingError,
     ) -> EventProcessOutcome:
+        job_name = market_event_job_name(event)
+        self._release_uncommitted_scheduler_run(job_name, event.scheduled_for)
         return EventProcessOutcome(
             event=event,
-            job_name=market_event_job_name(event),
+            job_name=job_name,
             status=SchedulerRunStatus.SKIPPED,
             skipped=True,
             error=error.code,
             deferred=True,
             retryable=True,
         )
+
+    def _release_uncommitted_scheduler_run(
+        self,
+        job_name: str,
+        scheduled_for: datetime,
+    ) -> None:
+        with transaction_scope(self.repository.session):
+            self.repository.delete_scheduler_run_if_running(
+                job_name=job_name,
+                scheduled_for=scheduled_for,
+            )
 
     def _ensure_scheduler_run(
         self,
@@ -898,6 +911,7 @@ class MarketEventBridge:
                 raise RetryableSchedulerDeferred("scheduler_subjob_not_completed")
             self._complete_market_event(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
         except RetryableSchedulerDeferred:
+            self._release_uncommitted_scheduler_run(job_name, scheduled_for)
             raise
         except Exception as exc:
             self._complete_market_event(

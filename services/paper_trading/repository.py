@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -596,6 +596,23 @@ class PaperTradingRepository:
         ).scalar_one()
         self._session.flush()
         return scheduler_row_to_domain(row)
+
+    def delete_scheduler_run_if_running(
+        self,
+        *,
+        job_name: str,
+        scheduled_for: datetime,
+    ) -> bool:
+        result = self._session.execute(
+            delete(SchedulerRunRow).where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+                SchedulerRunRow.status == SchedulerRunStatus.RUNNING.value,
+            )
+        )
+        self._session.flush()
+        rowcount = getattr(result, "rowcount", 0)
+        return int(rowcount or 0) > 0
 
     def get_running_scheduler_runs(self) -> tuple[SchedulerRun, ...]:
         rows = self._session.execute(
