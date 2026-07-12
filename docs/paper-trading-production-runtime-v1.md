@@ -36,16 +36,25 @@ HyperliquidMarketDataRuntime.process_live()
 |-------|---------|---------|
 | `DAILY_OPEN_AVAILABLE` | New daily candle; open known | Next-open fills, gap stops (`at_open=True`), snapshot |
 | `DAILY_LIVE_UPDATE` | Open candle low changes | Intraday stop only (no trailing, no gap re-check) |
-| `DAILY_CLOSED` | Daily closed at evaluation time | Evaluation + intent, trailing stop, snapshot |
+| `DAILY_CLOSED` | Daily closed **and** `clock.now() >= evaluation_due_at` | Evaluation + intent, trailing stop, snapshot |
 | `WEEKLY_CLOSED` / `MONTHLY_CLOSED` | Higher TF closed | Marker only; series ready for later evaluation |
+
+### Daily close due-time semantics
+
+- `evaluation_due_at = daily_close_time + evaluation_delay_seconds` (default 5s)
+- `MarketEventDetector` emits `DAILY_CLOSED` only when `clock.now() >= evaluation_due_at`
+- Polls before due are **not errors**: no scheduler run, no FAILED status, no event consumption
+- Provider close inside the delay window does not consume the daily evaluation; processing runs once after due
+- The bridge retains a belt-and-suspenders guard in `_handle_daily_closed` for defense in depth
 
 ## Idempotency keys
 
 Deterministic scheduler job names (no `hash()`):
 
-- `market_event:daily_open:{symbol}:{open_time}`
-- `market_event:daily_live:{symbol}:{open_time}:low:{observed_low}`
-- `market_event:daily_closed:{symbol}:{open_time}`
+- `me:do:{symbol}:{open_time}` — daily open
+- `me:dl:{symbol}:{open_time}:{low_digest}` — daily live update
+- `me:dc:{symbol}:{open_time}` — daily closed evaluation
+- `me:wc:{symbol}:{open_time}` / `me:mc:{symbol}:{open_time}` — higher TF markers
 
 Completed market-event runs skip reprocessing on restart, WebSocket replay, and backfill.
 
@@ -53,7 +62,7 @@ Completed market-event runs skip reprocessing on restart, WebSocket replay, and 
 
 - Gap check: candle **open** only (`_gap_check_strategy_candle`)
 - Intraday check: observed **low** on open preview candle
-- Daily evaluation: after `close_time + evaluation_delay_seconds`
+- Daily evaluation: after `close_time + evaluation_delay_seconds` (detector defers emission until due)
 - Trailing stop: only on **closed** daily candles
 - Injectable `Clock` for all scheduling decisions (no bare `datetime.now()` in domain)
 
@@ -64,6 +73,8 @@ Completed market-event runs skip reprocessing on restart, WebSocket replay, and 
 - `EvaluationContext` — `StrategyDataBundle`, gates, `SymbolConstraints`
 - `FillContext` — open ref, ATR, prior closes, day candles (open-only for gap safety)
 - `StopContext` — gap / intraday preview / trailing on closed daily
+
+Construction requires an explicit `market_data_ready` callable (no default `True`). Missing readiness source fails closed at construction time; a `False` runtime snapshot blocks entry gates.
 
 Missing constraints → context build returns `None` → event processing fails closed.
 
@@ -91,6 +102,13 @@ Production path (in order):
 
 No hardcoded tick/step fallbacks in production.
 
+## PostgreSQL test fixture safety
+
+The autouse `@pytest.mark.postgres` reset fixture calls `SELECT current_database(), current_user`
+on the **actual connection** before any `TRUNCATE`. Destructive resets run only when
+`current_database()` is exactly `paper_trading_test`. Wrong database → immediate exception,
+no mutation, no credentials in the error message. The fixture never runs in the production runner.
+
 ## Integration test (15 steps)
 
 `tests/paper_trading/integration/test_production_lifecycle_full.py` exercises:
@@ -103,8 +121,16 @@ Requires writable PostgreSQL (`postgres_runtime_writable` fixture skips on stale
 
 ## Testnet soak
 
-Uses existing `tests/paper_trading/soak/test_live_public_data_soak.py` through the real
-`PaperTradingApplication` path (meta, backfill, WebSocket, bridge, heartbeat).
+Uses `tests/paper_trading/soak/test_live_public_data_soak.py` through the real
+`PaperTradingApplication` path. The soak asserts (when `RUN_PAPER_LIVE_SOAK=1`):
+
+- Hyperliquid meta loaded and backfill complete for BTC/ETH/SOL (1D/1W/1M VALID)
+- WebSocket CONNECTED with 9/9 subscription ACKs
+- `market_data_ready() == True` and runtime READY/DEGRADED
+- Multiple persisted heartbeat scheduler runs
+- No orphan RUNNING jobs after shutdown; advisory lock re-acquirable
+- `verify_paper_state` exit 0; HTTP/WebSocket/DB/engine/tasks cleaned up
+- Duration ≥ 300s, total timeout ≤ 420s
 
 ```powershell
 $env:PAPER_TRADING_DATABASE_URL = "<LOCAL TEST DB>"
