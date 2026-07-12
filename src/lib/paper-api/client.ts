@@ -1,0 +1,160 @@
+export type DisplayStatus = "READY" | "DEGRADED" | "STOPPED";
+
+export interface Paginated<T> {
+  items: T[];
+  next_cursor: string | null;
+  limit: number;
+}
+
+export interface StatusResponse {
+  display_status: DisplayStatus;
+  heartbeat_age_seconds: number | null;
+  stale_heartbeat_threshold_seconds: number;
+  hyperliquid_network: string;
+  runtime: {
+    status: string;
+    heartbeat_at: string;
+    last_error: string | null;
+    kill_switch: boolean;
+    paused: boolean;
+  } | null;
+  readiness: {
+    runtime_readiness: boolean;
+    reasons: string[];
+  };
+}
+
+export interface WalletResponse {
+  cash: string;
+  total_realized_pnl: string;
+  total_fees: string;
+  updated_at: string;
+}
+
+export interface PositionItem {
+  position_id: string;
+  symbol: string;
+  status: string;
+  quantity: string;
+  average_entry_price: string;
+  current_stop: string;
+  unrealized_pnl: string;
+  opened_at: string;
+}
+
+export interface FillItem {
+  fill_id: string;
+  fill_kind: string;
+  symbol: string;
+  quantity: string;
+  fill_price: string;
+  fill_time: string;
+}
+
+export interface OrderItem {
+  paper_order_id: string;
+  symbol: string;
+  status: string;
+  requested_quantity: string;
+  expected_fill_time: string;
+}
+
+export interface StopItem {
+  stop_event_id: string;
+  position_id: string;
+  previous_stop: string;
+  new_stop: string;
+  evaluation_time: string;
+  reason: string;
+}
+
+export interface SchedulerRunItem {
+  run_id: string;
+  job_name: string;
+  scheduled_for: string;
+  status: string;
+  error: string | null;
+}
+
+export interface EventItem {
+  event_id: string;
+  event_type: string;
+  aggregate_type: string;
+  created_at: string;
+  payload_json: Record<string, unknown>;
+}
+
+export interface EquityPoint {
+  evaluation_time: string | null;
+  equity: string | null;
+  cash: string | null;
+}
+
+export class PaperApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "PaperApiError";
+  }
+}
+
+function apiBaseUrl(): string {
+  const url = process.env.PRIVATE_PAPER_API_URL;
+  if (!url) {
+    throw new Error("PRIVATE_PAPER_API_URL is required for server-side API access");
+  }
+  return url.replace(/\/$/, "");
+}
+
+export async function fetchPaperApi<T>(path: string): Promise<T> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new PaperApiError(`API request failed: ${path}`, response.status);
+  }
+  return (await response.json()) as T;
+}
+
+export async function fetchStatus(): Promise<StatusResponse> {
+  return fetchPaperApi<StatusResponse>("/api/v1/status");
+}
+
+export async function fetchWallet(): Promise<WalletResponse> {
+  return fetchPaperApi<WalletResponse>("/api/v1/wallet");
+}
+
+export async function fetchPositions(): Promise<Paginated<PositionItem>> {
+  return fetchPaperApi<Paginated<PositionItem>>("/api/v1/positions?limit=50");
+}
+
+export async function fetchOrders(): Promise<Paginated<OrderItem>> {
+  return fetchPaperApi<Paginated<OrderItem>>("/api/v1/orders?limit=50");
+}
+
+export async function fetchFills(): Promise<Paginated<FillItem>> {
+  return fetchPaperApi<Paginated<FillItem>>("/api/v1/fills?limit=50");
+}
+
+export async function fetchStops(): Promise<Paginated<StopItem>> {
+  return fetchPaperApi<Paginated<StopItem>>("/api/v1/stops?limit=50");
+}
+
+export async function fetchSchedulerRuns(): Promise<Paginated<SchedulerRunItem>> {
+  return fetchPaperApi<Paginated<SchedulerRunItem>>("/api/v1/scheduler-runs?limit=50");
+}
+
+export async function fetchEvents(): Promise<Paginated<EventItem>> {
+  return fetchPaperApi<Paginated<EventItem>>("/api/v1/events?limit=50");
+}
+
+export async function fetchEquity(): Promise<Paginated<EquityPoint>> {
+  return fetchPaperApi<Paginated<EquityPoint>>("/api/v1/equity?limit=100");
+}
+
+export async function fetchMarketData(): Promise<Record<string, unknown>> {
+  return fetchPaperApi<Record<string, unknown>>("/api/v1/market-data");
+}
