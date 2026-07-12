@@ -27,6 +27,10 @@ from paper_trading.lifecycle import (
 from paper_trading.market_event_errors import (
     RetryableContextNotReady,
 )
+from paper_trading.scheduler_context_diagnostics import (
+    build_daily_open_defer_snapshot,
+    format_daily_open_defer_log,
+)
 from paper_trading.models import PaperExecutionConfig
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.stops import StopLifecycleService
@@ -225,6 +229,32 @@ class ProductionContextBuilder:
             "constraints_by_symbol": {symbol: constraints},
         }
         return {symbol: fill_ctx}, stop_ctx
+
+    def describe_daily_open_defer(
+        self,
+        symbol: str,
+        *,
+        open_candle: NormalizedCandle | None,
+        prior_eval_time: datetime | None,
+        evaluation_time: datetime,
+        error: RetryableContextNotReady,
+        event_name: str = "daily_open_deferred",
+    ) -> str:
+        """Build a Railway-visible log line for daily open defer diagnostics."""
+        resolved_prior = prior_eval_time
+        if resolved_prior is None and open_candle is not None:
+            resolved_prior = open_candle.open_time
+        snapshot = build_daily_open_defer_snapshot(
+            symbol=symbol,
+            error=error,
+            market_data_service=self._market_data,
+            strategy_params=self._strategy_params,
+            market_data_ready=self._market_data_ready(),
+            prior_eval_time=resolved_prior,
+            evaluation_time=evaluation_time,
+            build_strategy_bundle=self._market_data.build_strategy_bundle,
+        )
+        return format_daily_open_defer_log(snapshot, event_name=event_name)
 
     def build_intraday_stop_context(
         self,

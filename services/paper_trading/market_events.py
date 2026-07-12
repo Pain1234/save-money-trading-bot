@@ -1012,9 +1012,15 @@ class MarketEventBridge:
         except FillNotDue as exc:
             return self._deferred_outcome(event, error=exc)
         except RetryableContextNotReady as exc:
+            candle = self._latest_daily(event.symbol)
             logger.warning(
-                "daily_open_deferred",
-                extra={"symbol": event.symbol, "error": exc.code},
+                self.context_builder.describe_daily_open_defer(
+                    event.symbol,
+                    open_candle=candle,
+                    prior_eval_time=event.candle_open_time,
+                    evaluation_time=evaluation_time,
+                    error=exc,
+                )
             )
             return self._deferred_outcome(event, error=exc)
         except RetryableSchedulerDeferred as exc:
@@ -1093,9 +1099,16 @@ class MarketEventBridge:
                 event, error=exc, release_job_name=recovery_job
             )
         except RetryableContextNotReady as exc:
+            candle = self._latest_daily(event.symbol)
             logger.warning(
-                "daily_open_recovery_deferred",
-                extra={"symbol": event.symbol, "error": exc.code},
+                self.context_builder.describe_daily_open_defer(
+                    event.symbol,
+                    open_candle=candle,
+                    prior_eval_time=event.candle_open_time,
+                    evaluation_time=evaluation_time,
+                    error=exc,
+                    event_name="daily_open_recovery_deferred",
+                )
             )
             return self._deferred_outcome(
                 event, error=exc, release_job_name=recovery_job
