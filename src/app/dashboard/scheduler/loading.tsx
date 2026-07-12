@@ -1,0 +1,5 @@
+import { TableSkeleton } from "@/components/monitor/PageSkeleton";
+
+export default function SchedulerLoading() {
+  return <TableSkeleton />;
+}

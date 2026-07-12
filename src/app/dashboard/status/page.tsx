@@ -1,7 +1,10 @@
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
 import { StatusBadge } from "@/components/monitor/StatusBadge";
-import { fetchMarketData, fetchStatus } from "@/lib/paper-api/client";
-
+import {
+  fetchMarketData,
+  fetchStatus,
+  getMonitoringErrorMessage,
+} from "@/lib/paper-api/client";
 export default async function StatusPage() {
   try {
     const [status, marketData] = await Promise.all([fetchStatus(), fetchMarketData()]);
@@ -16,7 +19,11 @@ export default async function StatusPage() {
         </pre>
       </div>
     );
-  } catch {
-    return <ErrorPanel title="Status unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Status unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

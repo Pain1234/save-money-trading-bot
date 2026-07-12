@@ -1,7 +1,6 @@
 import { DataTable } from "@/components/monitor/DataTable";
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchEvents } from "@/lib/paper-api/client";
-
+import { fetchEvents, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 export default async function IncidentsPage() {
   try {
     const data = await fetchEvents();
@@ -16,7 +15,11 @@ export default async function IncidentsPage() {
         emptyMessage="No incidents recorded"
       />
     );
-  } catch {
-    return <ErrorPanel title="Incidents unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Incidents unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

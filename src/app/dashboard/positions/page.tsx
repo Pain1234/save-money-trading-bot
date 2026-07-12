@@ -1,7 +1,6 @@
 import { DataTable } from "@/components/monitor/DataTable";
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchPositions } from "@/lib/paper-api/client";
-
+import { fetchPositions, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 export default async function PositionsPage() {
   try {
     const data = await fetchPositions();
@@ -13,7 +12,11 @@ export default async function PositionsPage() {
         emptyMessage="No positions"
       />
     );
-  } catch {
-    return <ErrorPanel title="Positions unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Positions unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

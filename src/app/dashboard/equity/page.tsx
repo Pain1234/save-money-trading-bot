@@ -1,7 +1,6 @@
 import { DataTable } from "@/components/monitor/DataTable";
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchEquity } from "@/lib/paper-api/client";
-
+import { fetchEquity, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 export default async function EquityPage() {
   try {
     const data = await fetchEquity();
@@ -13,7 +12,11 @@ export default async function EquityPage() {
         emptyMessage="No equity snapshots"
       />
     );
-  } catch {
-    return <ErrorPanel title="Equity history unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Equity history unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

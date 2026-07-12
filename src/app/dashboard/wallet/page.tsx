@@ -1,6 +1,5 @@
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchWallet } from "@/lib/paper-api/client";
-
+import { fetchWallet, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 export default async function WalletPage() {
   try {
     const wallet = await fetchWallet();
@@ -17,7 +16,11 @@ export default async function WalletPage() {
         </dl>
       </div>
     );
-  } catch {
-    return <ErrorPanel title="Wallet unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Wallet unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

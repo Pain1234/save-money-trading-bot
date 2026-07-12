@@ -1,3 +1,11 @@
+export const API_TIMEOUT_MS = 5000;
+
+export const REVALIDATE = {
+  STATUS: 4,
+  MONITORING: 5,
+  HISTORY: 10,
+} as const;
+
 export type DisplayStatus = "READY" | "DEGRADED" | "STOPPED";
 
 export interface Paginated<T> {
@@ -100,6 +108,23 @@ export class PaperApiError extends Error {
   }
 }
 
+export class PaperApiTimeoutError extends Error {
+  constructor() {
+    super("Monitoring API request timed out");
+    this.name = "PaperApiTimeoutError";
+  }
+}
+
+export function getMonitoringErrorMessage(error: unknown): string {
+  if (error instanceof PaperApiTimeoutError) {
+    return "The monitoring API did not respond within 5 seconds. Refresh the page to retry.";
+  }
+  if (error instanceof PaperApiError) {
+    return `Monitoring API unavailable (${error.status}).`;
+  }
+  return "Monitoring API unavailable.";
+}
+
 function apiBaseUrl(): string {
   const url = process.env.PRIVATE_PAPER_API_URL;
   if (!url) {
@@ -108,53 +133,89 @@ function apiBaseUrl(): string {
   return url.replace(/\/$/, "");
 }
 
-export async function fetchPaperApi<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    throw new PaperApiError(`API request failed: ${path}`, response.status);
+export async function fetchPaperApi<T>(
+  path: string,
+  options: { revalidate: number },
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${apiBaseUrl()}${path}`, {
+      next: { revalidate: options.revalidate },
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new PaperApiError(`API request failed: ${path}`, response.status);
+    }
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new PaperApiTimeoutError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return (await response.json()) as T;
 }
 
 export async function fetchStatus(): Promise<StatusResponse> {
-  return fetchPaperApi<StatusResponse>("/api/v1/status");
+  return fetchPaperApi<StatusResponse>("/api/v1/status", {
+    revalidate: REVALIDATE.STATUS,
+  });
 }
 
 export async function fetchWallet(): Promise<WalletResponse> {
-  return fetchPaperApi<WalletResponse>("/api/v1/wallet");
+  return fetchPaperApi<WalletResponse>("/api/v1/wallet", {
+    revalidate: REVALIDATE.MONITORING,
+  });
 }
 
 export async function fetchPositions(): Promise<Paginated<PositionItem>> {
-  return fetchPaperApi<Paginated<PositionItem>>("/api/v1/positions?limit=50");
+  return fetchPaperApi<Paginated<PositionItem>>("/api/v1/positions?limit=50", {
+    revalidate: REVALIDATE.MONITORING,
+  });
 }
 
 export async function fetchOrders(): Promise<Paginated<OrderItem>> {
-  return fetchPaperApi<Paginated<OrderItem>>("/api/v1/orders?limit=50");
+  return fetchPaperApi<Paginated<OrderItem>>("/api/v1/orders?limit=50", {
+    revalidate: REVALIDATE.MONITORING,
+  });
 }
 
 export async function fetchFills(): Promise<Paginated<FillItem>> {
-  return fetchPaperApi<Paginated<FillItem>>("/api/v1/fills?limit=50");
+  return fetchPaperApi<Paginated<FillItem>>("/api/v1/fills?limit=50", {
+    revalidate: REVALIDATE.MONITORING,
+  });
 }
 
 export async function fetchStops(): Promise<Paginated<StopItem>> {
-  return fetchPaperApi<Paginated<StopItem>>("/api/v1/stops?limit=50");
+  return fetchPaperApi<Paginated<StopItem>>("/api/v1/stops?limit=50", {
+    revalidate: REVALIDATE.MONITORING,
+  });
 }
 
 export async function fetchSchedulerRuns(): Promise<Paginated<SchedulerRunItem>> {
-  return fetchPaperApi<Paginated<SchedulerRunItem>>("/api/v1/scheduler-runs?limit=50");
+  return fetchPaperApi<Paginated<SchedulerRunItem>>("/api/v1/scheduler-runs?limit=50", {
+    revalidate: REVALIDATE.HISTORY,
+  });
 }
 
 export async function fetchEvents(): Promise<Paginated<EventItem>> {
-  return fetchPaperApi<Paginated<EventItem>>("/api/v1/events?limit=50");
+  return fetchPaperApi<Paginated<EventItem>>("/api/v1/events?limit=50", {
+    revalidate: REVALIDATE.HISTORY,
+  });
 }
 
 export async function fetchEquity(): Promise<Paginated<EquityPoint>> {
-  return fetchPaperApi<Paginated<EquityPoint>>("/api/v1/equity?limit=100");
+  return fetchPaperApi<Paginated<EquityPoint>>("/api/v1/equity?limit=100", {
+    revalidate: REVALIDATE.HISTORY,
+  });
 }
 
 export async function fetchMarketData(): Promise<Record<string, unknown>> {
-  return fetchPaperApi<Record<string, unknown>>("/api/v1/market-data");
+  return fetchPaperApi<Record<string, unknown>>("/api/v1/market-data", {
+    revalidate: REVALIDATE.STATUS,
+  });
 }

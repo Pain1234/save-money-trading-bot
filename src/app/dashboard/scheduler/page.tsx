@@ -1,9 +1,8 @@
 import { DataTable } from "@/components/monitor/DataTable";
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchSchedulerRuns } from "@/lib/paper-api/client";
+import { fetchSchedulerRuns, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 
-export default async function SchedulerPage() {
-  try {
+export default async function SchedulerPage() {  try {
     const data = await fetchSchedulerRuns();
     return (
       <DataTable
@@ -13,7 +12,12 @@ export default async function SchedulerPage() {
         emptyMessage="No scheduler runs"
       />
     );
-  } catch {
-    return <ErrorPanel title="Scheduler runs unavailable" />;
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Scheduler runs unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
   }
 }

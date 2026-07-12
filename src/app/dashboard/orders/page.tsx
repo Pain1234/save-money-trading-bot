@@ -1,7 +1,6 @@
 import { DataTable } from "@/components/monitor/DataTable";
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchOrders } from "@/lib/paper-api/client";
-
+import { fetchOrders, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 export default async function OrdersPage() {
   try {
     const data = await fetchOrders();
@@ -13,7 +12,11 @@ export default async function OrdersPage() {
         emptyMessage="No orders"
       />
     );
-  } catch {
-    return <ErrorPanel title="Orders unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Orders unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

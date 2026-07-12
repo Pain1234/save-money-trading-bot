@@ -1,7 +1,6 @@
 import { DataTable } from "@/components/monitor/DataTable";
 import { ErrorPanel } from "@/components/monitor/ErrorPanel";
-import { fetchFills } from "@/lib/paper-api/client";
-
+import { fetchFills, getMonitoringErrorMessage } from "@/lib/paper-api/client";
 export default async function FillsPage() {
   try {
     const data = await fetchFills();
@@ -13,7 +12,11 @@ export default async function FillsPage() {
         emptyMessage="No fills"
       />
     );
-  } catch {
-    return <ErrorPanel title="Fills unavailable" />;
-  }
-}
+  } catch (error) {
+    return (
+      <ErrorPanel
+        title="Fills unavailable"
+        message={getMonitoringErrorMessage(error)}
+      />
+    );
+  }}

@@ -1,6 +1,9 @@
 import { StatusBadge } from "@/components/monitor/StatusBadge";
-import { fetchStatus, fetchWallet, PaperApiError } from "@/lib/paper-api/client";
-
+import {
+  fetchStatus,
+  fetchWallet,
+  getMonitoringErrorMessage,
+} from "@/lib/paper-api/client";
 function formatAge(seconds: number | null): string {
   if (seconds == null) return "unknown";
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -52,15 +55,10 @@ export default async function DashboardOverviewPage() {
       </div>
     );
   } catch (error) {
-    const message =
-      error instanceof PaperApiError
-        ? `Monitoring API unavailable (${error.status})`
-        : "Monitoring API unavailable";
     return (
       <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-6">
         <h1 className="text-xl font-semibold text-red-300">API Error</h1>
-        <p className="mt-2 text-sm">{message}</p>
+        <p className="mt-2 text-sm">{getMonitoringErrorMessage(error)}</p>
       </div>
     );
-  }
-}
+  }}
