@@ -115,6 +115,8 @@ class ReadinessService:
             ok = False
         if self._orphan_scheduler_run(reasons):
             ok = False
+        if self._permanent_configuration_failure(reasons):
+            ok = False
         if not self._heartbeat_fresh(runtime, reasons):
             ok = False
         return ok
@@ -126,6 +128,8 @@ class ReadinessService:
             ok = False
         if runtime.kill_switch:
             reasons.append("kill_switch")
+            ok = False
+        if self._permanent_configuration_failure(reasons):
             ok = False
         return ok
 
@@ -169,6 +173,13 @@ class ReadinessService:
         orphan = self._repo.get_running_scheduler_runs()
         if orphan:
             reasons.append("orphan_scheduler_run")
+            return True
+        return False
+
+    def _permanent_configuration_failure(self, reasons: list[str]) -> bool:
+        failures = self._repo.list_permanent_configuration_failures()
+        if failures:
+            reasons.append("permanent_configuration_failure")
             return True
         return False
 

@@ -249,7 +249,8 @@ def test_permanent_missing_constraints_fails_closed() -> None:
     candle_repo.upsert(_daily("BTC", open_time, is_closed=False))
     context_builder = MagicMock(spec=ProductionContextBuilder)
     context_builder.build_open_contexts.side_effect = PermanentConfigurationFailure(
-        "missing symbol constraints for BTC"
+        "missing symbol constraints for BTC",
+        error_code=PermanentConfigurationFailure.code,
     )
     repo = _repo_with_subjob_tracking()
     bridge = _build_bridge(
@@ -259,9 +260,17 @@ def test_permanent_missing_constraints_fails_closed() -> None:
         context_builder=context_builder,
     )
     outcomes = bridge.process_after_poll(eval_time)
+    ack_result(bridge, outcomes)
     assert outcomes.outcomes[0].status == SchedulerRunStatus.FAILED
     assert outcomes.outcomes[0].error == PermanentConfigurationFailure.code
+    assert outcomes.outcomes[0].terminal_failed is True
+    assert len(outcomes.events_terminal_failed) == 1
     assert bridge.detector._trackers["BTC"].daily_open_ack_time is None  # noqa: SLF001
+    assert bridge.detector._trackers["BTC"].daily_open_terminal_failed_time == open_time  # noqa: SLF001
+
+    retry = bridge.process_after_poll(eval_time)
+    assert len(retry.outcomes) == 0
+    assert context_builder.build_open_contexts.call_count == 1
 
 
 def test_context_never_ready_stays_deferred_without_failed_flood() -> None:

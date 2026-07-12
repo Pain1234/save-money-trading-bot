@@ -13,6 +13,7 @@ def poll_commit_ack(
     result = bridge.process_after_poll(evaluation_time)
     repo.session.commit()
     bridge.acknowledge_committed(result.events_to_ack)
+    bridge.acknowledge_terminal_failed_committed(result.events_terminal_failed)
     return result
 
 
@@ -22,3 +23,4 @@ def poll_without_ack(bridge: MarketEventBridge, evaluation_time) -> BridgePollRe
 
 def ack_result(bridge: MarketEventBridge, result: BridgePollResult) -> None:
     bridge.acknowledge_committed(result.events_to_ack)
+    bridge.acknowledge_terminal_failed_committed(result.events_terminal_failed)

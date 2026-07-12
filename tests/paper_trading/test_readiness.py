@@ -32,6 +32,7 @@ def test_market_data_not_ready_blocks_entry() -> None:
         version=1,
     )
     repo.get_running_scheduler_runs.return_value = ()
+    repo.list_permanent_configuration_failures.return_value = ()
     service = ReadinessService(repo, _config(), clock=FixedClock(now))
     snap = service.evaluate(market_data_ready=False, scheduler_active=True)
     assert snap.entry_readiness is False
@@ -49,6 +50,7 @@ def test_pause_blocks_entry_stops_allowed() -> None:
         version=1,
     )
     repo.get_running_scheduler_runs.return_value = ()
+    repo.list_permanent_configuration_failures.return_value = ()
     service = ReadinessService(repo, _config(), clock=FixedClock(now))
     snap = service.evaluate(market_data_ready=True, scheduler_active=True)
     assert snap.entry_readiness is False
@@ -65,6 +67,7 @@ def test_stale_heartbeat_blocks_readiness() -> None:
         version=1,
     )
     repo.get_running_scheduler_runs.return_value = ()
+    repo.list_permanent_configuration_failures.return_value = ()
     service = ReadinessService(
         repo,
         _config(),
@@ -84,6 +87,7 @@ def test_advisory_lock_required() -> None:
         version=1,
     )
     repo.get_running_scheduler_runs.return_value = ()
+    repo.list_permanent_configuration_failures.return_value = ()
     lock = InMemoryAdvisoryLock("a")
     service = ReadinessService(repo, _config(), clock=FixedClock(now))
     snap = service.evaluate(

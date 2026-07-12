@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle, StrategyDataBundle
 from market_data.service import MarketDataService
-from risk_engine.models import RiskParameters
+from risk_engine.models import RiskParameters, SymbolConstraints
 from strategy_engine.constants import (
     MIN_DAILY_CANDLES,
     MIN_MONTHLY_CANDLES,
@@ -18,13 +18,13 @@ from strategy_engine.models import Candle, StrategyParameters
 
 from paper_trading.clock import Clock
 from paper_trading.config import PaperTradingConfig
+from paper_trading.constraint_validation import require_valid_production_constraints
 from paper_trading.enums import RuntimeStatus
 from paper_trading.lifecycle import (
     FillProcessingContext,
     build_entry_gate_context,
 )
 from paper_trading.market_event_errors import (
-    PermanentConfigurationFailure,
     RetryableContextNotReady,
 )
 from paper_trading.models import PaperExecutionConfig
@@ -93,17 +93,21 @@ class ProductionContextBuilder:
         entry_ready = runtime.status == RuntimeStatus.READY and not kill and not paused
         return entry_ready, paused, kill
 
+    def validate_symbol_configuration(self, symbol: str) -> None:
+        """Fail-closed constraint validation for recovery and readiness."""
+        constraints = self._constraints.get(symbol)
+        require_valid_production_constraints(symbol=symbol, constraints=constraints)
+
+    def _require_valid_constraints(self, symbol: str) -> SymbolConstraints:
+        constraints = self._constraints.get(symbol)
+        return require_valid_production_constraints(symbol=symbol, constraints=constraints)
+
     def build_evaluation_context(
         self,
         symbol: str,
         evaluation_time: datetime,
     ) -> dict[str, object]:
-        try:
-            self._constraints.require(symbol)
-        except ValueError as exc:
-            raise PermanentConfigurationFailure(
-                f"missing symbol constraints for {symbol}"
-            ) from exc
+        self._require_valid_constraints(symbol)
         bundle = self._bundle(symbol, evaluation_time, backfill=False)
         if not bundle.is_usable:
             raise RetryableContextNotReady(
@@ -134,12 +138,7 @@ class ProductionContextBuilder:
         symbol: str,
         evaluation_time: datetime,
     ) -> dict[str, object]:
-        try:
-            constraints = self._constraints.require(symbol)
-        except ValueError as exc:
-            raise PermanentConfigurationFailure(
-                f"missing symbol constraints for {symbol}"
-            ) from exc
+        constraints = self._require_valid_constraints(symbol)
         bundle = self._bundle(symbol, evaluation_time, backfill=False)
         if not bundle.daily.candles:
             raise RetryableContextNotReady(
@@ -172,12 +171,7 @@ class ProductionContextBuilder:
         open_candle: NormalizedCandle,
         evaluation_time: datetime,
     ) -> tuple[dict[str, FillProcessingContext], dict[str, object]]:
-        try:
-            constraints = self._constraints.require(symbol)
-        except ValueError as exc:
-            raise PermanentConfigurationFailure(
-                f"missing symbol constraints for {symbol}"
-            ) from exc
+        constraints = self._require_valid_constraints(symbol)
 
         prior_eval_time = open_candle.open_time
         bundle = self._bundle(symbol, prior_eval_time, backfill=False)
@@ -237,12 +231,7 @@ class ProductionContextBuilder:
         symbol: str,
         live_candle: NormalizedCandle,
     ) -> dict[str, object]:
-        try:
-            constraints = self._constraints.require(symbol)
-        except ValueError as exc:
-            raise PermanentConfigurationFailure(
-                f"missing symbol constraints for {symbol}"
-            ) from exc
+        constraints = self._require_valid_constraints(symbol)
         if live_candle.is_closed:
             raise RetryableContextNotReady(f"live candle closed for {symbol}")
         preview = live_candle.to_strategy_candle()

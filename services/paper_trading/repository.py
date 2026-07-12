@@ -546,6 +546,57 @@ class PaperTradingRepository:
         self._session.flush()
         return scheduler_row_to_domain(row)
 
+    def list_permanent_configuration_failures(self) -> tuple[SchedulerRun, ...]:
+        from paper_trading.market_event_errors import PERMANENT_CONFIGURATION_ERROR_CODES
+
+        rows = self._session.execute(
+            select(SchedulerRunRow).where(
+                SchedulerRunRow.status == SchedulerRunStatus.FAILED.value,
+                SchedulerRunRow.job_name.like("me:%"),
+                SchedulerRunRow.error.in_(tuple(PERMANENT_CONFIGURATION_ERROR_CODES)),
+            )
+        ).scalars()
+        return tuple(scheduler_row_to_domain(row) for row in rows)
+
+    def reopen_scheduler_run_for_recovery(
+        self,
+        *,
+        job_name: str,
+        scheduled_for: datetime,
+        reopened_at: datetime,
+    ) -> SchedulerRun:
+        from paper_trading.market_event_errors import is_permanent_configuration_error
+
+        existing = self.get_scheduler_run(job_name, scheduled_for)
+        if existing is None:
+            raise ValueError(f"scheduler run missing: {job_name}")
+        if existing.status != SchedulerRunStatus.FAILED:
+            raise ValueError(f"scheduler run not failed: {job_name}")
+        if not is_permanent_configuration_error(existing.error):
+            raise ValueError(f"scheduler run not permanently failed: {job_name}")
+        previous_error = existing.error or "unknown"
+        self._session.execute(
+            update(SchedulerRunRow)
+            .where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+            )
+            .values(
+                status=SchedulerRunStatus.RUNNING.value,
+                completed_at=None,
+                error=f"RECOVERY_PENDING:{previous_error}",
+                started_at=reopened_at,
+            )
+        )
+        row = self._session.execute(
+            select(SchedulerRunRow).where(
+                SchedulerRunRow.job_name == job_name,
+                SchedulerRunRow.scheduled_for == scheduled_for,
+            )
+        ).scalar_one()
+        self._session.flush()
+        return scheduler_row_to_domain(row)
+
     def get_running_scheduler_runs(self) -> tuple[SchedulerRun, ...]:
         rows = self._session.execute(
             select(SchedulerRunRow).where(

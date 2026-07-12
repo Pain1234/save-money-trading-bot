@@ -31,6 +31,7 @@ from paper_trading.market_event_errors import (
     PermanentConfigurationFailure,
     RetryableContextNotReady,
     RetryableSchedulerDeferred,
+    is_permanent_configuration_error,
 )
 from paper_trading.models import SchedulerRun
 from paper_trading.repository import PaperTradingRepository
@@ -113,10 +114,14 @@ class SymbolSeriesTracker:
     """Acknowledged event state — updated only after terminal bridge success."""
 
     daily_open_ack_time: datetime | None = None
+    daily_open_terminal_failed_time: datetime | None = None
     daily_live_ack_low: Decimal | None = None
     daily_closed_ack_time: datetime | None = None
+    daily_closed_terminal_failed_time: datetime | None = None
     weekly_closed_ack_time: datetime | None = None
+    weekly_closed_terminal_failed_time: datetime | None = None
     monthly_closed_ack_time: datetime | None = None
+    monthly_closed_terminal_failed_time: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +133,7 @@ class EventProcessOutcome:
     error: str | None = None
     deferred: bool = False
     retryable: bool = False
+    terminal_failed: bool = False
 
 
 @dataclass(frozen=True)
@@ -136,6 +142,7 @@ class BridgePollResult:
 
     outcomes: tuple[EventProcessOutcome, ...]
     events_to_ack: tuple[MarketEvent, ...]
+    events_terminal_failed: tuple[MarketEvent, ...]
     deferred_events: bool
     permanent_failures: tuple[EventProcessOutcome, ...]
 
@@ -171,17 +178,48 @@ class MarketEventDetector:
         open_time = ensure_utc(event.candle_open_time)
         if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
             tracker.daily_open_ack_time = open_time
+            tracker.daily_open_terminal_failed_time = None
             tracker.daily_live_ack_low = event.observed_low
         elif event.event_type == MarketEventType.DAILY_LIVE_UPDATE:
             tracker.daily_live_ack_low = event.observed_low
         elif event.event_type == MarketEventType.DAILY_CLOSED:
             tracker.daily_closed_ack_time = open_time
+            tracker.daily_closed_terminal_failed_time = None
         elif event.event_type == MarketEventType.WEEKLY_CLOSED:
             tracker.weekly_closed_ack_time = open_time
+            tracker.weekly_closed_terminal_failed_time = None
         elif event.event_type == MarketEventType.MONTHLY_CLOSED:
             tracker.monthly_closed_ack_time = open_time
+            tracker.monthly_closed_terminal_failed_time = None
         else:
             raise ValueError(f"unknown event type: {event.event_type}")
+
+    def acknowledge_terminal_failed(self, event: MarketEvent) -> None:
+        tracker = self._tracker(event.symbol)
+        open_time = ensure_utc(event.candle_open_time)
+        if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
+            tracker.daily_open_terminal_failed_time = open_time
+        elif event.event_type == MarketEventType.DAILY_CLOSED:
+            tracker.daily_closed_terminal_failed_time = open_time
+        elif event.event_type == MarketEventType.WEEKLY_CLOSED:
+            tracker.weekly_closed_terminal_failed_time = open_time
+        elif event.event_type == MarketEventType.MONTHLY_CLOSED:
+            tracker.monthly_closed_terminal_failed_time = open_time
+        else:
+            raise ValueError(f"terminal failure ack unsupported for {event.event_type}")
+
+    def clear_terminal_failed(self, event: MarketEvent) -> None:
+        tracker = self._tracker(event.symbol)
+        if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
+            tracker.daily_open_terminal_failed_time = None
+        elif event.event_type == MarketEventType.DAILY_CLOSED:
+            tracker.daily_closed_terminal_failed_time = None
+        elif event.event_type == MarketEventType.WEEKLY_CLOSED:
+            tracker.weekly_closed_terminal_failed_time = None
+        elif event.event_type == MarketEventType.MONTHLY_CLOSED:
+            tracker.monthly_closed_terminal_failed_time = None
+        else:
+            raise ValueError(f"terminal failure clear unsupported for {event.event_type}")
 
     def _tracker(self, symbol: str) -> SymbolSeriesTracker:
         if symbol not in self._trackers:
@@ -238,15 +276,16 @@ class MarketEventDetector:
         open_time = ensure_utc(candle.open_time)
 
         if not candle.is_closed and tracker.daily_open_ack_time != open_time:
-            events.append(
-                MarketEvent(
-                    event_type=MarketEventType.DAILY_OPEN_AVAILABLE,
-                    symbol=candle.symbol.value,
-                    candle_open_time=open_time,
-                    provider_received_at=evaluation_time,
-                    observed_low=candle.low,
+            if tracker.daily_open_terminal_failed_time != open_time:
+                events.append(
+                    MarketEvent(
+                        event_type=MarketEventType.DAILY_OPEN_AVAILABLE,
+                        symbol=candle.symbol.value,
+                        candle_open_time=open_time,
+                        provider_received_at=evaluation_time,
+                        observed_low=candle.low,
+                    )
                 )
-            )
         elif (
             tracker.daily_open_ack_time == open_time
             and not candle.is_closed
@@ -268,6 +307,7 @@ class MarketEventDetector:
             closed
             and evaluation_time >= due
             and tracker.daily_closed_ack_time != open_time
+            and tracker.daily_closed_terminal_failed_time != open_time
         ):
             events.append(
                 MarketEvent(
@@ -291,7 +331,9 @@ class MarketEventDetector:
         if not is_candle_closed(candle.close_time, evaluation_time) or not candle.is_closed:
             return []
         last = getattr(tracker, tracker_field)
-        if last == open_time:
+        terminal_field = tracker_field.replace("_ack_time", "_terminal_failed_time")
+        terminal_last = getattr(tracker, terminal_field)
+        if last == open_time or terminal_last == open_time:
             return []
         return [
             MarketEvent(
@@ -330,6 +372,7 @@ class MarketEventBridge:
     max_events_per_poll: int = DEFAULT_MAX_EVENTS_PER_POLL
     _queue_overflow: bool = field(default=False, init=False)
     _deferred_events: bool = field(default=False, init=False)
+    _recovery_pending: set[tuple[str, datetime]] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         if self.detector is None:
@@ -350,15 +393,19 @@ class MarketEventBridge:
     def has_event_backlog(self) -> bool:
         return self._queue_overflow or self._deferred_events
 
+    @property
+    def has_permanent_failures(self) -> bool:
+        return bool(self.repository.list_permanent_configuration_failures())
+
     def process_after_poll(self, evaluation_time: datetime) -> BridgePollResult:
         evaluation_time = ensure_utc(evaluation_time)
         self._deferred_events = False
         if not self.market_data_ready():
-            return BridgePollResult((), (), False, ())
+            return BridgePollResult((), (), (), False, ())
         if not self.advisory_lock.held:
-            return BridgePollResult((), (), False, ())
+            return BridgePollResult((), (), (), False, ())
         if self._session_unhealthy():
-            return BridgePollResult((), (), False, ())
+            return BridgePollResult((), (), (), False, ())
 
         assert self.detector is not None
         candidates = list(
@@ -376,11 +423,14 @@ class MarketEventBridge:
 
         outcomes: list[EventProcessOutcome] = []
         events_to_ack: list[MarketEvent] = []
+        events_terminal_failed: list[MarketEvent] = []
         permanent_failures: list[EventProcessOutcome] = []
         for event in candidates:
             outcome = self._process_event(event, evaluation_time)
             if self._should_ack(outcome):
                 events_to_ack.append(event)
+            if outcome.terminal_failed:
+                events_terminal_failed.append(event)
             if outcome.deferred or outcome.retryable:
                 self._deferred_events = True
             if outcome.status == SchedulerRunStatus.FAILED and not outcome.deferred:
@@ -389,6 +439,7 @@ class MarketEventBridge:
         return BridgePollResult(
             outcomes=tuple(outcomes),
             events_to_ack=tuple(events_to_ack),
+            events_terminal_failed=tuple(events_terminal_failed),
             deferred_events=self._deferred_events,
             permanent_failures=tuple(permanent_failures),
         )
@@ -399,6 +450,103 @@ class MarketEventBridge:
             return
         for event in events:
             self.detector.acknowledge_completed(event)
+
+    def acknowledge_terminal_failed_committed(
+        self,
+        events: tuple[MarketEvent, ...],
+    ) -> None:
+        """Stop retry emission for permanently failed events after commit."""
+        if not events or self.detector is None:
+            return
+        for event in events:
+            self.detector.acknowledge_terminal_failed(event)
+
+    def recover_permanent_configuration(self, event: MarketEvent) -> None:
+        """Allow one controlled retry after configuration correction."""
+        if not self.advisory_lock.held:
+            raise RuntimeError("advisory lock required for permanent failure recovery")
+        job_name = market_event_job_name(event)
+        scheduled_for = event.scheduled_for
+        existing = self.repository.get_scheduler_run(job_name, scheduled_for)
+        if existing is None or existing.status != SchedulerRunStatus.FAILED:
+            raise ValueError(f"no recoverable permanent failure for {job_name}")
+        if not is_permanent_configuration_error(existing.error):
+            raise ValueError(f"scheduler run is not a permanent configuration failure: {job_name}")
+        self.context_builder.validate_symbol_configuration(event.symbol)
+        if self.detector is not None:
+            self.detector.clear_terminal_failed(event)
+        self._recovery_pending.add((job_name, scheduled_for))
+
+    def _terminal_failed_outcome(
+        self,
+        event: MarketEvent,
+        job_name: str,
+        scheduled_for: datetime,
+        error: str | None,
+    ) -> EventProcessOutcome:
+        return EventProcessOutcome(
+            event=event,
+            job_name=job_name,
+            status=SchedulerRunStatus.FAILED,
+            skipped=True,
+            error=error,
+            terminal_failed=True,
+        )
+
+    def _maybe_begin_recovery(
+        self,
+        job_name: str,
+        scheduled_for: datetime,
+    ) -> bool:
+        key = (job_name, scheduled_for)
+        if key not in self._recovery_pending:
+            return False
+        self.repository.reopen_scheduler_run_for_recovery(
+            job_name=job_name,
+            scheduled_for=scheduled_for,
+            reopened_at=self.clock.now(),
+        )
+        self._recovery_pending.discard(key)
+        return True
+
+    def _maybe_short_circuit_permanent_failure(
+        self,
+        event: MarketEvent,
+        job_name: str,
+        scheduled_for: datetime,
+    ) -> EventProcessOutcome | None:
+        existing = self.repository.get_scheduler_run(job_name, scheduled_for)
+        if existing is None or existing.status != SchedulerRunStatus.FAILED:
+            return None
+        if not is_permanent_configuration_error(existing.error):
+            return None
+        if self._maybe_begin_recovery(job_name, scheduled_for):
+            return None
+        return self._terminal_failed_outcome(
+            event,
+            job_name,
+            scheduled_for,
+            existing.error,
+        )
+
+    def _mark_permanent_failure(
+        self,
+        event: MarketEvent,
+        job_name: str,
+        scheduled_for: datetime,
+        exc: PermanentConfigurationFailure,
+    ) -> EventProcessOutcome:
+        self._complete_market_event(
+            job_name, scheduled_for, SchedulerRunStatus.FAILED, exc.code
+        )
+        return EventProcessOutcome(
+            event=event,
+            job_name=job_name,
+            status=SchedulerRunStatus.FAILED,
+            skipped=False,
+            error=exc.code,
+            terminal_failed=True,
+        )
 
     @staticmethod
     def _should_ack(outcome: EventProcessOutcome) -> bool:
@@ -489,6 +637,12 @@ class MarketEventBridge:
         if event.event_type == MarketEventType.DAILY_OPEN_AVAILABLE:
             return self._process_daily_open(event, evaluation_time)
 
+        short_circuit = self._maybe_short_circuit_permanent_failure(
+            event, job_name, scheduled_for
+        )
+        if short_circuit is not None:
+            return short_circuit
+
         existing = self.repository.get_scheduler_run(job_name, scheduled_for)
         if existing is not None and existing.status == SchedulerRunStatus.COMPLETED:
             return EventProcessOutcome(
@@ -540,16 +694,11 @@ class MarketEventBridge:
         except DailyEvaluationNotDue as exc:
             return self._deferred_outcome(event, error=exc)
         except PermanentConfigurationFailure as exc:
-            logger.exception(
-                "market_event_processing_failed",
+            logger.error(
+                "market_event_permanent_configuration_failure",
                 extra={"job_name": job_name, "error": exc.code},
             )
-            self._complete_market_event(
-                job_name, scheduled_for, SchedulerRunStatus.FAILED, exc.code
-            )
-            return self._persisted_outcome(
-                event, job_name, scheduled_for, skipped=False
-            )
+            return self._mark_permanent_failure(event, job_name, scheduled_for, exc)
         except Exception as exc:
             logger.exception("market_event_processing_failed", extra={"job_name": job_name})
             self._complete_market_event(
@@ -566,6 +715,11 @@ class MarketEventBridge:
     ) -> EventProcessOutcome:
         scheduled_for = event.scheduled_for
         parent_job = market_event_job_name(event)
+        short_circuit = self._maybe_short_circuit_permanent_failure(
+            event, parent_job, scheduled_for
+        )
+        if short_circuit is not None:
+            return short_circuit
         if self._daily_open_terminal_complete(event.symbol, scheduled_for):
             self._ensure_parent_run_completed(parent_job, scheduled_for)
             return self._persisted_outcome(
@@ -595,10 +749,11 @@ class MarketEventBridge:
             )
             return self._deferred_outcome(event, error=exc)
         except PermanentConfigurationFailure as exc:
-            self._complete_market_event(
-                parent_job, scheduled_for, SchedulerRunStatus.FAILED, exc.code
+            logger.error(
+                "daily_open_permanent_configuration_failure",
+                extra={"symbol": event.symbol, "error": exc.code},
             )
-            return self._persisted_outcome(event, parent_job, scheduled_for, skipped=False)
+            return self._mark_permanent_failure(event, parent_job, scheduled_for, exc)
 
     def _ensure_parent_run_completed(self, job_name: str, scheduled_for: datetime) -> None:
         existing = self.repository.get_scheduler_run(job_name, scheduled_for)

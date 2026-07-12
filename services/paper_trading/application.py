@@ -370,6 +370,7 @@ class PaperTradingApplication:
         bridge = self._event_bridge
         bridge_overflow = bridge is not None and bridge.queue_overflow
         bridge_backlog = bridge is not None and bridge.has_event_backlog
+        bridge_permanent = bridge is not None and bridge.has_permanent_failures
         snapshot = readiness.evaluate(
             market_data_ready=self.market_data_ready() and not bridge_overflow,
             advisory_lock=self._advisory_lock,
@@ -377,14 +378,16 @@ class PaperTradingApplication:
         )
         runtime_ready = snapshot.runtime_readiness and not bridge_backlog
         state = self._runtime.get_state()
-        if runtime_ready and state.status in {
+        if runtime_ready and not bridge_permanent and state.status in {
             RuntimeStatus.RECOVERING,
             RuntimeStatus.DEGRADED,
             RuntimeStatus.STARTING,
         }:
             self._runtime.transition(RuntimeStatus.READY, last_error="")
-        elif not runtime_ready and state.status == RuntimeStatus.READY:
-            if bridge_backlog:
+        elif (not runtime_ready or bridge_permanent) and state.status == RuntimeStatus.READY:
+            if bridge_permanent:
+                reason = "permanent_configuration_failure"
+            elif bridge_backlog:
                 if bridge is not None and bridge.deferred_events:
                     reason = "deferred_market_events"
                 elif bridge_overflow:
@@ -430,9 +433,14 @@ class PaperTradingApplication:
                                 continue
                             if outcome.status.name == "FAILED":
                                 self._last_loop_error = outcome.error
+                        if poll_result.permanent_failures:
+                            self._last_loop_error = poll_result.permanent_failures[0].error
                         try:
                             self._repo.session.commit()
                             self._event_bridge.acknowledge_committed(poll_result.events_to_ack)
+                            self._event_bridge.acknowledge_terminal_failed_committed(
+                                poll_result.events_terminal_failed
+                            )
                         except Exception:
                             self._repo.session.rollback()
                             raise
