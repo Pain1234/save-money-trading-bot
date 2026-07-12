@@ -11,6 +11,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig, all_subscriptions
 from market_data.gaps import detect_gaps
 from market_data.ingest import ingest_live_raw, ingest_raw_batch
+from market_data.initial_backfill import (
+    compute_initial_backfill_start,
+    evaluate_native_strategy_bundle_readiness,
+    format_initial_backfill_log,
+)
 from market_data.models import (
     CandleConflict,
     ConnectionStatus,
@@ -82,6 +87,7 @@ class HyperliquidMarketDataRuntime:
         self._last_backfill: datetime | None = None
         self._last_error: str | None = None
         self._initial_backfill_done = False
+        self._strategy_bundles_ready = False
         self._meta_ok = False
         self._backfill_ok = False
         self._reconnect_lock = asyncio.Lock()
@@ -128,6 +134,7 @@ class HyperliquidMarketDataRuntime:
         self._meta_ok = False
         self._backfill_ok = False
         self._initial_backfill_done = False
+        self._strategy_bundles_ready = False
 
     def _record_backfill_success(self, evaluation_time: datetime) -> None:
         self._last_backfill = evaluation_time
@@ -177,6 +184,22 @@ class HyperliquidMarketDataRuntime:
             self._record_failure(exc)
             raise
 
+    def _refresh_strategy_bundle_readiness(self, evaluation_time: datetime) -> None:
+        snapshots = evaluate_native_strategy_bundle_readiness(
+            self.repository,
+            self._config.symbols,
+            evaluation_time,
+        )
+        for snapshot in snapshots:
+            message = format_initial_backfill_log(snapshot)
+            if snapshot.market_data_ready:
+                logger.info(message)
+            else:
+                logger.warning(message)
+        self._strategy_bundles_ready = all(
+            snapshot.market_data_ready for snapshot in snapshots
+        )
+
     async def start(self, evaluation_time: datetime) -> None:
         evaluation_time = ensure_utc(evaluation_time)
         if self._started:
@@ -189,7 +212,10 @@ class HyperliquidMarketDataRuntime:
             for symbol, timeframe in all_subscriptions(self._config):
                 latest = self.repository.get_latest(symbol, timeframe)
                 if latest is None:
-                    start = evaluation_time.replace(year=evaluation_time.year - 1)
+                    start = compute_initial_backfill_start(
+                        evaluation_time,
+                        self._config.initial_backfill_days,
+                    )
                 else:
                     start = latest.open_time
                 await self.backfill_symbol(
@@ -197,6 +223,7 @@ class HyperliquidMarketDataRuntime:
                 )
             buffered = self._ws.end_buffer()
             ingest_live_raw(self.repository, buffered, evaluation_time)
+            self._refresh_strategy_bundle_readiness(evaluation_time)
             self._initial_backfill_done = True
             self._backfill_ok = True
             self._last_error = None
@@ -239,6 +266,7 @@ class HyperliquidMarketDataRuntime:
                     )
                 buffered = self._ws.end_buffer()
                 ingest_live_raw(self.repository, buffered, evaluation_time)
+                self._refresh_strategy_bundle_readiness(evaluation_time)
                 self._last_error = None
             except Exception as exc:
                 self._record_failure(exc)
@@ -283,6 +311,7 @@ class HyperliquidMarketDataRuntime:
             and self._backfill_ok
             and self._ws.subscriptions_acknowledged >= self._ws.subscriptions_expected
             and self._initial_backfill_done
+            and self._strategy_bundles_ready
             and not unresolved_conflicts
             and all_series_valid
             and self._ws.status == ConnectionStatus.CONNECTED

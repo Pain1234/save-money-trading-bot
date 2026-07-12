@@ -15,6 +15,9 @@ DEFAULT_TESTNET_HTTP = "https://api.hyperliquid-testnet.xyz"
 DEFAULT_TESTNET_WS = "wss://api.hyperliquid-testnet.xyz/ws"
 
 
+MINIMUM_INITIAL_BACKFILL_DAYS = 730
+
+
 class HyperliquidNetwork(StrEnum):
     MAINNET = "mainnet"
     TESTNET = "testnet"
@@ -51,6 +54,10 @@ class HyperliquidPublicConfig(BaseModel):
         MarketTimeframe.MONTHLY,
     )
     meta_cache_ttl_seconds: float = Field(default=300.0, gt=0)
+    initial_backfill_days: int = Field(
+        default=MINIMUM_INITIAL_BACKFILL_DAYS,
+        ge=MINIMUM_INITIAL_BACKFILL_DAYS,
+    )
 
     @model_validator(mode="after")
     def _validate_delays(self) -> HyperliquidPublicConfig:
@@ -98,6 +105,8 @@ class HyperliquidPublicConfig(BaseModel):
             updates["reconnect_max_delay_seconds"] = float(maximum)
         if concurrency := os.getenv("HYPERLIQUID_MAX_HTTP_CONCURRENCY"):
             updates["max_http_concurrency"] = int(concurrency)
+        if backfill_days := os.getenv("HYPERLIQUID_INITIAL_BACKFILL_DAYS"):
+            updates["initial_backfill_days"] = int(backfill_days)
         return cfg.model_copy(update=updates) if updates else cfg
 
 
