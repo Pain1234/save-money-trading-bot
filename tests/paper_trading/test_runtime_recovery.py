@@ -41,3 +41,7 @@ def test_recover_on_startup_delegates_to_recovery_module() -> None:
 
 def test_runtime_transition_starting_to_recovering_valid() -> None:
     validate_runtime_transition(RuntimeStatus.STARTING, RuntimeStatus.RECOVERING)
+
+
+def test_runtime_transition_degraded_to_recovering_valid() -> None:
+    validate_runtime_transition(RuntimeStatus.DEGRADED, RuntimeStatus.RECOVERING)

@@ -105,8 +105,11 @@ _RUNTIME_TRANSITIONS: dict[RuntimeStatus, frozenset[RuntimeStatus]] = {
             RuntimeStatus.SHUTTING_DOWN,
         }
     ),
+    # DEGRADED is non-terminal: after process exit or redeploy the new worker must
+    # enter startup recovery (RECOVERING) before returning to READY or DEGRADED.
     RuntimeStatus.DEGRADED: frozenset(
         {
+            RuntimeStatus.RECOVERING,
             RuntimeStatus.READY,
             RuntimeStatus.PAUSED,
             RuntimeStatus.KILLED,

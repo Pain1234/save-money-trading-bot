@@ -168,6 +168,15 @@ class RecoveryService:
         *,
         market_data_ready: bool,
     ) -> RecoveryResult:
+        """Run deterministic startup recovery from the persisted runtime row.
+
+        Persisted states after a hard process exit and their policy:
+        - STOPPED / STARTING / RECOVERING: auto-recover through RECOVERING -> SYNCING.
+        - DEGRADED: auto-recover (non-terminal; prior last_error does not block restart).
+        - READY: consistency checks only; may stay READY or move to DEGRADED.
+        - PAUSED / KILLED / FAILED / SHUTTING_DOWN / SYNCING: fail-closed here;
+          require operator action or a dedicated transition before recovery proceeds.
+        """
         if not advisory_lock.held and not advisory_lock.try_acquire():
             raise RuntimeError("advisory lock required for recovery")
 
