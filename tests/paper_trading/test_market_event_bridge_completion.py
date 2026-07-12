@@ -131,10 +131,10 @@ def test_daily_closed_returns_persisted_completed_outcome() -> None:
     clock = FixedClock(eval_time)
     bridge = _build_bridge(repo=repo, candle_repo=candle_repo, clock=clock)
 
-    outcomes = bridge.process_after_poll(eval_time)
-    assert len(outcomes) == 1
-    assert outcomes[0].status == SchedulerRunStatus.COMPLETED
-    assert outcomes[0].event.event_type == MarketEventType.DAILY_CLOSED
+    poll_result = bridge.process_after_poll(eval_time)
+    assert len(poll_result.outcomes) == 1
+    assert poll_result.outcomes[0].status == SchedulerRunStatus.COMPLETED
+    assert poll_result.outcomes[0].event.event_type == MarketEventType.DAILY_CLOSED
 
 
 def test_replay_completed_event_returns_completed_without_rerun() -> None:
@@ -154,9 +154,9 @@ def test_replay_completed_event_returns_completed_without_rerun() -> None:
         scheduler=scheduler,
     )
 
-    outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].status == SchedulerRunStatus.COMPLETED
-    assert outcomes[0].skipped is True
+    poll_result = bridge.process_after_poll(eval_time)
+    assert poll_result.outcomes[0].status == SchedulerRunStatus.COMPLETED
+    assert poll_result.outcomes[0].skipped is True
     scheduler.run_daily_close_sequence.assert_not_called()
 
 
@@ -200,10 +200,10 @@ def test_missing_context_returns_deferred_outcome() -> None:
         detector=MarketEventDetector(symbols=("BTC",), evaluation_delay_seconds=5),
     )
 
-    outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].deferred is True
-    assert outcomes[0].retryable is True
-    assert outcomes[0].status != SchedulerRunStatus.FAILED
+    poll_result = bridge.process_after_poll(eval_time)
+    assert poll_result.outcomes[0].deferred is True
+    assert poll_result.outcomes[0].retryable is True
+    assert poll_result.outcomes[0].status != SchedulerRunStatus.FAILED
 
 
 def test_marker_event_creates_scheduler_run_before_complete() -> None:
@@ -245,8 +245,8 @@ def test_marker_event_creates_scheduler_run_before_complete() -> None:
         clock=FixedClock(eval_time),
     )
 
-    outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].status == SchedulerRunStatus.COMPLETED
+    poll_result = bridge.process_after_poll(eval_time)
+    assert poll_result.outcomes[0].status == SchedulerRunStatus.COMPLETED
     repo.insert_or_get_scheduler_run.assert_called_once()
     repo.complete_scheduler_run.assert_called_once()
 

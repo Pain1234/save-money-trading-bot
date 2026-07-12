@@ -31,6 +31,7 @@ from paper_trading.market_events import (
 from paper_trading.models import SchedulerRun
 from paper_trading.scheduler_context import ProductionContextBuilder
 
+from tests.paper_trading.bridge_test_helpers import ack_result
 from tests.paper_trading.conftest_execution import utc_dt
 
 
@@ -184,19 +185,20 @@ def test_same_bridge_retry_transient_open_context() -> None:
     )
 
     first = bridge.process_after_poll(eval_time)
-    assert len(first) == 1
-    assert first[0].deferred is True
-    assert first[0].retryable is True
-    assert first[0].error == RetryableContextNotReady.code
-    assert first[0].status != SchedulerRunStatus.FAILED
+    assert len(first.outcomes) == 1
+    assert first.outcomes[0].deferred is True
+    assert first.outcomes[0].retryable is True
+    assert first.outcomes[0].error == RetryableContextNotReady.code
+    assert first.outcomes[0].status != SchedulerRunStatus.FAILED
     assert detector._trackers["BTC"].daily_open_ack_time is None  # noqa: SLF001
     assert bridge.deferred_events is True
     scheduler.run_daily_open_gap_stop.assert_not_called()
 
     second = bridge.process_after_poll(eval_time)
-    assert len(second) == 1
-    assert second[0].status == SchedulerRunStatus.COMPLETED
-    assert second[0].skipped is False
+    ack_result(bridge, second)
+    assert len(second.outcomes) == 1
+    assert second.outcomes[0].status == SchedulerRunStatus.COMPLETED
+    assert second.outcomes[0].skipped is False
     assert detector._trackers["BTC"].daily_open_ack_time == open_time  # noqa: SLF001
     assert bridge.deferred_events is False
     scheduler.run_daily_open_gap_stop.assert_called_once()
@@ -235,7 +237,8 @@ def test_restart_retry_after_transient_open_context() -> None:
         detector=detector2,
     )
     outcomes = bridge2.process_after_poll(eval_time)
-    assert outcomes[0].status == SchedulerRunStatus.COMPLETED
+    ack_result(bridge2, outcomes)
+    assert outcomes.outcomes[0].status == SchedulerRunStatus.COMPLETED
     assert detector2._trackers["BTC"].daily_open_ack_time == open_time  # noqa: SLF001
 
 
@@ -256,8 +259,8 @@ def test_permanent_missing_constraints_fails_closed() -> None:
         context_builder=context_builder,
     )
     outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].status == SchedulerRunStatus.FAILED
-    assert outcomes[0].error == PermanentConfigurationFailure.code
+    assert outcomes.outcomes[0].status == SchedulerRunStatus.FAILED
+    assert outcomes.outcomes[0].error == PermanentConfigurationFailure.code
     assert bridge.detector._trackers["BTC"].daily_open_ack_time is None  # noqa: SLF001
 
 
@@ -277,8 +280,8 @@ def test_context_never_ready_stays_deferred_without_failed_flood() -> None:
     )
     for _ in range(5):
         outcomes = bridge.process_after_poll(eval_time)
-        assert outcomes[0].deferred is True
-        assert outcomes[0].status != SchedulerRunStatus.FAILED
+        assert outcomes.outcomes[0].deferred is True
+        assert outcomes.outcomes[0].status != SchedulerRunStatus.FAILED
     assert bridge.deferred_events is True
     assert repo.complete_scheduler_run.call_count == 0
 
@@ -304,15 +307,17 @@ def test_overflow_partial_batch_preserves_remaining_events() -> None:
     bridge.detector = detector
 
     first = bridge.process_after_poll(eval_time)
+    ack_result(bridge, first)
     assert bridge.queue_overflow is True
-    assert len(first) == 2
+    assert len(first.outcomes) == 2
     assert detector._trackers["BTC"].daily_open_ack_time is not None  # noqa: SLF001
     assert detector._trackers["ETH"].daily_open_ack_time is not None  # noqa: SLF001
     assert detector._trackers["SOL"].daily_open_ack_time is None  # noqa: SLF001
 
     second = bridge.process_after_poll(eval_time)
-    assert len(second) == 1
-    assert second[0].event.symbol == "SOL"
+    ack_result(bridge, second)
+    assert len(second.outcomes) == 1
+    assert second.outcomes[0].event.symbol == "SOL"
     assert detector._trackers["SOL"].daily_open_ack_time is not None  # noqa: SLF001
 
 
@@ -341,15 +346,16 @@ def test_fill_delay_gap_immediate_fill_deferred_until_due() -> None:
         fill_delay_seconds=fill_delay,
     )
     first = bridge.process_after_poll(before_due)
-    assert first[0].deferred is True
-    assert first[0].error == FillNotDue.code
+    assert first.outcomes[0].deferred is True
+    assert first.outcomes[0].error == FillNotDue.code
     assert bridge.detector._trackers["BTC"].daily_open_ack_time is None  # noqa: SLF001
     scheduler.run_daily_open_gap_stop.assert_called_once()
     scheduler.run_daily_open_fill.assert_not_called()
 
     bridge.clock = FixedClock(at_due)
     second = bridge.process_after_poll(at_due)
-    assert second[0].status == SchedulerRunStatus.COMPLETED
+    ack_result(bridge, second)
+    assert second.outcomes[0].status == SchedulerRunStatus.COMPLETED
     assert bridge.detector._trackers["BTC"].daily_open_ack_time == open_time  # noqa: SLF001
     assert scheduler.run_daily_open_gap_stop.call_count == 1
     scheduler.run_daily_open_fill.assert_called_once()
@@ -377,7 +383,8 @@ def test_fill_delay_zero_runs_all_subjobs_immediately() -> None:
         fill_delay_seconds=0,
     )
     outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].status == SchedulerRunStatus.COMPLETED
+    ack_result(bridge, outcomes)
+    assert outcomes.outcomes[0].status == SchedulerRunStatus.COMPLETED
     scheduler.run_daily_open_gap_stop.assert_called_once()
     scheduler.run_daily_open_fill.assert_called_once()
     scheduler.run_daily_open_snapshot.assert_called_once()
@@ -415,7 +422,7 @@ def test_completed_event_does_not_retry() -> None:
         scheduler=scheduler,
     )
     outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].skipped is True
+    assert outcomes.outcomes[0].skipped is True
     context_builder.build_open_contexts.assert_not_called()
     scheduler.run_daily_open_gap_stop.assert_not_called()
 
@@ -452,8 +459,8 @@ def test_daily_closed_deferred_on_missing_evaluation_context() -> None:
         context_builder=context_builder,
     )
     outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].deferred is True
-    assert outcomes[0].status != SchedulerRunStatus.FAILED
+    assert outcomes.outcomes[0].deferred is True
+    assert outcomes.outcomes[0].status != SchedulerRunStatus.FAILED
 
 
 def test_market_event_job_names_for_subjobs() -> None:

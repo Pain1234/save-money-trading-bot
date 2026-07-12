@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
-from uuid import uuid4
 
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
 from market_data.repository import InMemoryCandleRepository
@@ -18,6 +17,7 @@ from paper_trading.market_events import (
     MarketEventType,
     market_event_job_name,
 )
+from paper_trading.scheduler import JobRunOutcome
 from paper_trading.scheduler_context import ProductionContextBuilder
 
 from tests.paper_trading.conftest_execution import utc_dt
@@ -130,27 +130,62 @@ def test_daily_closed_emitted_at_due_on_same_detector_instance() -> None:
 def test_queue_overflow_processes_partial_batch() -> None:
     from paper_trading.market_events import MarketEvent
 
+    scheduled_for = utc_dt(2024, 1, 16)
+    runs: dict[tuple[str, datetime], SchedulerRunRow] = {}
+
+    def get_scheduler_run(job_name: str, sched: datetime) -> SchedulerRunRow | None:
+        return runs.get((job_name, sched))
+
+    def insert_or_get_scheduler_run(row: SchedulerRunRow) -> tuple[SchedulerRunRow, bool]:
+        key = (row.job_name, row.scheduled_for)
+        if key in runs:
+            return runs[key], False
+        runs[key] = row
+        return row, True
+
+    def complete_scheduler_run(
+        *,
+        job_name: str,
+        scheduled_for: datetime,
+        status: SchedulerRunStatus,
+        completed_at: datetime,
+        error: str | None,
+    ) -> None:
+        key = (job_name, scheduled_for)
+        existing = runs[key]
+        runs[key] = SchedulerRunRow(
+            run_id=existing.run_id,
+            job_name=existing.job_name,
+            scheduled_for=existing.scheduled_for,
+            started_at=existing.started_at,
+            status=status.value,
+            idempotency_key=existing.idempotency_key,
+            completed_at=completed_at,
+            error=error,
+        )
+
     repo = MagicMock()
-    repo.get_scheduler_run.return_value = None
-    repo.insert_or_get_scheduler_run.return_value = (
-        SchedulerRunRow(
-            run_id=uuid4(),
-            job_name="me:do:BTC:20240116T000000Z",
-            scheduled_for=utc_dt(2024, 1, 16),
-            started_at=utc_dt(2024, 1, 16),
-            status=SchedulerRunStatus.RUNNING.value,
-            idempotency_key="k",
-        ),
-        True,
-    )
+    repo.get_scheduler_run.side_effect = get_scheduler_run
+    repo.insert_or_get_scheduler_run.side_effect = insert_or_get_scheduler_run
+    repo.complete_scheduler_run.side_effect = complete_scheduler_run
     candle_repo = InMemoryCandleRepository()
     candle_repo.upsert(
         _daily("BTC", utc_dt(2024, 1, 16), is_closed=False, low="95")
     )
+    def _completed_job(job_name: str) -> tuple[JobRunOutcome, ...]:
+        return (
+            JobRunOutcome(
+                job_name=job_name,
+                scheduled_for=scheduled_for,
+                status=SchedulerRunStatus.COMPLETED,
+                skipped=False,
+            ),
+        )
+
     scheduler = MagicMock()
-    scheduler.run_daily_open_gap_stop.return_value = (MagicMock(status=SchedulerRunStatus.COMPLETED),)
-    scheduler.run_daily_open_fill.return_value = (MagicMock(status=SchedulerRunStatus.COMPLETED),)
-    scheduler.run_daily_open_snapshot.return_value = (MagicMock(status=SchedulerRunStatus.COMPLETED),)
+    scheduler.run_daily_open_gap_stop.side_effect = lambda **_: _completed_job("gap")
+    scheduler.run_daily_open_fill.side_effect = lambda **_: _completed_job("fill")
+    scheduler.run_daily_open_snapshot.side_effect = lambda **_: _completed_job("snap")
     context_builder = MagicMock(spec=ProductionContextBuilder)
     context_builder.build_open_contexts.return_value = ({}, {})
     advisory_lock = MagicMock()
@@ -187,7 +222,9 @@ def test_queue_overflow_processes_partial_batch() -> None:
         detector=detector,
         max_events_per_poll=1,
     )
-    outcomes = bridge.process_after_poll(utc_dt(2024, 1, 16, 1))
+    result = bridge.process_after_poll(utc_dt(2024, 1, 16, 1))
     assert bridge.queue_overflow is True
-    assert len(outcomes) == 1
+    assert len(result.outcomes) == 1
+    assert len(result.events_to_ack) == 1
+    bridge.acknowledge_committed(result.events_to_ack)
     detector.acknowledge_completed.assert_called_once()

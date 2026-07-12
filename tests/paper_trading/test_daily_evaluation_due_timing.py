@@ -139,10 +139,10 @@ async def test_clock_one_microsecond_before_due_no_completed_evaluation(
 
     _enqueue_closed_signal(md, signal)
     await md.process_live(before_due)
-    outcomes = bridge.process_after_poll(before_due)
+    poll = bridge.process_after_poll(before_due)
     repo.session.commit()
 
-    daily_outcomes = [o for o in outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    daily_outcomes = [o for o in poll.outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
     assert not daily_outcomes
     assert len(repo.list_evaluations(limit=10)) == 0
     assert len(repo.list_intents(limit=10)) == 0
@@ -176,21 +176,21 @@ async def test_same_bridge_instance_retries_at_due(
 
     _enqueue_closed_signal(md, signal)
     await md.process_live(before_due)
-    before_outcomes = bridge.process_after_poll(before_due)
+    before_poll = bridge.process_after_poll(before_due)
     repo.session.commit()
     assert not any(
-        o.event.event_type == MarketEventType.DAILY_CLOSED for o in before_outcomes
+        o.event.event_type == MarketEventType.DAILY_CLOSED for o in before_poll.outcomes
     )
 
     clock = bridge.clock
     assert isinstance(clock, FixedClock)
     clock.advance_to(due)
     await md.process_live(due)
-    at_due_outcomes = bridge.process_after_poll(due)
+    at_due_poll = bridge.process_after_poll(due)
     repo.session.commit()
 
     daily_outcomes = [
-        o for o in at_due_outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED
+        o for o in at_due_poll.outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED
     ]
     assert len(daily_outcomes) == 1
     assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
@@ -217,10 +217,10 @@ async def test_clock_exactly_at_due_one_completed_evaluation(
 
     _enqueue_closed_signal(md, signal)
     await md.process_live(due)
-    outcomes = bridge.process_after_poll(due)
+    poll = bridge.process_after_poll(due)
     repo.session.commit()
 
-    daily_outcomes = [o for o in outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    daily_outcomes = [o for o in poll.outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
     assert len(daily_outcomes) == 1
     assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
     assert len(repo.list_evaluations(limit=10)) == 1
@@ -280,10 +280,10 @@ async def test_replay_after_completed_no_second_evaluation(
     repo.session.commit()
     eval_count = len(repo.list_evaluations(limit=10))
 
-    outcomes2 = bridge.process_after_poll(due)
+    poll2 = bridge.process_after_poll(due)
     repo.session.commit()
 
-    daily2 = [o for o in outcomes2 if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    daily2 = [o for o in poll2.outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
     if daily2:
         assert daily2[0].status == SchedulerRunStatus.COMPLETED
         assert daily2[0].skipped is True
@@ -342,10 +342,12 @@ async def test_restart_between_close_and_due_single_evaluation(
     post_restart_clock = FixedClock(due)
     post_bridge = _build_bridge(repo, md, config, post_restart_clock, lock)
     await md.process_live(due)
-    outcomes = post_bridge.process_after_poll(due)
+    post_poll = post_bridge.process_after_poll(due)
     repo.session.commit()
 
-    daily_outcomes = [o for o in outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    daily_outcomes = [
+        o for o in post_poll.outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED
+    ]
     assert len(daily_outcomes) == 1
     assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
     assert len(repo.list_evaluations(limit=10)) == 1
@@ -374,11 +376,11 @@ async def test_provider_close_within_delay_window_evaluates_after_due(
 
     _enqueue_closed_signal(md, signal)
     await md.process_live(received_at)
-    early_outcomes = bridge.process_after_poll(received_at)
+    early_poll = bridge.process_after_poll(received_at)
     repo.session.commit()
 
     assert not any(
-        o.event.event_type == MarketEventType.DAILY_CLOSED for o in early_outcomes
+        o.event.event_type == MarketEventType.DAILY_CLOSED for o in early_poll.outcomes
     )
     runtime = repo.get_runtime_state()
     assert runtime is not None
@@ -388,10 +390,10 @@ async def test_provider_close_within_delay_window_evaluates_after_due(
     assert isinstance(bridge.clock, FixedClock)
     bridge.clock.advance_to(due)
     await md.process_live(due)
-    due_outcomes = bridge.process_after_poll(due)
+    due_poll = bridge.process_after_poll(due)
     repo.session.commit()
 
-    daily_outcomes = [o for o in due_outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
+    daily_outcomes = [o for o in due_poll.outcomes if o.event.event_type == MarketEventType.DAILY_CLOSED]
     assert len(daily_outcomes) == 1
     assert daily_outcomes[0].status == SchedulerRunStatus.COMPLETED
     assert len(repo.list_evaluations(limit=10)) == 1

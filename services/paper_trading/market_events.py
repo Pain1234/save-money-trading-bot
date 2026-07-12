@@ -30,11 +30,13 @@ from paper_trading.market_event_errors import (
     MarketEventProcessingError,
     PermanentConfigurationFailure,
     RetryableContextNotReady,
+    RetryableSchedulerDeferred,
 )
 from paper_trading.models import SchedulerRun
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.scheduler import JobRunOutcome, PaperTradingScheduler, SchedulerJobName
 from paper_trading.scheduler_context import ProductionContextBuilder
+from paper_trading.scheduler_outcomes import is_terminal_job_success, require_successful_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,16 @@ class EventProcessOutcome:
     error: str | None = None
     deferred: bool = False
     retryable: bool = False
+
+
+@dataclass(frozen=True)
+class BridgePollResult:
+    """Poll processing result — detector ack happens only after outer commit."""
+
+    outcomes: tuple[EventProcessOutcome, ...]
+    events_to_ack: tuple[MarketEvent, ...]
+    deferred_events: bool
+    permanent_failures: tuple[EventProcessOutcome, ...]
 
 
 @dataclass
@@ -338,15 +350,15 @@ class MarketEventBridge:
     def has_event_backlog(self) -> bool:
         return self._queue_overflow or self._deferred_events
 
-    def process_after_poll(self, evaluation_time: datetime) -> tuple[EventProcessOutcome, ...]:
+    def process_after_poll(self, evaluation_time: datetime) -> BridgePollResult:
         evaluation_time = ensure_utc(evaluation_time)
         self._deferred_events = False
         if not self.market_data_ready():
-            return ()
+            return BridgePollResult((), (), False, ())
         if not self.advisory_lock.held:
-            return ()
+            return BridgePollResult((), (), False, ())
         if self._session_unhealthy():
-            return ()
+            return BridgePollResult((), (), False, ())
 
         assert self.detector is not None
         candidates = list(
@@ -363,14 +375,38 @@ class MarketEventBridge:
             candidates = candidates[: self.max_events_per_poll]
 
         outcomes: list[EventProcessOutcome] = []
+        events_to_ack: list[MarketEvent] = []
+        permanent_failures: list[EventProcessOutcome] = []
         for event in candidates:
             outcome = self._process_event(event, evaluation_time)
-            if outcome.status == SchedulerRunStatus.COMPLETED and not outcome.skipped:
-                self.detector.acknowledge_completed(event)
+            if self._should_ack(outcome):
+                events_to_ack.append(event)
             if outcome.deferred or outcome.retryable:
                 self._deferred_events = True
+            if outcome.status == SchedulerRunStatus.FAILED and not outcome.deferred:
+                permanent_failures.append(outcome)
             outcomes.append(outcome)
-        return tuple(outcomes)
+        return BridgePollResult(
+            outcomes=tuple(outcomes),
+            events_to_ack=tuple(events_to_ack),
+            deferred_events=self._deferred_events,
+            permanent_failures=tuple(permanent_failures),
+        )
+
+    def acknowledge_committed(self, events: tuple[MarketEvent, ...]) -> None:
+        """Apply detector ack only after the outer session commit succeeded."""
+        if not events or self.detector is None:
+            return
+        for event in events:
+            self.detector.acknowledge_completed(event)
+
+    @staticmethod
+    def _should_ack(outcome: EventProcessOutcome) -> bool:
+        return (
+            outcome.status == SchedulerRunStatus.COMPLETED
+            and not outcome.deferred
+            and not outcome.retryable
+        )
 
     def _session_unhealthy(self) -> bool:
         session: Session = self.repository.session
@@ -455,8 +491,6 @@ class MarketEventBridge:
 
         existing = self.repository.get_scheduler_run(job_name, scheduled_for)
         if existing is not None and existing.status == SchedulerRunStatus.COMPLETED:
-            if self.detector is not None:
-                self.detector.acknowledge_completed(event)
             return EventProcessOutcome(
                 event=event,
                 job_name=job_name,
@@ -472,8 +506,6 @@ class MarketEventBridge:
 
         run, created = self._ensure_scheduler_run(job_name, scheduled_for)
         if not created and run.status == SchedulerRunStatus.COMPLETED.value:
-            if self.detector is not None:
-                self.detector.acknowledge_completed(event)
             return EventProcessOutcome(
                 event=event,
                 job_name=job_name,
@@ -496,6 +528,12 @@ class MarketEventBridge:
         except RetryableContextNotReady as exc:
             logger.warning(
                 "market_event_deferred",
+                extra={"job_name": job_name, "error": exc.code},
+            )
+            return self._deferred_outcome(event, error=exc)
+        except RetryableSchedulerDeferred as exc:
+            logger.warning(
+                "market_event_scheduler_deferred",
                 extra={"job_name": job_name, "error": exc.code},
             )
             return self._deferred_outcome(event, error=exc)
@@ -527,22 +565,20 @@ class MarketEventBridge:
         evaluation_time: datetime,
     ) -> EventProcessOutcome:
         scheduled_for = event.scheduled_for
+        parent_job = market_event_job_name(event)
         if self._daily_open_terminal_complete(event.symbol, scheduled_for):
-            if self.detector is not None:
-                self.detector.acknowledge_completed(event)
-            return EventProcessOutcome(
-                event=event,
-                job_name=market_event_job_name(event),
-                status=SchedulerRunStatus.COMPLETED,
-                skipped=True,
+            self._ensure_parent_run_completed(parent_job, scheduled_for)
+            return self._persisted_outcome(
+                event, parent_job, scheduled_for, skipped=True
             )
+        self._ensure_scheduler_run(parent_job, scheduled_for)
         try:
             self._handle_daily_open(event, evaluation_time)
-            return EventProcessOutcome(
-                event=event,
-                job_name=market_event_job_name(event),
-                status=SchedulerRunStatus.COMPLETED,
-                skipped=False,
+            self._complete_market_event(
+                parent_job, scheduled_for, SchedulerRunStatus.COMPLETED, None
+            )
+            return self._persisted_outcome(
+                event, parent_job, scheduled_for, skipped=False
             )
         except FillNotDue as exc:
             return self._deferred_outcome(event, error=exc)
@@ -552,13 +588,25 @@ class MarketEventBridge:
                 extra={"symbol": event.symbol, "error": exc.code},
             )
             return self._deferred_outcome(event, error=exc)
-        except PermanentConfigurationFailure as exc:
-            job_name = market_event_job_name(event)
-            self._ensure_scheduler_run(job_name, scheduled_for)
-            self._complete_market_event(
-                job_name, scheduled_for, SchedulerRunStatus.FAILED, exc.code
+        except RetryableSchedulerDeferred as exc:
+            logger.warning(
+                "daily_open_scheduler_deferred",
+                extra={"symbol": event.symbol, "error": exc.code},
             )
-            return self._persisted_outcome(event, job_name, scheduled_for, skipped=False)
+            return self._deferred_outcome(event, error=exc)
+        except PermanentConfigurationFailure as exc:
+            self._complete_market_event(
+                parent_job, scheduled_for, SchedulerRunStatus.FAILED, exc.code
+            )
+            return self._persisted_outcome(event, parent_job, scheduled_for, skipped=False)
+
+    def _ensure_parent_run_completed(self, job_name: str, scheduled_for: datetime) -> None:
+        existing = self.repository.get_scheduler_run(job_name, scheduled_for)
+        if existing is not None and existing.status == SchedulerRunStatus.COMPLETED:
+            return
+        if existing is None:
+            self._ensure_scheduler_run(job_name, scheduled_for)
+        self._complete_market_event(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
 
     def _daily_open_terminal_complete(self, symbol: str, scheduled_for: datetime) -> bool:
         gap = self.repository.get_scheduler_run(
@@ -640,10 +688,12 @@ class MarketEventBridge:
         self._ensure_scheduler_run(job_name, scheduled_for)
         try:
             outcomes = runner()
-            failed = [o for o in outcomes if o.status == SchedulerRunStatus.FAILED]
-            if failed:
-                raise RuntimeError(failed[0].error or "open subjob failed")
+            require_successful_jobs(outcomes)
+            if not all(is_terminal_job_success(outcome) for outcome in outcomes):
+                raise RetryableSchedulerDeferred("scheduler_subjob_not_completed")
             self._complete_market_event(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
+        except RetryableSchedulerDeferred:
+            raise
         except Exception as exc:
             self._complete_market_event(
                 job_name, scheduled_for, SchedulerRunStatus.FAILED, str(exc)
@@ -721,6 +771,7 @@ class MarketEventBridge:
         )
         if outcome.status == SchedulerRunStatus.FAILED:
             raise RuntimeError(outcome.error or "intraday stop processing failed")
+        require_successful_jobs((outcome,))
 
     def _handle_daily_closed(self, event: MarketEvent, evaluation_time: datetime) -> None:
         candle = self._latest_daily(event.symbol)
@@ -743,6 +794,4 @@ class MarketEventBridge:
             scheduled_for=candle.close_time,
             advisory_lock=self.advisory_lock,
         )
-        failed = [o for o in outcomes if o.status == SchedulerRunStatus.FAILED]
-        if failed:
-            raise RuntimeError(f"daily close sequence failed: {failed[0].error}")
+        require_successful_jobs(outcomes)

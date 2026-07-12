@@ -424,13 +424,18 @@ class PaperTradingApplication:
                     and self._repo is not None
                 ):
                     if self._advisory_lock.held and self.market_data_ready():
-                        outcomes = self._event_bridge.process_after_poll(evaluation_time)
-                        for outcome in outcomes:
+                        poll_result = self._event_bridge.process_after_poll(evaluation_time)
+                        for outcome in poll_result.outcomes:
                             if outcome.deferred or outcome.retryable:
                                 continue
                             if outcome.status.name == "FAILED":
                                 self._last_loop_error = outcome.error
-                        self._repo.session.commit()
+                        try:
+                            self._repo.session.commit()
+                            self._event_bridge.acknowledge_committed(poll_result.events_to_ack)
+                        except Exception:
+                            self._repo.session.rollback()
+                            raise
 
                 self._update_runtime_readiness()
                 await asyncio.sleep(self.event_poll_interval_seconds)

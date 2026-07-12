@@ -23,6 +23,7 @@ from paper_trading.scheduler_context import ProductionContextBuilder
 from paper_trading.service_config import PaperServiceConfig
 from paper_trading.symbol_constraints import StaticSymbolConstraintsProvider
 
+from tests.paper_trading.bridge_test_helpers import poll_commit_ack
 from tests.paper_trading.conftest import _postgres_url, requires_postgres
 from tests.paper_trading.e2e.helpers import build_breakout_historical_bundle
 from tests.paper_trading.integration.lifecycle_helpers import (
@@ -132,9 +133,10 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
         )
     )
     await md.process_live(clock.now())
-    outcomes = bridge.process_after_poll(clock.now())
+    poll = bridge.process_after_poll(clock.now())
     repo.session.commit()
-    assert any(o.status == SchedulerRunStatus.COMPLETED for o in outcomes)
+    bridge.acknowledge_committed(poll.events_to_ack)
+    assert any(o.status == SchedulerRunStatus.COMPLETED for o in poll.outcomes)
     assert len(repo.list_evaluations(limit=10)) >= 1
 
     intents = [i for i in repo.list_intents(limit=10) if i.status == TradeIntentStatus.SCHEDULED]
@@ -159,8 +161,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
         )
     )
     await md.process_live(clock.now())
-    bridge.process_after_poll(clock.now())
-    repo.session.commit()
+    poll = poll_commit_ack(bridge, repo, clock.now())
     assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 1
     assert len(repo.get_open_positions()) == 1
 
@@ -181,8 +182,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
         )
     )
     await md.process_live(clock.now())
-    bridge.process_after_poll(clock.now())
-    repo.session.commit()
+    poll = poll_commit_ack(bridge, repo, clock.now())
     assert len(repo.get_open_positions()) == 1
 
     clock.advance_to(fill_eval_time + timedelta(hours=12))
@@ -200,8 +200,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
         )
     )
     await md.process_live(clock.now())
-    bridge.process_after_poll(clock.now())
-    repo.session.commit()
+    poll = poll_commit_ack(bridge, repo, clock.now())
     assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.EXIT]) == 1
     assert not repo.get_open_positions()
 
@@ -228,8 +227,7 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
     repo2 = PaperTradingRepository(postgres_commit_session)
     _set_runtime_ready(repo2)
     bridge2 = _build_bridge(repo2, md2, config, clock, lock2)
-    bridge2.process_after_poll(clock.now())
-    repo2.session.commit()
+    poll_commit_ack(bridge2, repo2, clock.now())
 
     assert len(repo2.list_fills(limit=100)) == counts_before["fills"]
     assert len(repo2.list_intents(limit=100)) == counts_before["intents"]
@@ -302,8 +300,7 @@ async def test_production_lifecycle_transient_open_context_retry(
     )
     await md.process_live(clock.now())
     bridge = _build_bridge(repo, md, config, clock, lock)
-    bridge.process_after_poll(clock.now())
-    repo.session.commit()
+    poll_commit_ack(bridge, repo, clock.now())
     assert len([i for i in repo.list_intents(limit=10) if i.status == TradeIntentStatus.SCHEDULED]) == 1
 
     clock.advance_to(fill_eval_time)
@@ -333,12 +330,12 @@ async def test_production_lifecycle_transient_open_context_retry(
     with patch.object(ProductionContextBuilder, "build_open_contexts", flaky_build_open):
         first = bridge.process_after_poll(clock.now())
         repo.session.commit()
-        assert any(o.deferred for o in first)
+        assert any(o.deferred for o in first.outcomes)
+        assert not first.events_to_ack
         assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 0
 
-        second = bridge.process_after_poll(clock.now())
-        repo.session.commit()
-        assert any(o.status == SchedulerRunStatus.COMPLETED for o in second)
+        second = poll_commit_ack(bridge, repo, clock.now())
+        assert any(o.status == SchedulerRunStatus.COMPLETED for o in second.outcomes)
         assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 1
 
     lock.release()
@@ -366,6 +363,6 @@ async def test_market_data_disconnect_sets_degraded(
     _set_runtime_ready(repo)
     bridge = _build_bridge(repo, md, config, clock, lock)
     md.set_connected(False)
-    outcomes = bridge.process_after_poll(clock.now())
-    assert outcomes == ()
+    result = bridge.process_after_poll(clock.now())
+    assert result.outcomes == ()
     lock.release()

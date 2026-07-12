@@ -41,3 +41,12 @@ class DailyEvaluationNotDue(MarketEventProcessingError):
 
     def __init__(self, message: str = "daily evaluation not yet due") -> None:
         super().__init__(message)
+
+
+class RetryableSchedulerDeferred(MarketEventProcessingError):
+    """Scheduler returned a retryable SKIPPED outcome — event must remain retryable."""
+
+    code = "RETRYABLE_SCHEDULER_DEFERRED"
+
+    def __init__(self, message: str = "scheduler deferred") -> None:
+        super().__init__(message)
