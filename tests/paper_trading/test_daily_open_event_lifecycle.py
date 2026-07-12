@@ -18,6 +18,7 @@ from paper_trading.market_event_errors import (
     FillNotDue,
     PermanentConfigurationFailure,
     RetryableContextNotReady,
+    is_retryable_market_event_error,
 )
 from paper_trading.market_events import (
     MarketEvent,
@@ -153,9 +154,43 @@ def _repo_with_subjob_tracking() -> MagicMock:
             row.status = status.value
             errors[key] = error
 
+    def delete_if_running(*, job_name: str, scheduled_for: datetime) -> bool:
+        key = (job_name, scheduled_for)
+        row = runs.get(key)
+        if row is None or row.status != SchedulerRunStatus.RUNNING.value:
+            return False
+        del runs[key]
+        errors.pop(key, None)
+        return True
+
+    def get_active_recovery(original_run_id):
+        for row in runs.values():
+            if getattr(row, "recovery_of_run_id", None) != original_run_id:
+                continue
+            if row.status == SchedulerRunStatus.RUNNING.value:
+                return get_run(row.job_name, row.scheduled_for)
+            if (
+                row.status == SchedulerRunStatus.SKIPPED.value
+                and is_retryable_market_event_error(errors.get((row.job_name, row.scheduled_for)))
+            ):
+                return get_run(row.job_name, row.scheduled_for)
+        return None
+
+    def reactivate_run(*, job_name: str, scheduled_for: datetime, started_at: datetime) -> None:
+        key = (job_name, scheduled_for)
+        row = runs.get(key)
+        if row is None:
+            return
+        row.status = SchedulerRunStatus.RUNNING.value
+        errors[key] = None
+
     repo.get_scheduler_run.side_effect = get_run
     repo.insert_or_get_scheduler_run.side_effect = insert_or_get
     repo.complete_scheduler_run.side_effect = complete_run
+    repo.delete_scheduler_run_if_running.side_effect = delete_if_running
+    repo.get_active_recovery_attempt.side_effect = get_active_recovery
+    repo.count_recovery_attempts.return_value = 0
+    repo.reactivate_scheduler_run.side_effect = reactivate_run
     fairness_cursor = {"value": 0}
     group_states: dict[str, MarketEventGroupState] = {}
 
@@ -188,7 +223,6 @@ def _repo_with_subjob_tracking() -> MagicMock:
     repo.upsert_market_event_group_deferred.side_effect = upsert_group_deferred
     repo.list_permanent_configuration_failures.return_value = ()
     repo.get_running_scheduler_runs.return_value = ()
-    repo.delete_scheduler_run_if_running.return_value = False
     return repo
 
 

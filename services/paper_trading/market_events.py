@@ -36,12 +36,14 @@ from paper_trading.ids import scheduler_run_key
 from paper_trading.lock import AdvisoryLock
 from paper_trading.market_event_errors import (
     DailyEvaluationNotDue,
+    DailyOpenSequenceFailure,
     FillNotDue,
     MarketEventProcessingError,
     PermanentConfigurationFailure,
     RetryableContextNotReady,
     RetryableSchedulerDeferred,
     is_permanent_configuration_error,
+    is_retryable_market_event_error,
 )
 from paper_trading.models import SchedulerRun
 from paper_trading.repository import PaperTradingRepository
@@ -760,6 +762,7 @@ class MarketEventBridge:
         self._release_uncommitted_scheduler_run(
             release_job_name or job_name,
             event.scheduled_for,
+            error=error,
         )
         return EventProcessOutcome(
             event=event,
@@ -770,6 +773,57 @@ class MarketEventBridge:
             deferred=True,
             retryable=True,
         )
+
+    def _persist_daily_open_failure_audit(
+        self,
+        *,
+        event: MarketEvent,
+        parent_job: str,
+        scheduled_for: datetime,
+        failure: DailyOpenSequenceFailure,
+    ) -> None:
+        self._fail_daily_open_parent(parent_job, scheduled_for, failure.message)
+        if failure.subjob_name != parent_job:
+            existing = self.repository.get_scheduler_run(failure.subjob_name, scheduled_for)
+            if existing is None:
+                self._ensure_scheduler_run(failure.subjob_name, scheduled_for)
+            self._complete_market_event(
+                failure.subjob_name,
+                scheduled_for,
+                SchedulerRunStatus.FAILED,
+                failure.message,
+            )
+
+    def _execute_atomic_daily_open(
+        self,
+        event: MarketEvent,
+        evaluation_time: datetime,
+    ) -> None:
+        with transaction_scope(self.repository.session):
+            self._handle_daily_open(event, evaluation_time)
+
+    def _reactivate_recovery_attempt(
+        self,
+        recovery_job: str,
+        scheduled_for: datetime,
+    ) -> None:
+        existing = self.repository.get_scheduler_run(recovery_job, scheduled_for)
+        if existing is None:
+            self._ensure_scheduler_run(recovery_job, scheduled_for)
+            return
+        if (
+            existing.status == SchedulerRunStatus.SKIPPED
+            and is_retryable_market_event_error(existing.error)
+        ):
+            with transaction_scope(self.repository.session):
+                self.repository.reactivate_scheduler_run(
+                    job_name=recovery_job,
+                    scheduled_for=scheduled_for,
+                    started_at=self.clock.now(),
+                )
+            return
+        if existing.status != SchedulerRunStatus.RUNNING:
+            self._ensure_scheduler_run(recovery_job, scheduled_for)
 
     def _fail_daily_open_parent(
         self,
@@ -793,7 +847,23 @@ class MarketEventBridge:
         self,
         job_name: str,
         scheduled_for: datetime,
+        *,
+        error: MarketEventProcessingError | None = None,
     ) -> None:
+        existing = self.repository.get_scheduler_run(job_name, scheduled_for)
+        if existing is None:
+            return
+        if existing.recovery_of_run_id is not None:
+            assert error is not None
+            with transaction_scope(self.repository.session):
+                self.repository.complete_scheduler_run(
+                    job_name=job_name,
+                    scheduled_for=scheduled_for,
+                    status=SchedulerRunStatus.SKIPPED,
+                    completed_at=self.clock.now(),
+                    error=error.code,
+                )
+            return
         with transaction_scope(self.repository.session):
             self.repository.delete_scheduler_run_if_running(
                 job_name=job_name,
@@ -922,7 +992,7 @@ class MarketEventBridge:
             )
         self._ensure_scheduler_run(parent_job, scheduled_for)
         try:
-            self._handle_daily_open(event, evaluation_time)
+            self._execute_atomic_daily_open(event, evaluation_time)
             self._complete_market_event(
                 parent_job, scheduled_for, SchedulerRunStatus.COMPLETED, None
             )
@@ -949,12 +1019,35 @@ class MarketEventBridge:
                 extra={"symbol": event.symbol, "error": exc.code},
             )
             return self._mark_permanent_failure(event, parent_job, scheduled_for, exc)
+        except DailyOpenSequenceFailure as exc:
+            logger.exception(
+                "daily_open_processing_failed",
+                extra={"symbol": event.symbol, "job_name": parent_job},
+            )
+            self._persist_daily_open_failure_audit(
+                event=event,
+                parent_job=parent_job,
+                scheduled_for=scheduled_for,
+                failure=exc,
+            )
+            return self._persisted_outcome(
+                event, parent_job, scheduled_for, skipped=False
+            )
         except Exception as exc:
             logger.exception(
                 "daily_open_processing_failed",
                 extra={"symbol": event.symbol, "job_name": parent_job},
             )
-            self._fail_daily_open_parent(parent_job, scheduled_for, str(exc))
+            failure = DailyOpenSequenceFailure(
+                subjob_name=parent_job,
+                message=str(exc),
+            )
+            self._persist_daily_open_failure_audit(
+                event=event,
+                parent_job=parent_job,
+                scheduled_for=scheduled_for,
+                failure=failure,
+            )
             return self._persisted_outcome(
                 event, parent_job, scheduled_for, skipped=False
             )
@@ -968,9 +1061,9 @@ class MarketEventBridge:
         scheduled_for = recovery.scheduled_for
         recovery_job = recovery.recovery_job_name
         parent_job = recovery.original_job_name
-        self._ensure_scheduler_run(recovery_job, scheduled_for)
+        self._reactivate_recovery_attempt(recovery_job, scheduled_for)
         try:
-            self._handle_daily_open(event, evaluation_time)
+            self._execute_atomic_daily_open(event, evaluation_time)
             self._complete_market_event(
                 recovery_job, scheduled_for, SchedulerRunStatus.COMPLETED, None
             )
@@ -1021,6 +1114,22 @@ class MarketEventBridge:
                 skipped=False,
                 error=exc.code,
                 terminal_failed=True,
+            )
+        except DailyOpenSequenceFailure as exc:
+            logger.exception(
+                "daily_open_recovery_failed",
+                extra={"symbol": event.symbol, "recovery_job": recovery_job},
+            )
+            self._complete_market_event(
+                recovery_job, scheduled_for, SchedulerRunStatus.FAILED, exc.message
+            )
+            self._recovery_pending.pop((parent_job, scheduled_for), None)
+            return EventProcessOutcome(
+                event=event,
+                job_name=parent_job,
+                status=SchedulerRunStatus.FAILED,
+                skipped=False,
+                error=exc.message,
             )
         except Exception as exc:
             logger.exception(
@@ -1132,13 +1241,16 @@ class MarketEventBridge:
                 raise RetryableSchedulerDeferred("scheduler_subjob_not_completed")
             self._complete_market_event(job_name, scheduled_for, SchedulerRunStatus.COMPLETED, None)
         except RetryableSchedulerDeferred:
-            self._release_uncommitted_scheduler_run(job_name, scheduled_for)
-            raise
-        except Exception as exc:
-            self._complete_market_event(
-                job_name, scheduled_for, SchedulerRunStatus.FAILED, str(exc)
+            self._release_uncommitted_scheduler_run(
+                job_name,
+                scheduled_for,
+                error=RetryableSchedulerDeferred("scheduler_subjob_not_completed"),
             )
             raise
+        except DailyOpenSequenceFailure:
+            raise
+        except Exception as exc:
+            raise DailyOpenSequenceFailure(subjob_name=job_name, message=str(exc)) from exc
 
     def _latest_daily(self, symbol: str) -> NormalizedCandle | None:
         return self.candle_repository.get_latest(

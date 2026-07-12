@@ -82,3 +82,27 @@ class RetryableSchedulerDeferred(MarketEventProcessingError):
 
     def __init__(self, message: str = "scheduler deferred") -> None:
         super().__init__(message)
+
+
+RETRYABLE_MARKET_EVENT_ERROR_CODES = frozenset(
+    {
+        RetryableContextNotReady.code,
+        FillNotDue.code,
+        RetryableSchedulerDeferred.code,
+    }
+)
+
+
+def is_retryable_market_event_error(error: str | None) -> bool:
+    if error is None:
+        return False
+    return error in RETRYABLE_MARKET_EVENT_ERROR_CODES
+
+
+class DailyOpenSequenceFailure(Exception):
+    """Daily open subjob failed inside the atomic open savepoint."""
+
+    def __init__(self, *, subjob_name: str, message: str) -> None:
+        super().__init__(message)
+        self.subjob_name = subjob_name
+        self.message = message
