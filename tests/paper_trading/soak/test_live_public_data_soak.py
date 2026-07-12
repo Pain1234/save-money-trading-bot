@@ -139,7 +139,35 @@ async def test_live_public_data_soak() -> None:
             running = conn.execute(
                 text("SELECT COUNT(*) FROM scheduler_runs WHERE status = 'RUNNING'")
             ).scalar_one()
+            failed_market_events = conn.execute(
+                text(
+                    """
+                    SELECT job_name, error
+                    FROM scheduler_runs
+                    WHERE status = 'FAILED'
+                      AND (
+                        job_name LIKE 'me:do:%'
+                        OR job_name LIKE 'me:dl:%'
+                        OR job_name LIKE 'me:dc:%'
+                      )
+                    ORDER BY job_name
+                    """
+                )
+            ).fetchall()
         assert running == 0
+
+        allowed_failed_market_events: set[tuple[str, str | None]] = set()
+        unexpected_failed = [
+            (row[0], row[1])
+            for row in failed_market_events
+            if (row[0], row[1]) not in allowed_failed_market_events
+        ]
+        assert not unexpected_failed, (
+            "unexpected FAILED market event scheduler runs: "
+            f"{unexpected_failed!r}"
+        )
+        for _job_name, error in failed_market_events:
+            assert error is None or "missing open context" not in error.lower()
 
         lock = PostgresAdvisoryLock(verify_engine, config.advisory_lock_id)
         assert lock.try_acquire()

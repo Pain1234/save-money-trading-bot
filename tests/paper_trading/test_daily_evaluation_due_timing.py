@@ -440,6 +440,8 @@ def test_handle_daily_closed_unit_before_due_raises() -> None:
         candle_open_time=open_time,
         provider_received_at=clock.now(),
     )
-    with pytest.raises(RuntimeError, match="daily evaluation not due"):
+    from paper_trading.market_event_errors import DailyEvaluationNotDue
+
+    with pytest.raises(DailyEvaluationNotDue):
         bridge._handle_daily_closed(event, clock.now())  # noqa: SLF001
     scheduler.run_daily_close_sequence.assert_not_called()

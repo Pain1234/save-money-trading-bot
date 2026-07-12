@@ -5,10 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
 from market_data.repository import InMemoryCandleRepository
 from market_data.timeframes import daily_close
+from paper_trading.db.orm import SchedulerRunRow
+from paper_trading.enums import SchedulerRunStatus
 from paper_trading.market_events import (
     MarketEventBridge,
     MarketEventDetector,
@@ -54,15 +57,19 @@ def test_daily_open_event_key_is_deterministic() -> None:
     assert market_event_job_name(event) == "me:do:BTC:20240116T000000Z"
 
 
-def test_detector_daily_open_only_once() -> None:
+def test_detector_daily_open_only_once_after_ack() -> None:
     repo = InMemoryCandleRepository()
     detector = MarketEventDetector(symbols=("BTC",))
     candle = _daily("BTC", utc_dt(2024, 1, 16), is_closed=False)
     repo.upsert(candle)
-    first = detector.detect(repo, utc_dt(2024, 1, 16, 1))
-    second = detector.detect(repo, utc_dt(2024, 1, 16, 2))
+    eval_time = utc_dt(2024, 1, 16, 1)
+    first = detector.detect_candidates(repo, eval_time)
     assert len([e for e in first if e.event_type == MarketEventType.DAILY_OPEN_AVAILABLE]) == 1
-    assert len([e for e in second if e.event_type == MarketEventType.DAILY_OPEN_AVAILABLE]) == 0
+    second = detector.detect_candidates(repo, eval_time)
+    assert len([e for e in second if e.event_type == MarketEventType.DAILY_OPEN_AVAILABLE]) == 1
+    detector.acknowledge_completed(first[0])
+    third = detector.detect_candidates(repo, eval_time)
+    assert len([e for e in third if e.event_type == MarketEventType.DAILY_OPEN_AVAILABLE]) == 0
 
 
 def test_live_update_does_not_emit_trailing_event() -> None:
@@ -71,9 +78,11 @@ def test_live_update_does_not_emit_trailing_event() -> None:
     open_time = utc_dt(2024, 1, 16)
     eval_time = utc_dt(2024, 1, 16, 1)
     repo.upsert_live(_daily("BTC", open_time, low="95", is_closed=False), eval_time)
-    detector.detect(repo, eval_time)
+    open_events = detector.detect_candidates(repo, eval_time)
+    assert len(open_events) == 1
+    detector.acknowledge_completed(open_events[0])
     repo.upsert_live(_daily("BTC", open_time, low="90", is_closed=False), eval_time)
-    events = detector.detect(repo, utc_dt(2024, 1, 16, 2))
+    events = detector.detect_candidates(repo, utc_dt(2024, 1, 16, 2))
     assert any(e.event_type == MarketEventType.DAILY_LIVE_UPDATE for e in events)
     assert not any(e.event_type == MarketEventType.DAILY_CLOSED for e in events)
 
@@ -84,8 +93,12 @@ def test_closed_candle_emits_daily_closed_once() -> None:
     open_time = utc_dt(2024, 1, 15)
     repo.upsert(_daily("BTC", open_time, is_closed=True))
     due = daily_close(open_time) + timedelta(seconds=5)
-    first = detector.detect(repo, due)
-    second = detector.detect(repo, due + timedelta(hours=1))
+    first = detector.detect_candidates(repo, due)
+    assert len([e for e in first if e.event_type == MarketEventType.DAILY_CLOSED]) == 1
+    for event in first:
+        if event.event_type == MarketEventType.DAILY_CLOSED:
+            detector.acknowledge_completed(event)
+    second = detector.detect_candidates(repo, due + timedelta(hours=1))
     assert len([e for e in first if e.event_type == MarketEventType.DAILY_CLOSED]) == 1
     assert len([e for e in second if e.event_type == MarketEventType.DAILY_CLOSED]) == 0
 
@@ -99,7 +112,7 @@ def test_daily_closed_not_emitted_before_evaluation_due() -> None:
     before_due = due - timedelta(microseconds=1)
     events = detector.detect(repo, before_due)
     assert not any(e.event_type == MarketEventType.DAILY_CLOSED for e in events)
-    assert detector._trackers["BTC"].daily_closed_open_time is None  # noqa: SLF001
+    assert detector._trackers["BTC"].daily_closed_ack_time is None  # noqa: SLF001
 
 
 def test_daily_closed_emitted_at_due_on_same_detector_instance() -> None:
@@ -114,39 +127,60 @@ def test_daily_closed_emitted_at_due_on_same_detector_instance() -> None:
     assert len([e for e in at_due if e.event_type == MarketEventType.DAILY_CLOSED]) == 1
 
 
-def test_queue_overflow_is_fail_closed() -> None:
+def test_queue_overflow_processes_partial_batch() -> None:
     from paper_trading.market_events import MarketEvent
 
     repo = MagicMock()
     repo.get_scheduler_run.return_value = None
+    repo.insert_or_get_scheduler_run.return_value = (
+        SchedulerRunRow(
+            run_id=uuid4(),
+            job_name="me:do:BTC:20240116T000000Z",
+            scheduled_for=utc_dt(2024, 1, 16),
+            started_at=utc_dt(2024, 1, 16),
+            status=SchedulerRunStatus.RUNNING.value,
+            idempotency_key="k",
+        ),
+        True,
+    )
     candle_repo = InMemoryCandleRepository()
+    candle_repo.upsert(
+        _daily("BTC", utc_dt(2024, 1, 16), is_closed=False, low="95")
+    )
     scheduler = MagicMock()
+    scheduler.run_daily_open_gap_stop.return_value = (MagicMock(status=SchedulerRunStatus.COMPLETED),)
+    scheduler.run_daily_open_fill.return_value = (MagicMock(status=SchedulerRunStatus.COMPLETED),)
+    scheduler.run_daily_open_snapshot.return_value = (MagicMock(status=SchedulerRunStatus.COMPLETED),)
     context_builder = MagicMock(spec=ProductionContextBuilder)
+    context_builder.build_open_contexts.return_value = ({}, {})
     advisory_lock = MagicMock()
     advisory_lock.held = True
 
     detector = MagicMock()
-    detector.detect.return_value = (
+    detector.detect_candidates.return_value = (
         MarketEvent(
             event_type=MarketEventType.DAILY_OPEN_AVAILABLE,
             symbol="BTC",
             candle_open_time=utc_dt(2024, 1, 16),
             provider_received_at=utc_dt(2024, 1, 16, 1),
+            observed_low=Decimal("95"),
         ),
         MarketEvent(
             event_type=MarketEventType.DAILY_OPEN_AVAILABLE,
-            symbol="BTC",
-            candle_open_time=utc_dt(2024, 1, 17),
-            provider_received_at=utc_dt(2024, 1, 17, 1),
+            symbol="ETH",
+            candle_open_time=utc_dt(2024, 1, 16),
+            provider_received_at=utc_dt(2024, 1, 16, 1),
+            observed_low=Decimal("95"),
         ),
     )
+    detector.acknowledge_completed = MagicMock()
 
     bridge = MarketEventBridge(
         repository=repo,
         candle_repository=candle_repo,
         scheduler=scheduler,
         context_builder=context_builder,
-        config=MagicMock(symbols=("BTC",), evaluation_delay_seconds=5),
+        config=MagicMock(symbols=("BTC", "ETH"), evaluation_delay_seconds=5, fill_delay_seconds=0),
         clock=MagicMock(now=lambda: utc_dt(2024, 1, 16)),
         advisory_lock=advisory_lock,
         market_data_ready=lambda: True,
@@ -155,4 +189,5 @@ def test_queue_overflow_is_fail_closed() -> None:
     )
     outcomes = bridge.process_after_poll(utc_dt(2024, 1, 16, 1))
     assert bridge.queue_overflow is True
-    assert outcomes[0].error == "event_queue_overflow"
+    assert len(outcomes) == 1
+    detector.acknowledge_completed.assert_called_once()

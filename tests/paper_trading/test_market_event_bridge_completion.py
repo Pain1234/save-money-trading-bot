@@ -82,7 +82,13 @@ def _build_bridge(
     scheduler.run_daily_close_sequence.return_value = (
         MagicMock(status=SchedulerRunStatus.COMPLETED),
     )
-    scheduler.run_daily_open_sequence.return_value = (
+    scheduler.run_daily_open_gap_stop.return_value = (
+        MagicMock(status=SchedulerRunStatus.COMPLETED),
+    )
+    scheduler.run_daily_open_fill.return_value = (
+        MagicMock(status=SchedulerRunStatus.COMPLETED),
+    )
+    scheduler.run_daily_open_snapshot.return_value = (
         MagicMock(status=SchedulerRunStatus.COMPLETED),
     )
     scheduler.run_job.return_value = MagicMock(status=SchedulerRunStatus.COMPLETED)
@@ -154,7 +160,7 @@ def test_replay_completed_event_returns_completed_without_rerun() -> None:
     scheduler.run_daily_close_sequence.assert_not_called()
 
 
-def test_missing_context_persists_failed_outcome() -> None:
+def test_missing_context_returns_deferred_outcome() -> None:
     repo = MagicMock()
     repo.get_scheduler_run.return_value = None
     repo.insert_or_get_scheduler_run.return_value = (
@@ -168,24 +174,17 @@ def test_missing_context_persists_failed_outcome() -> None:
         ),
         True,
     )
-    failed = SchedulerRun(
-        run_id=uuid4(),
-        job_name="me:dc:BTC:20240115T000000Z",
-        scheduled_for=utc_dt(2024, 1, 15),
-        started_at=utc_dt(2024, 1, 16),
-        completed_at=utc_dt(2024, 1, 16, 0, 0, 1),
-        status=SchedulerRunStatus.FAILED,
-        error="missing evaluation context for BTC",
-        idempotency_key="k2",
-    )
-    repo.get_scheduler_run.side_effect = [None, failed]
 
     candle_repo = InMemoryCandleRepository()
     open_time = utc_dt(2024, 1, 15)
     candle_repo.upsert(_daily("BTC", open_time, is_closed=True))
     eval_time = _due_eval_time(open_time)
     context_builder = MagicMock()
-    context_builder.build_evaluation_context.return_value = None
+    from paper_trading.market_event_errors import RetryableContextNotReady
+
+    context_builder.build_evaluation_context.side_effect = RetryableContextNotReady(
+        "evaluation context not ready"
+    )
     context_builder.build_stop_context_for_close.return_value = {"daily_candles": {}}
     advisory_lock = MagicMock()
     advisory_lock.held = True
@@ -202,8 +201,9 @@ def test_missing_context_persists_failed_outcome() -> None:
     )
 
     outcomes = bridge.process_after_poll(eval_time)
-    assert outcomes[0].status == SchedulerRunStatus.FAILED
-    assert outcomes[0].error is not None
+    assert outcomes[0].deferred is True
+    assert outcomes[0].retryable is True
+    assert outcomes[0].status != SchedulerRunStatus.FAILED
 
 
 def test_marker_event_creates_scheduler_run_before_complete() -> None:

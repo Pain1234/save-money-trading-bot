@@ -242,6 +242,109 @@ async def test_production_runner_full_lifecycle_fifteen_steps(
 
 
 @pytest.mark.asyncio
+async def test_production_lifecycle_transient_open_context_retry(
+    migrated_engine,
+    postgres_commit_session,
+    clean_production_db,
+    postgres_runtime_writable,
+) -> None:
+    """First poll with retryable missing open context, second poll completes entry fill."""
+    from unittest.mock import patch
+
+    from paper_trading.market_event_errors import RetryableContextNotReady
+
+    symbol = "BTC"
+    bundle = build_breakout_historical_bundle(symbol, include_exit_candle=True)
+    signal_candle = bundle.daily[symbol][-2]
+    fill_candle = bundle.daily[symbol][-1]
+
+    signal_eval_time = eval_time_after_close(signal_candle, delay_seconds=5)
+    fill_eval_time = next_day_open(signal_candle) + timedelta(seconds=1)
+
+    clock = FixedClock(signal_eval_time)
+    md = ControlledMarketDataRuntime.create()
+    ingest_historical_bundle(
+        md,
+        bundle,
+        symbol,
+        daily_count=len(bundle.daily[symbol]) - 2,
+        evaluation_time=signal_eval_time - timedelta(seconds=1),
+    )
+    await md.start(signal_eval_time)
+
+    lock_id = 987655500 + (os.getpid() % 50000)
+    config = PaperServiceConfig.from_env(
+        database_url=_postgres_url(),
+        symbols=(symbol,),
+        fill_delay_seconds=0,
+        evaluation_delay_seconds=5,
+        heartbeat_interval_seconds=3600,
+        stale_runtime_threshold_seconds=7200,
+        advisory_lock_id=lock_id,
+    )
+
+    repo = PaperTradingRepository(postgres_commit_session)
+    lock = PostgresAdvisoryLock(migrated_engine, lock_id)
+    assert lock.try_acquire() is True
+    _set_runtime_ready(repo)
+
+    md.enqueue_raw(
+        raw_daily(
+            symbol,
+            signal_candle.open_time,
+            open_=str(signal_candle.open),
+            high=str(signal_candle.high),
+            low=str(signal_candle.low),
+            close=str(signal_candle.close),
+            volume=str(signal_candle.volume),
+            is_closed=True,
+        )
+    )
+    await md.process_live(clock.now())
+    bridge = _build_bridge(repo, md, config, clock, lock)
+    bridge.process_after_poll(clock.now())
+    repo.session.commit()
+    assert len([i for i in repo.list_intents(limit=10) if i.status == TradeIntentStatus.SCHEDULED]) == 1
+
+    clock.advance_to(fill_eval_time)
+    md.enqueue_raw(
+        raw_daily(
+            symbol,
+            fill_candle.open_time,
+            open_=str(fill_candle.open),
+            high=str(fill_candle.high),
+            low=str(fill_candle.low),
+            close=str(fill_candle.close),
+            volume=str(fill_candle.volume),
+            is_closed=False,
+        )
+    )
+    await md.process_live(clock.now())
+
+    real_build = ProductionContextBuilder.build_open_contexts
+    call_count = {"n": 0}
+
+    def flaky_build_open(self, *args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RetryableContextNotReady("atr14 not available for transient test")
+        return real_build(self, *args, **kwargs)
+
+    with patch.object(ProductionContextBuilder, "build_open_contexts", flaky_build_open):
+        first = bridge.process_after_poll(clock.now())
+        repo.session.commit()
+        assert any(o.deferred for o in first)
+        assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 0
+
+        second = bridge.process_after_poll(clock.now())
+        repo.session.commit()
+        assert any(o.status == SchedulerRunStatus.COMPLETED for o in second)
+        assert len([f for f in repo.list_fills(limit=10) if f.fill_kind == PaperFillKind.ENTRY]) == 1
+
+    lock.release()
+
+
+@pytest.mark.asyncio
 async def test_market_data_disconnect_sets_degraded(
     postgres_commit_session,
     clean_production_db,
