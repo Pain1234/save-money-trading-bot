@@ -19,7 +19,7 @@ inventory), #10 (baseline tag — criteria defined here; tag creation is separat
 | Worker | `deploy/scripts/start-worker.sh` | PostgreSQL + `PAPER_TRADING_DATABASE_URL` |
 | Read-only API | `deploy/scripts/start-api.sh` | Same database URL |
 | Dashboard | `npm run build` / `npm start` (Node) | UI dev uses mock data unless API URL configured |
-| Database | Railway PostgreSQL 16 | Local PostgreSQL 16 or `docker/docker-compose.paper-test.yml` |
+| Database | Railway PostgreSQL (production version externally verified/pending verification) | Local PostgreSQL **16** or `docker/docker-compose.paper-test.yml` |
 
 The dashboard UI (`npm run dev`) uses mock data for local UI work. The
 paper-trading worker/API path is PostgreSQL-backed and matches Railway production
@@ -119,7 +119,8 @@ Recorded baseline (from repository artifacts, 2026-07):
 | Python | **3.12** (production images) | `deploy/Dockerfile.paper-python` |
 | Python (minimum) | >=3.11 | `pyproject.toml` `requires-python` |
 | Node.js | **22** (LTS bookworm-slim) | `deploy/Dockerfile.dashboard` |
-| PostgreSQL | **16** | `docker/docker-compose.paper-test.yml`, Railway plugin |
+| PostgreSQL (local baseline) | **16** | `docker/docker-compose.paper-test.yml` (`postgres:16-alpine`) |
+| PostgreSQL (Railway production) | **Pending verification** | Not recorded in repository artifacts; confirm via Railway plugin or service settings |
 
 ### Python dependency strategy
 
@@ -186,7 +187,7 @@ Failure:
 
 | Test | Reason |
 |------|--------|
-| `tests/deploy/test_dashboard_bundle.py::test_dashboard_build_succeeds` | `npm run build` exit code 1 in local environment |
+| `tests/deploy/test_dashboard_bundle.py::test_dashboard_build_succeeds` | `npm run build` exit code 1 in local environment — **pre-existing** on default branch; unaffected by this docs-only PR; tracked in Issue #58 |
 
 PostgreSQL-marked tests were **not executed** in this run (require database setup).
 
@@ -232,7 +233,7 @@ Do not create the tag until exit criteria are agreed and recorded.
 | Criterion | Status |
 |-----------|--------|
 | Baseline start documented | This document + README update |
-| Versions recorded | Python 3.12 / Node 22 / Postgres 16 |
+| Versions recorded | Python 3.12 / Node 22 / Postgres 16 (local baseline); Railway Postgres version pending verification |
 | Test commands documented | See table above |
 | Known failures recorded | Dashboard build test (local) |
 | Baseline tag exists | **Pending** — criteria above |
