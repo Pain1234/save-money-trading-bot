@@ -1,0 +1,79 @@
+name: Incident
+description: Production or research incident (S1–S3)
+title: "[Incident]: "
+labels:
+  - "type:incident"
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Schweregrad
+      options:
+        - severity:S1-critical
+        - severity:S2-high
+        - severity:S3-medium
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Umgebung
+      options:
+        - local
+        - railway-paper
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: components
+    attributes:
+      label: Betroffene Komponenten
+      placeholder: worker, market_data, api, dashboard, postgres, ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Auswirkung
+    validations:
+      required: true
+
+  - type: input
+    id: started
+    attributes:
+      label: Beginn (UTC)
+      placeholder: "2026-07-13T12:00:00Z"
+    validations:
+      required: true
+
+  - type: input
+    id: detected
+    attributes:
+      label: Erkennung (UTC)
+    validations:
+      required: true
+
+  - type: textarea
+    id: immediate
+    attributes:
+      label: Sofortmaßnahme
+    validations:
+      required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Aktuelle Lage
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: capital_security
+    attributes:
+      label: Risiko
+      options:
+        - label: Sicherheits- oder Kapitalrisiko bestätigt
+          required: false
