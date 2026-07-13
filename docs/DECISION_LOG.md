@@ -138,6 +138,23 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 ---
 
+## ADR-009 – Strategy/Risk V1 parameter inventory and change control
+
+**Status:** Accepted  
+**Date:** 2026-07-13
+
+**Context:** Strategy V1 and Risk V1 are frozen references, but parameters can drift when defaults live across docs and code. Research validity requires explicit, published parameters and controlled changes.
+
+**Decision:** Publish a single parameter inventory in `docs/strategy-v1-parameter-inventory.md` derived from the frozen specs and the code defaults. Any parameter change (including defaults, validation maximums, or coupled execution guardrails) requires a dedicated GitHub issue and PR review; changes must update the relevant spec tables and the inventory together.
+
+**Alternatives:** Implicit defaults in code only — rejected for auditability and reproducibility.
+
+**Consequences:** Parameter drift becomes a governance defect. Backtests and paper runs must record the inventory version (commit hash) used.
+
+**Related Issues / PRs:** Issue #4 (Bestehende Strategieparameter dokumentieren und einfrieren).
+
+---
+
 ## Template for new entries
 
 ```text

@@ -54,6 +54,11 @@ Without an explicit issue **and** human approval where noted:
 | Database schema | Alembic migrations |
 | Live trading | Wallet, signing, real exchange orders |
 
+**Specification Freeze / parameter inventory:**
+
+- Strategy/Risk V1 defaults are published in `docs/strategy-v1-parameter-inventory.md` and governed via `docs/DECISION_LOG.md` (ADR-001, ADR-002, ADR-009).
+- Any change to frozen parameters (including defaults or validation caps) requires a **dedicated GitHub issue + PR review** and must update the relevant spec table(s) and the inventory in the same PR.
+
 **Paper trading V1:** Real Hyperliquid private API, wallet signing, and live orders are **not implemented** — do not enable.
 
 ---
