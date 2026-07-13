@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from decimal import Decimal
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig
@@ -19,12 +19,8 @@ from tests.market_data.conftest import dt, make_daily_series, make_monthly, make
 RUNTIME_LOGGER = "market_data.runtime"
 
 
-def _runtime_log_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
-    return [
-        record.getMessage()
-        for record in caplog.records
-        if record.name == RUNTIME_LOGGER
-    ]
+def _log_messages(mock_logger: object) -> list[str]:
+    return [str(call.args[0]) for call in mock_logger.call_args_list if call.args]  # type: ignore[attr-defined]
 
 
 def _connect_transport(runtime: HyperliquidMarketDataRuntime) -> None:
@@ -73,9 +69,7 @@ async def test_reconnect_backfill_replaces_open_candle_without_conflict() -> Non
 
 
 @pytest.mark.asyncio
-async def test_transport_reconnect_without_strategy_readiness_is_degraded(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+async def test_transport_reconnect_without_strategy_readiness_is_degraded() -> None:
     config = HyperliquidPublicConfig.for_network(
         HyperliquidNetwork.TESTNET,
         symbols=(MarketSymbol.BTC,),
@@ -95,12 +89,19 @@ async def test_transport_reconnect_without_strategy_readiness_is_degraded(
     runtime._ws.end_buffer = lambda: ()  # type: ignore[method-assign]
     evaluation_time = dt(2026, 7, 13, 12)
 
-    with caplog.at_level(logging.INFO, logger=RUNTIME_LOGGER):
+    runtime_logger = logging.getLogger(RUNTIME_LOGGER)
+    with (
+        patch.object(runtime_logger, "info") as log_info,
+        patch.object(runtime_logger, "warning") as log_warning,
+    ):
         await runtime.reconnect(evaluation_time)
 
-    messages = _runtime_log_messages(caplog)
-    assert "market_data_transport_reconnect_succeeded" in messages
-    assert any(message.startswith("market_data_reconnect_degraded") for message in messages)
+    info_messages = _log_messages(log_info)
+    warning_messages = _log_messages(log_warning)
+    assert "market_data_transport_reconnect_succeeded" in info_messages
+    assert any(
+        message.startswith("market_data_reconnect_degraded") for message in warning_messages
+    )
     assert runtime.status(evaluation_time).readiness is False
 
 
@@ -126,9 +127,7 @@ def _seed_ready_history(repo: InMemoryCandleRepository):
 
 
 @pytest.mark.asyncio
-async def test_reconnect_logs_readiness_recovered_and_returns_ready(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+async def test_reconnect_logs_readiness_recovered_and_returns_ready() -> None:
     config = HyperliquidPublicConfig.for_network(
         HyperliquidNetwork.TESTNET,
         symbols=(MarketSymbol.BTC,),
@@ -146,8 +145,8 @@ async def test_reconnect_logs_readiness_recovered_and_returns_ready(
     runtime._ws.end_buffer = lambda: ()  # type: ignore[method-assign]
     runtime.backfill_symbol = AsyncMock()  # type: ignore[method-assign]
 
-    with caplog.at_level(logging.INFO, logger=RUNTIME_LOGGER):
+    with patch.object(logging.getLogger(RUNTIME_LOGGER), "info") as log_info:
         await runtime.reconnect(evaluation_time)
 
-    assert "market_data_readiness_recovered" in set(_runtime_log_messages(caplog))
+    assert "market_data_readiness_recovered" in set(_log_messages(log_info))
     assert runtime.status(evaluation_time).readiness is True
