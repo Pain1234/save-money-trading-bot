@@ -7,3 +7,6 @@ startCommand = "deploy/scripts/start-worker.sh"
 preDeployCommand = "deploy/scripts/pre-deploy-migrate.sh"
 restartPolicyType = "ALWAYS"
 numReplicas = 1
+
+[env]
+RAILPACK_CONFIG_FILE = "deploy/railpack/worker.railpack.json"

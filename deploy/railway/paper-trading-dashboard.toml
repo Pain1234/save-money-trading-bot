@@ -1,6 +1,8 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "deploy/Dockerfile.dashboard"
+# If Railway falls back to Railpack, set this variable on the service:
+# RAILPACK_CONFIG_FILE=deploy/railpack/dashboard.railpack.json
 
 [deploy]
 startCommand = "node server.js"
@@ -8,3 +10,6 @@ restartPolicyType = "ALWAYS"
 numReplicas = 1
 healthcheckPath = "/login"
 healthcheckTimeout = 60
+
+[env]
+RAILPACK_CONFIG_FILE = "deploy/railpack/dashboard.railpack.json"

@@ -37,6 +37,7 @@ The browser never receives `PAPER_TRADING_DATABASE_URL`, `PRIVATE_PAPER_API_URL`
 | `deploy/scripts/start-api.sh` | Run read-only API |
 | `deploy/scripts/pre-deploy-migrate.sh` | Worker pre-deploy migrations |
 | `deploy/railway/*.toml` | Railway config-as-code per service |
+| `deploy/railpack/*.railpack.json` | Railpack fallback when Dockerfile builder is not used |
 | `services/paper_trading/readonly_api.py` | Read-only GET API |
 | `services/paper_trading/api_runner.py` | Standalone API entrypoint |
 | `scripts/generate_dashboard_password_hash.py` | Password hash helper |
@@ -55,6 +56,35 @@ The browser never receives `PAPER_TRADING_DATABASE_URL`, `PRIVATE_PAPER_API_URL`
    `PAPER_TRADING_DATABASE_URL=${{paper-trading-postgres.DATABASE_URL}}`.
 5. Set worker **Replicas** to exactly `1`. Disable serverless sleep on worker,
    API, and dashboard. Set restart policy to **Always**.
+
+## Railpack vs Dockerfile (monorepo)
+
+This repository contains both `pyproject.toml` (Python worker/API) and
+`package.json` (Next.js dashboard) at the repository root. If Railway builds
+with **Railpack** instead of the service-specific Dockerfile, Railpack may pick
+the wrong provider and fail with `No start command detected`.
+
+**Preferred fix:** for each app service, set **Railway Config File** to the
+matching TOML under `deploy/railway/`. Those files set `builder = "DOCKERFILE"`.
+
+| Service | Config file |
+|---------|-------------|
+| Worker | `deploy/railway/paper-trading-worker.toml` |
+| API | `deploy/railway/paper-trading-api.toml` |
+| Dashboard | `deploy/railway/paper-trading-dashboard.toml` |
+
+**Fallback (Railpack builds):** each service TOML also sets
+`RAILPACK_CONFIG_FILE` to a provider-specific config:
+
+| Service | Railpack config | Provider |
+|---------|-----------------|----------|
+| Dashboard | `deploy/railpack/dashboard.railpack.json` | `node` |
+| Worker | `deploy/railpack/worker.railpack.json` | `python` |
+| API | `deploy/railpack/api.railpack.json` | `python` |
+
+If Railway still auto-detects Python for the dashboard, add a service variable
+`RAILPACK_CONFIG_FILE=deploy/railpack/dashboard.railpack.json` and enable
+**Available during build** in the Railway UI.
 
 ## Start commands
 
@@ -247,6 +277,7 @@ worker restart.
 | Stale heartbeat warning | worker running? DB reachable? | restart worker, check Hyperliquid connectivity |
 | Migration failure on deploy | pre-deploy logs | fix schema manually, rerun `alembic upgrade head` |
 | Two workers accidentally deployed | Railway replicas | scale worker back to 1 |
+| Build fails: `Detected Python` / `No start command` | builder + config file | link `deploy/railway/*.toml` or set `RAILPACK_CONFIG_FILE` |
 
 ## Known limitations
 

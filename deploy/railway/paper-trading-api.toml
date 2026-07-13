@@ -8,3 +8,6 @@ restartPolicyType = "ALWAYS"
 numReplicas = 1
 healthcheckPath = "/health"
 healthcheckTimeout = 30
+
+[env]
+RAILPACK_CONFIG_FILE = "deploy/railpack/api.railpack.json"
