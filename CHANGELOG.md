@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Project governance structure: `ROADMAP.md`, `AGENTS.md`, and phased research/operations roadmap (P0–P9).
+- `docs/baseline-paper-v1.md` — P1 reproducible baseline (start paths, runtime versions, test inventory, tag criteria).
 - `docs/ARCHITECTURE.md` — evidence-based system architecture map.
 - `docs/PROJECT_OPERATING_SYSTEM.md` — GitHub-centric workflow, bugfix process, WIP limits, GitHub Project manual steps.
 - `docs/DEFINITION_OF_DONE.md` — general, research, and bugfix checklists.
@@ -36,8 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/RISK_REGISTER.md` — top-5 risks linked to GitHub issues #45–#49 (Issue #6).
 - `scripts/github_project_setup.py` — stable seed keys, refresh-before-create, duplicate repair mode, repository fail-closed guards, and sequential idempotency tests (Issue #51).
 - Governance docs — idempotency claims corrected; official Actions apply uses `--skip-project`; duplicate repair restricted to approved repository with identity verification.
-- `README.md` — governance workflow and repository layout.
-- `docs/DECISION_LOG.md` — ADR-007 accepted (GitHub as project memory).
+- `README.md` — aligned with PostgreSQL/Railway architecture; links P1 baseline doc.
+- `ROADMAP.md` — P0 marked complete; P1 active with partial exit criteria.
+- `services/paper_trading/README.md` — migration range corrected to `001`–`009`.
 
 ### Security
 

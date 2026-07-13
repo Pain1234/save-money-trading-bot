@@ -15,7 +15,7 @@ Central project goal:
 | Phase | Name | Status | Human approval required |
 |-------|------|--------|-------------------------|
 | **P0** | Governance and Scope Freeze | **Active (in progress)** | No |
-| P1 | Reproducible Baseline Release | Next | No |
+| **P1** | Reproducible Baseline Release | **Active (in progress)** | No |
 | P2 | Operational Reliability | In flight (partial; not exit-complete) | No |
 | P3 | Versioned Historical Market Data | Not started | No |
 | P4 | Research Engine | Partial (backtester exists; not standardized pipeline) | No |
@@ -33,6 +33,7 @@ Central project goal:
 - Governance workflow merged (PR #54); full pytest CI still open (#53); no formal baseline release tag — **P1 not complete**.
 - Governance files on default branch `cursor/railway-paper-dashboard-v1` (not `main` — migration tracked in #52, accepted deviation until human approval).
 - P0 infrastructure in place (PR #29, #54); **P0 exit not complete** — DoD enforcement evidence open (#5), architecture gap corrected in PR #57, `main` criterion deferred (#52).
+- P1 baseline documentation in progress (`docs/baseline-paper-v1.md`); formal tag and full CI still open (#10, #53).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---
@@ -121,9 +122,11 @@ Current paper-trading stack reproducible from a tagged commit: pinned dependenci
 
 ### Exit criteria
 
+- [x] Start paths documented from `deploy/scripts/` (`docs/baseline-paper-v1.md`)
+- [x] Python 3.12 / Node 22 / PostgreSQL 16 recorded
+- [x] Test suite and markers documented; known local failure recorded
 - [ ] Tag exists; checkout + documented commands reproduce paper worker locally or in CI
-- [ ] Test suite documented; known failures/flakes recorded
-- [ ] Start commands unchanged from production paths (documentation only)
+- [ ] Full test CI gate (Issue #53)
 
 ### Stop criteria
 

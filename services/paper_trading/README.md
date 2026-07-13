@@ -50,8 +50,7 @@ Alternative: `docker/docker-compose.paper-test.yml` on port `5433`.
 
 ## Migrations
 
-Alembic revisions `001`–`006` (latest: `006_exit_fills` — canonical EXIT fills with
-`fill_kind`, nullable `paper_order_id` for exits, and DB check constraints). Verify with:
+Alembic revisions `001`–`009` (latest: `009_soak_run_identity`).
 
 ```powershell
 python -m alembic upgrade head
