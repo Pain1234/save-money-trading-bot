@@ -161,6 +161,7 @@ Link the GitHub issue and PR. Do not rely on chat-only documentation for decisio
 
 | Task | Command / path |
 |------|----------------|
+| P1 baseline (start, versions, tests) | `docs/baseline-paper-v1.md` |
 | System architecture | `docs/ARCHITECTURE.md` |
 | Definition of Done | `docs/DEFINITION_OF_DONE.md` |
 | Tests (paper, postgres) | `python -m pytest tests/paper_trading -m postgres -v` |

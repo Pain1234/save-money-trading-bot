@@ -4,29 +4,46 @@ Research and operations repository for trend Strategy V1, paper trading, backtes
 
 **Governance source of truth:** GitHub (issues, milestones, pull requests). Chat is the workbench; GitHub is the project memory.
 
+**Current workstream:** P1 — Reproducible Baseline Release (`ROADMAP.md`). P0 exit remains open. Baseline reference: `docs/baseline-paper-v1.md`.
+
 ## Quick start
+
+### Paper trading stack (production-shaped)
+
+PostgreSQL is required. Production start paths live under `deploy/scripts/`:
+
+```bash
+pip install -e ".[api]"
+export PAPER_TRADING_DATABASE_URL="postgresql+psycopg://…"
+deploy/scripts/start-worker.sh    # migrate, verify, run worker
+deploy/scripts/start-api.sh       # read-only API on :8080
+```
+
+Local PostgreSQL for tests: `docker/docker-compose.paper-test.yml` (port 5433) or
+see `services/paper_trading/README.md`.
+
+Full baseline: **`docs/baseline-paper-v1.md`** (env vars, versions, tests, tag criteria).
 
 ### Dashboard (UI)
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The dashboard currently uses mock data for local UI development.
-
-### Paper trading stack
-
-See `services/paper_trading/README.md` and `deploy/scripts/` for worker/API start paths. PostgreSQL is required for the production-shaped paper path.
+Open [http://localhost:3000](http://localhost:3000). Local `npm run dev` uses mock
+data for UI work. Production dashboard reads the private paper API via Railway
+(see `docs/railway-paper-trading-dashboard-v1.md`).
 
 ### Tests
 
 ```bash
 python -m pytest tests/ -v
-python -m pytest tests/paper_trading -m postgres -v
+python -m pytest tests/paper_trading -m postgres -v   # requires PostgreSQL
+ruff check .
 ```
 
-See `AGENTS.md` for lint, types, and migration commands.
+See `docs/baseline-paper-v1.md` for markers, CI gaps, and recorded baseline results.
 
 ## Governance
 
@@ -41,22 +58,9 @@ Workflow: **one issue → one branch → one PR**. Use the PR template and `docs
 Initialize or refresh GitHub labels, milestones, and seed issues:
 
 ```bash
-python scripts/github_project_setup.py --dry-run
-python scripts/github_project_setup.py --apply
+python scripts/github_project_setup.py --dry-run --skip-project
+python scripts/github_project_setup.py --apply --skip-project
 ```
-
-Sequential idempotency is covered by automated tests. Official apply runs are
-serialized through GitHub Actions concurrency (`.github/workflows/github-governance-setup.yml`)
-and use `--skip-project`. Uncoordinated parallel local apply processes are not
-claimed to be fully atomic.
-
-The official GitHub Actions apply path intentionally uses `--skip-project`.
-The repository-scoped `GITHUB_TOKEN` manages labels, milestones and issues only.
-GitHub Projects v2 setup requires a separately authorized token or manual setup.
-
-Duplicate repair is hard-restricted to `Pain1234/save-money-trading-bot`.
-Before mutation, repository, issue numbers and expected titles are verified.
-Repair fails closed when identity cannot be proven.
 
 See `docs/PROJECT_OPERATING_SYSTEM.md` for the full operating model.
 
@@ -78,6 +82,7 @@ deploy/                # Railway/Docker production paths
 
 | Document | Purpose |
 |----------|---------|
+| `docs/baseline-paper-v1.md` | P1 reproducible baseline (start, versions, tests) |
 | `docs/strategy-specification.md` | Strategy V1 behavior (frozen) |
 | `docs/risk-specification.md` | Risk limits (frozen) |
 | `docs/strategy-v1-parameter-inventory.md` | Published parameter defaults |
@@ -85,3 +90,4 @@ deploy/                # Railway/Docker production paths
 | `docs/DEFINITION_OF_DONE.md` | Merge checklist + review policy |
 | `docs/RISK_REGISTER.md` | Risk catalog (R-001–R-005 linked to issues) |
 | `docs/DECISION_LOG.md` | ADR-style decisions |
+| `docs/railway-paper-trading-dashboard-v1.md` | Railway four-service deployment |
