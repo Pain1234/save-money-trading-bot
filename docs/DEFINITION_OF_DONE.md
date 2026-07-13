@@ -88,12 +88,18 @@ Effective with governance rollout (Issue #5, ADR-010).
 - Scope exceeds linked issue without a separate issue
 - DoD checkboxes checked but evidence missing in PR body
 
-### Baseline PRs referencing DoD (post-governance)
+### DoD enforcement evidence (Issue #5 — open)
 
-| PR | Title | DoD reference |
-|----|-------|---------------|
-| #29 | Establish project governance and research roadmap | PR template § Definition of Done |
-| #36 | Strategy V1 parameters inventory | PR template § Definition of Done |
-| #43 | Repository governance adoption | PR template § Definition of Done |
+Governance rollout PR: **#29** (introduced templates and DoD doc — not a post-governance baseline).
 
-Future PRs must follow the same pattern. Optional CI enforcement tracked separately (not in scope for Issue #5).
+Post-governance merged PRs with partial DoD evidence:
+
+| PR | Title | DoD section in body | Documented review |
+|----|-------|---------------------|-------------------|
+| #44 | Architecture verification + DoD adoption | partial | none |
+| #50 | Risk register top-5 linked | partial (Tests N/A) | none |
+| #54 | Governance idempotency hardening | Tests listed | none |
+
+**Issue #5 acceptance criteria still open:** three post-governance PRs with complete DoD sections **and** documented reviewer rejection/approval of test evidence. Optional CI enforcement tracked separately (Issue #53).
+
+Future PRs must include the full PR template DoD section and list executed test commands with results.

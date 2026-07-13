@@ -30,8 +30,9 @@ Central project goal:
 - Paper-trading orchestrator phases 1–9 implemented; phase 10 audit gate not closed (`services/paper_trading/README.md`, `docs/paper-trading-orchestrator-v1.md`).
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
 - Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
-- No `.github/` CI, no formal baseline release tag — **P1 not complete**.
-- Governance docs merged via PR #29; setup script sequential idempotency covered by automated tests (Issue #2, #51) — **P0 governance baseline in place**; remaining P0 items tracked in milestone issues (#3–#5).
+- Governance workflow merged (PR #54); full pytest CI still open (#53); no formal baseline release tag — **P1 not complete**.
+- Governance files on default branch `cursor/railway-paper-dashboard-v1` (not `main` — migration tracked in #52, accepted deviation until human approval).
+- P0 infrastructure in place (PR #29, #54); **P0 exit not complete** — DoD enforcement evidence open (#5), architecture gap fixed pending merge, `main` criterion deferred (#52).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---
@@ -72,11 +73,11 @@ Establish binding project memory in GitHub: roadmap, issue/PR process, responsib
 
 ### Exit criteria
 
-- [ ] All governance files present on `main`
-- [ ] GitHub issue templates and PR template active
-- [ ] Definition of Done documented and referenced in PR template
-- [ ] First milestones and seed issues created via setup script
-- [ ] Agents and Cursor rules point to GitHub as source of truth
+- [ ] All governance files present on `main` — **deferred:** default branch is `cursor/railway-paper-dashboard-v1`; migration plan in Issue #52 (accepted deviation until human approval)
+- [x] GitHub issue templates and PR template active (PR #29, #54)
+- [ ] Definition of Done documented and referenced in PR template — documented; **enforcement evidence open** (Issue #5 reopened)
+- [x] First milestones and seed issues created via setup script (PR #54, sequential idempotency tested)
+- [x] Agents and Cursor rules point to GitHub as source of truth (`AGENTS.md`, `.cursor/rules/project-governance.mdc`)
 
 ### Stop criteria
 
