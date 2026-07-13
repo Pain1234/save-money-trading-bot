@@ -49,6 +49,14 @@ def test_format_daily_open_defer_log_includes_required_fields_in_message() -> No
         market_data_ready=True,
         prior_eval_time=utc_dt(2024, 1, 16),
         evaluation_time=utc_dt(2024, 1, 16, 1),
+        input_candle_count=21,
+        first_input_open_time=utc_dt(2023, 12, 26),
+        last_input_open_time=utc_dt(2024, 1, 15),
+        last_input_is_closed=True,
+        true_range_count=20,
+        valid_true_range_count=20,
+        atr_window=14,
+        indicator_reason_code="ATR_NOT_AVAILABLE",
     )
 
     message = format_daily_open_defer_log(snapshot)
@@ -65,6 +73,18 @@ def test_format_daily_open_defer_log_includes_required_fields_in_message() -> No
     assert "market_data_ready=yes" in message
     assert "prior_eval_time=" in message
     assert "evaluation_time=" in message
+    assert "input_candle_count=21" in message
+    assert "first_input_open_time=" in message
+    assert "last_input_open_time=" in message
+    assert "last_input_is_closed=yes" in message
+    assert "true_range_count=20" in message
+    assert "valid_true_range_count=20" in message
+    assert "atr_window=14" in message
+    assert "indicator_reason_code=ATR_NOT_AVAILABLE" in message
+    assert "open=" not in message
+    assert "high=" not in message
+    assert "low=" not in message
+    assert "close=" not in message
     assert "postgresql://" not in message.lower()
     assert "password" not in message.lower()
 
@@ -184,6 +204,7 @@ def test_build_daily_open_defer_snapshot_without_prior_eval_time() -> None:
 def test_daily_open_defer_warning_record_contains_full_message_body(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    logging.getLogger("paper_trading.market_events").disabled = False
     caplog.set_level(logging.WARNING, logger="paper_trading.market_events")
 
     dailies = make_daily_series(364, start=utc_dt(2023, 1, 16))

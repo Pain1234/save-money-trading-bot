@@ -25,7 +25,10 @@ def main() -> None:
     from paper_trading.db.session import create_db_engine
 
     config = PaperTradingConfig.from_env()
-    engine = create_db_engine(str(config.database_url))
+    engine = create_db_engine(
+        str(config.database_url),
+        application_name="paper-readonly-api",
+    )
     try:
         identity = inspect_database_identity(engine, service_role="readonly-api")
         log_database_identity(logger, identity)

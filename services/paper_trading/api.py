@@ -688,7 +688,7 @@ def _audit_control(
 
 
 def _sanitize_error(value: str | None) -> str | None:
-    if value is None:
+    if value is None or not value.strip():
         return None
     lowered = value.lower()
     if "password" in lowered or "secret" in lowered or "key" in lowered:

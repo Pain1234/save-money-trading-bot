@@ -58,3 +58,23 @@ def test_deterministic_repeatable_bundle() -> None:
     )
     assert b1.daily.candles == b2.daily.candles
     assert b1.report.status == b2.report.status
+
+
+def test_time_closed_candle_is_marked_closed_at_strategy_boundary() -> None:
+    dailies = make_daily_series(60)
+    transport_preview = dailies[-1].model_copy(update={"is_closed": False})
+    repo = InMemoryCandleRepository()
+    repo.upsert_many((*dailies[:-1], transport_preview))
+
+    bundle = MarketDataService(repo).build_strategy_bundle(
+        MarketSymbol.BTC,
+        transport_preview.close_time,
+        daily_minimum=21,
+        weekly_minimum=1,
+        monthly_minimum=1,
+        backfill=False,
+    )
+
+    assert bundle.is_usable is True
+    assert bundle.daily.candles[-1].open_time == transport_preview.open_time
+    assert bundle.daily.candles[-1].is_closed is True

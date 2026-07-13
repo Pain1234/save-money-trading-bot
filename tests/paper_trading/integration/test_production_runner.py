@@ -7,6 +7,7 @@ from paper_trading.application import FakeMarketDataRuntime, PaperTradingApplica
 from paper_trading.enums import RuntimeStatus
 from paper_trading.lock import PostgresAdvisoryLock
 from paper_trading.service_config import PaperServiceConfig
+from sqlalchemy import text
 
 from tests.paper_trading.conftest import _postgres_url, requires_postgres
 
@@ -32,6 +33,32 @@ async def test_runner_startup_shutdown_with_fake_market_data(
     assert not runtime.last_error
     assert app.advisory_lock.held is True
     assert app.market_data_ready() is True
+    assert app._session_factory is not app._heartbeat_session_factory  # noqa: SLF001
+    assert app._session_factory.kw["bind"] is not app._heartbeat_session_factory.kw[  # noqa: SLF001
+        "bind"
+    ]
+    with app._session_factory() as scheduler_session:  # noqa: SLF001
+        scheduler_identity = scheduler_session.execute(
+            text("SELECT pg_backend_pid(), current_setting('application_name')")
+        ).one()
+    with app._heartbeat_session_factory() as heartbeat_session:  # noqa: SLF001
+        heartbeat_identity = heartbeat_session.execute(
+            text("SELECT pg_backend_pid(), current_setting('application_name')")
+        ).one()
+    assert scheduler_identity[0] != heartbeat_identity[0]
+    assert scheduler_identity[1] == "paper-worker-scheduler"
+    assert heartbeat_identity[1] == "paper-worker-heartbeat"
+
+    app._update_runtime_readiness()  # noqa: SLF001
+    assert app.repository.session.in_transaction() is False
+    with migrated_engine.begin() as independent:
+        independent.execute(text("SET LOCAL lock_timeout = '100ms'"))
+        independent.execute(
+            text(
+                "UPDATE runtime_state SET heartbeat_at = heartbeat_at "
+                "WHERE instance_id = '00000000-0000-0000-0000-000000000001'"
+            )
+        )
 
     secondary = PostgresAdvisoryLock(migrated_engine, config.advisory_lock_id)
     assert secondary.try_acquire() is False
@@ -39,6 +66,7 @@ async def test_runner_startup_shutdown_with_fake_market_data(
     await app.stop()
     assert fake_md.closed is True
     assert app.advisory_lock.held is False
+    assert app._heartbeat_engine is None  # noqa: SLF001
 
     assert secondary.try_acquire() is True
     secondary.release()

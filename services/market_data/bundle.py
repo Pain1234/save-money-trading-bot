@@ -126,7 +126,14 @@ def _to_series(
     return CandleSeries(
         symbol=symbol,
         timeframe=timeframe,
-        candles=tuple(c.to_strategy_candle() for c in selected),
+        # ``candles`` has already been filtered by close_time at evaluation_time.
+        # Normalize the transport-time flag at this boundary so the Strategy
+        # Engine sees the same closed semantics as Market Data without admitting
+        # the current open candle.
+        candles=tuple(
+            c.to_strategy_candle().model_copy(update={"is_closed": True})
+            for c in selected
+        ),
     )
 
 

@@ -285,6 +285,29 @@ class PaperTradingScheduler:
         scheduled_for: datetime,
         cycle_id: UUID | None = None,
     ) -> JobRunOutcome:
+        """Run a standalone job in a short transaction, preserving caller-owned atomicity."""
+        owns_transaction = not self._repo.session.in_transaction()
+        try:
+            outcome = self._run_job(
+                job_name,
+                scheduled_for=scheduled_for,
+                cycle_id=cycle_id,
+            )
+            if owns_transaction:
+                self._repo.session.commit()
+            return outcome
+        except Exception:
+            if owns_transaction:
+                self._repo.session.rollback()
+            raise
+
+    def _run_job(
+        self,
+        job_name: str,
+        *,
+        scheduled_for: datetime,
+        cycle_id: UUID | None = None,
+    ) -> JobRunOutcome:
         if scheduled_for.tzinfo is None:
             raise ValueError("scheduled_for must be timezone-aware UTC")
         if not self._jobs_enabled and job_name != SchedulerJobName.READINESS_CHECK:

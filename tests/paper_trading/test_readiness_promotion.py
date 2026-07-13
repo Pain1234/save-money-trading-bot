@@ -230,12 +230,12 @@ def test_stale_heartbeat_blocks_promotion_until_refreshed() -> None:
 async def test_application_promotes_degraded_after_market_data_ready(
     migrated_engine,
     alembic_config,
-    db_session,
+    postgres_commit_session,
 ) -> None:
     from paper_trading.repository import PaperTradingRepository
     from paper_trading.service_config import PaperServiceConfig
 
-    repo = PaperTradingRepository(db_session)
+    repo = PaperTradingRepository(postgres_commit_session)
     runtime = repo.get_runtime_state()
     assert runtime is not None
     repo.update_runtime_state(
@@ -243,7 +243,7 @@ async def test_application_promotes_degraded_after_market_data_ready(
         last_error="market_data_not_ready",
         expected_version=runtime.version,
     )
-    db_session.commit()
+    postgres_commit_session.commit()
 
     config = PaperServiceConfig.from_env(database_url=_postgres_url())
     app = PaperTradingApplication(
@@ -267,12 +267,12 @@ async def test_application_promotes_degraded_after_market_data_ready(
 async def test_application_restart_promotion_is_idempotent(
     migrated_engine,
     alembic_config,
-    db_session,
+    postgres_commit_session,
 ) -> None:
     from paper_trading.repository import PaperTradingRepository
     from paper_trading.service_config import PaperServiceConfig
 
-    repo = PaperTradingRepository(db_session)
+    repo = PaperTradingRepository(postgres_commit_session)
     runtime = repo.get_runtime_state()
     assert runtime is not None
     repo.update_runtime_state(
@@ -280,7 +280,7 @@ async def test_application_restart_promotion_is_idempotent(
         last_error="market_data_not_ready",
         expected_version=runtime.version,
     )
-    db_session.commit()
+    postgres_commit_session.commit()
 
     config = PaperServiceConfig.from_env(database_url=_postgres_url())
 
@@ -311,7 +311,7 @@ async def test_application_restart_promotion_is_idempotent(
 async def test_degraded_to_ready_readonly_api_integration(
     migrated_engine,
     alembic_config,
-    db_session,
+    postgres_commit_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from fastapi.testclient import TestClient
@@ -320,7 +320,7 @@ async def test_degraded_to_ready_readonly_api_integration(
     from paper_trading.repository import PaperTradingRepository
     from paper_trading.service_config import PaperServiceConfig
 
-    repo = PaperTradingRepository(db_session)
+    repo = PaperTradingRepository(postgres_commit_session)
     runtime = repo.get_runtime_state()
     assert runtime is not None
     repo.update_runtime_state(
@@ -328,7 +328,7 @@ async def test_degraded_to_ready_readonly_api_integration(
         last_error="market_data_not_ready",
         expected_version=runtime.version,
     )
-    db_session.commit()
+    postgres_commit_session.commit()
 
     config = PaperServiceConfig.from_env(database_url=_postgres_url())
     worker = PaperTradingApplication(

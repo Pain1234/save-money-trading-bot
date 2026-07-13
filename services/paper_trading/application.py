@@ -24,7 +24,10 @@ from paper_trading.controlled_market_data import ControlledMarketDataRuntime
 from paper_trading.database_identity import inspect_database_identity, log_database_identity
 from paper_trading.db.session import create_db_engine, create_session_factory
 from paper_trading.enums import RuntimeStatus
-from paper_trading.heartbeat import persist_runtime_heartbeat
+from paper_trading.heartbeat import (
+    HeartbeatRetryExhausted,
+    persist_runtime_heartbeat_with_retry,
+)
 from paper_trading.lock import PostgresAdvisoryLock
 from paper_trading.market_events import MarketEventBridge
 from paper_trading.orchestrator import PaperTradingOrchestrator
@@ -32,7 +35,7 @@ from paper_trading.readiness import ReadinessService
 from paper_trading.recovery import RecoveryService
 from paper_trading.repository import PaperTradingRepository
 from paper_trading.runtime import RuntimeService
-from paper_trading.scheduler import PaperTradingScheduler, SchedulerJobName
+from paper_trading.scheduler import PaperTradingScheduler
 from paper_trading.scheduler_context import ProductionContextBuilder
 from paper_trading.service_config import PaperServiceConfig
 from paper_trading.symbol_constraints import (
@@ -104,7 +107,11 @@ class PaperTradingApplication:
     event_poll_interval_seconds: float = 1.0
 
     _engine: Engine | None = field(default=None, init=False)
+    _heartbeat_engine: Engine | None = field(default=None, init=False)
     _session_factory: sessionmaker[Session] | None = field(default=None, init=False)
+    _heartbeat_session_factory: sessionmaker[Session] | None = field(
+        default=None, init=False
+    )
     _session: Session | None = field(default=None, init=False)
     _repo: PaperTradingRepository | None = field(default=None, init=False)
     _advisory_lock: PostgresAdvisoryLock | None = field(default=None, init=False)
@@ -121,6 +128,7 @@ class PaperTradingApplication:
     _started: bool = field(default=False, init=False)
     _last_loop_error: str | None = field(default=None, init=False)
     _database_fingerprint: str | None = field(default=None, init=False)
+    _heartbeat_healthy: bool = field(default=False, init=False)
 
     @property
     def repository(self) -> PaperTradingRepository:
@@ -177,8 +185,17 @@ class PaperTradingApplication:
         if self._started:
             return
 
-        self._engine = create_db_engine(str(self.config.database_url))
+        database_url = str(self.config.database_url)
+        self._engine = create_db_engine(
+            database_url,
+            application_name="paper-worker-scheduler",
+        )
+        self._heartbeat_engine = create_db_engine(
+            database_url,
+            application_name="paper-worker-heartbeat",
+        )
         self._session_factory = create_session_factory(self._engine)
+        self._heartbeat_session_factory = create_session_factory(self._heartbeat_engine)
         self._session = self._session_factory()
         self._repo = PaperTradingRepository(self._session)
         if self.active_soak_run_id is not None:
@@ -198,13 +215,19 @@ class PaperTradingApplication:
         if not self._advisory_lock.try_acquire():
             raise RuntimeError("postgres advisory lock not available")
 
-        recovery = self._runtime.recover_on_startup(
-            self.config,
-            self._advisory_lock,
-            market_data_ready=False,
-            db_engine=self._engine,
-            alembic_config=self._alembic_config(),
-        )
+        self._set_worker_transaction_role("paper-worker-recovery")
+        try:
+            recovery = self._runtime.recover_on_startup(
+                self.config,
+                self._advisory_lock,
+                market_data_ready=False,
+                db_engine=self._engine,
+                alembic_config=self._alembic_config(),
+            )
+            self._session.commit()
+        except Exception:
+            self._session.rollback()
+            raise
         if recovery.final_status == RuntimeStatus.FAILED:
             raise RuntimeError(f"recovery failed: {recovery.issues}")
 
@@ -257,10 +280,10 @@ class PaperTradingApplication:
         if self.config.api_enabled:
             self._start_api_server()
 
+        await self._persist_heartbeat()
         self._tasks.append(asyncio.create_task(self._heartbeat_loop(), name="paper-heartbeat"))
         self._tasks.append(asyncio.create_task(self._scheduler_loop(), name="paper-scheduler"))
 
-        self._runtime.heartbeat()
         self._update_runtime_readiness()
         self._started = True
         logger.info("paper_trading_application_started")
@@ -273,6 +296,8 @@ class PaperTradingApplication:
             self._scheduler.set_jobs_enabled(False)
         if self._runtime is not None:
             self._runtime.transition(RuntimeStatus.SHUTTING_DOWN)
+            if self._session is not None:
+                self._session.commit()
 
         for task in self._tasks:
             task.cancel()
@@ -290,17 +315,21 @@ class PaperTradingApplication:
         if self._advisory_lock is not None:
             self._advisory_lock.release()
 
-        if self._session is not None:
-            self._session.close()
-            self._session = None
-        if self._engine is not None:
-            self._engine.dispose()
-            self._engine = None
-
-        if self._runtime is not None:
+        if self._runtime is not None and self._session is not None:
             state = self._runtime.get_state()
             if state.status == RuntimeStatus.SHUTTING_DOWN:
                 self._runtime.transition(RuntimeStatus.STOPPED)
+                self._session.commit()
+
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+        if self._heartbeat_engine is not None:
+            self._heartbeat_engine.dispose()
+            self._heartbeat_engine = None
+        if self._engine is not None:
+            self._engine.dispose()
+            self._engine = None
 
         configure_app_state(scheduler_active=False)
         self._started = False
@@ -366,6 +395,13 @@ class PaperTradingApplication:
         if current != head:
             raise RuntimeError(f"migration not at head: current={current} head={head}")
 
+    def _set_worker_transaction_role(self, application_name: str) -> None:
+        assert self._session is not None
+        self._session.execute(
+            text("SELECT set_config('application_name', :name, true)"),
+            {"name": application_name},
+        )
+
     async def _poll_market_data(self) -> None:
         if self._md_runtime is None:
             return
@@ -395,6 +431,15 @@ class PaperTradingApplication:
             )
 
     def _update_runtime_readiness(self) -> None:
+        assert self._repo is not None
+        try:
+            self._evaluate_runtime_readiness()
+            self._repo.session.commit()
+        except Exception:
+            self._repo.session.rollback()
+            raise
+
+    def _evaluate_runtime_readiness(self) -> None:
         assert self._runtime is not None
         assert self._repo is not None
         readiness = ReadinessService(
@@ -424,8 +469,15 @@ class PaperTradingApplication:
             scheduler_active=scheduler_active,
             recovery_active=recovery_active,
         )
-        runtime_ready = snapshot.runtime_readiness and not bridge_backlog
-        promotion_ready = promotion.ready and not bridge_backlog and not bridge_permanent
+        runtime_ready = (
+            snapshot.runtime_readiness and not bridge_backlog and self._heartbeat_healthy
+        )
+        promotion_ready = (
+            promotion.ready
+            and not bridge_backlog
+            and not bridge_permanent
+            and self._heartbeat_healthy
+        )
         state = self._runtime.get_state()
         promotable_statuses = {
             RuntimeStatus.RECOVERING,
@@ -470,6 +522,8 @@ class PaperTradingApplication:
         bridge: MarketEventBridge | None,
         bridge_overflow: bool,
     ) -> str:
+        if not self._heartbeat_healthy:
+            return "runtime_heartbeat_unhealthy"
         if bridge_permanent:
             return "permanent_configuration_failure"
         if bridge_backlog:
@@ -484,58 +538,68 @@ class PaperTradingApplication:
             return ",".join(evaluate_reasons)
         return self._last_loop_error or "not_ready"
 
-    async def _heartbeat_loop(self) -> None:
-        """Persist worker liveness while market data is unavailable.
+    async def _persist_heartbeat(self) -> None:
+        assert self._heartbeat_session_factory is not None
+        heartbeat = await persist_runtime_heartbeat_with_retry(
+            self._heartbeat_session_factory,
+            clock=self.clock,
+        )
+        self._heartbeat_healthy = True
+        previous_heartbeat = heartbeat.previous.heartbeat_at.isoformat()
+        new_heartbeat = heartbeat.observed.heartbeat_at.isoformat()
+        database_fingerprint = self._database_fingerprint or "unavailable"
+        logger.info(
+            "worker_liveness_heartbeat previous_heartbeat_at=%s "
+            "new_heartbeat_at=%s runtime_version_before=%s "
+            "runtime_version_after=%s commit_success=yes attempts=%s "
+            "database_fingerprint=%s",
+            previous_heartbeat,
+            new_heartbeat,
+            heartbeat.previous.version,
+            heartbeat.observed.version,
+            heartbeat.attempts,
+            database_fingerprint,
+            extra={
+                "event_type": "worker_liveness_heartbeat",
+                "market_data_ready": self.market_data_ready(),
+                "previous_heartbeat_at": previous_heartbeat,
+                "new_heartbeat_at": new_heartbeat,
+                "runtime_version_before": heartbeat.previous.version,
+                "runtime_version_after": heartbeat.observed.version,
+                "commit_success": "yes",
+                "attempts": heartbeat.attempts,
+                "database_fingerprint": database_fingerprint,
+                "task_role": "heartbeat",
+            },
+        )
 
-        Trading/runtime readiness heartbeats require full market-data readiness.
-        When market data is degraded, we still write ``heartbeat_at`` so dashboards
-        can distinguish a live worker with stale market data from a dead process.
-        """
-        assert self._scheduler is not None
+    async def _heartbeat_loop(self) -> None:
+        """Persist liveness with an isolated, short-lived session per attempt."""
         while not self._shutdown_event.is_set():
             try:
                 if self._advisory_lock is not None and (
                     self._advisory_lock.try_acquire() or self._advisory_lock.held
                 ):
-                    if self.market_data_ready():
-                        self._scheduler.run_job(
-                            SchedulerJobName.RUNTIME_HEARTBEAT,
-                            scheduled_for=self.clock.now(),
-                        )
-                    elif self._runtime is not None and self._session_factory is not None:
-                        heartbeat = persist_runtime_heartbeat(
-                            self._session_factory,
-                            clock=self.clock,
-                        )
-                        previous_heartbeat = heartbeat.previous.heartbeat_at.isoformat()
-                        new_heartbeat = heartbeat.observed.heartbeat_at.isoformat()
-                        database_fingerprint = self._database_fingerprint or "unavailable"
-                        logger.info(
-                            "worker_liveness_heartbeat previous_heartbeat_at=%s "
-                            "new_heartbeat_at=%s runtime_version_before=%s "
-                            "runtime_version_after=%s commit_success=yes "
-                            "database_fingerprint=%s",
-                            previous_heartbeat,
-                            new_heartbeat,
-                            heartbeat.previous.version,
-                            heartbeat.observed.version,
-                            database_fingerprint,
-                            extra={
-                                "event_type": "worker_liveness_heartbeat",
-                                "market_data_ready": False,
-                                "reason": self._last_loop_error or "market_data_not_ready",
-                                "previous_heartbeat_at": previous_heartbeat,
-                                "new_heartbeat_at": new_heartbeat,
-                                "runtime_version_before": heartbeat.previous.version,
-                                "runtime_version_after": heartbeat.observed.version,
-                                "commit_success": "yes",
-                                "database_fingerprint": database_fingerprint,
-                            },
-                        )
+                    await self._persist_heartbeat()
                 await asyncio.sleep(self.config.heartbeat_interval_seconds)
             except asyncio.CancelledError:
                 raise
+            except HeartbeatRetryExhausted as exc:
+                self._heartbeat_healthy = False
+                self._last_loop_error = "runtime_heartbeat_lock_timeout"
+                logger.error(
+                    "runtime_heartbeat_failed attempts=%s trading_ready=no task_role=heartbeat",
+                    exc.attempts,
+                    extra={
+                        "event_type": "runtime_heartbeat_failed",
+                        "attempts": exc.attempts,
+                        "trading_ready": "no",
+                        "task_role": "heartbeat",
+                    },
+                )
+                await asyncio.sleep(1)
             except Exception:
+                self._heartbeat_healthy = False
                 logger.exception("heartbeat_loop_error")
                 await asyncio.sleep(1)
 
@@ -550,7 +614,11 @@ class PaperTradingApplication:
                     and self._advisory_lock is not None
                     and self._repo is not None
                 ):
-                    if self._advisory_lock.held and self.market_data_ready():
+                    if (
+                        self._advisory_lock.held
+                        and self.market_data_ready()
+                        and self._heartbeat_healthy
+                    ):
                         self._process_committed_market_event_poll(evaluation_time)
 
                 self._update_runtime_readiness()
@@ -558,6 +626,8 @@ class PaperTradingApplication:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                if self._repo is not None:
+                    self._repo.session.rollback()
                 self._last_loop_error = str(exc)
                 logger.exception("scheduler_loop_error")
                 await asyncio.sleep(1)

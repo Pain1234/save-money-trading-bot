@@ -262,6 +262,11 @@ def test_same_bridge_retry_transient_open_context() -> None:
     assert bridge.deferred_events is True
     scheduler.run_daily_open_gap_stop.assert_not_called()
 
+    too_early = bridge.process_after_poll(eval_time + timedelta(milliseconds=500))
+    assert too_early.outcomes == ()
+    assert context_builder.build_open_contexts.call_count == 1
+    scheduler.run_daily_open_gap_stop.assert_not_called()
+
     second = bridge.process_after_poll(eval_time + timedelta(seconds=2))
     ack_result(bridge, second)
     assert len(second.outcomes) == 1

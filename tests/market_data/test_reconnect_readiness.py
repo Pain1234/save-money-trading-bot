@@ -66,6 +66,7 @@ async def test_reconnect_backfill_replaces_open_candle_without_conflict() -> Non
 async def test_transport_reconnect_without_strategy_readiness_is_degraded(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    logging.getLogger("market_data.runtime").disabled = False
     config = HyperliquidPublicConfig.for_network(
         HyperliquidNetwork.TESTNET,
         symbols=(MarketSymbol.BTC,),
@@ -119,6 +120,7 @@ def _seed_ready_history(repo: InMemoryCandleRepository):
 async def test_reconnect_logs_readiness_recovered_and_returns_ready(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    logging.getLogger("market_data.runtime").disabled = False
     config = HyperliquidPublicConfig.for_network(
         HyperliquidNetwork.TESTNET,
         symbols=(MarketSymbol.BTC,),

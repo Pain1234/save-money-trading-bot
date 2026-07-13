@@ -10,9 +10,20 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 
-def create_db_engine(database_url: str, *, echo: bool = False) -> Engine:
+def create_db_engine(
+    database_url: str,
+    *,
+    echo: bool = False,
+    application_name: str | None = None,
+) -> Engine:
     """Create a SQLAlchemy engine for PostgreSQL."""
-    return create_engine(database_url, echo=echo, future=True)
+    connect_args = {"application_name": application_name} if application_name else {}
+    return create_engine(
+        database_url,
+        echo=echo,
+        future=True,
+        connect_args=connect_args,
+    )
 
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:

@@ -39,7 +39,10 @@ def get_config() -> PaperTradingConfig:
 def get_db_session(
     config: Annotated[PaperTradingConfig, Depends(get_config)],
 ) -> Generator[Session, None, None]:
-    engine = create_db_engine(str(config.database_url))
+    engine = create_db_engine(
+        str(config.database_url),
+        application_name="paper-readonly-api",
+    )
     factory = create_session_factory(engine)
     session = factory()
     try:

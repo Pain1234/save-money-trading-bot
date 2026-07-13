@@ -54,10 +54,10 @@ class RuntimeService:
         last_error: str | None = None,
         cycle_id: UUID | None = None,
     ) -> RuntimeTransitionResult:
-        current = self.get_state()
-        validate_runtime_transition(current.status, target)
-        now = self._clock.now()
         with transaction_scope(self._repo.session):
+            current = self.get_state()
+            validate_runtime_transition(current.status, target)
+            now = self._clock.now()
             updated = self._repo.update_runtime_state(
                 status=target,
                 last_error=last_error if last_error is not None else current.last_error,
@@ -84,17 +84,17 @@ class RuntimeService:
         )
 
     def heartbeat(self) -> RuntimeState:
-        now = self._clock.now()
-        current = self.get_state()
         with transaction_scope(self._repo.session):
+            now = self._clock.now()
+            current = self.get_state()
             return self._repo.update_runtime_state(
                 heartbeat_at=now,
                 expected_version=current.version,
             )
 
     def set_paused(self, paused: bool) -> RuntimeState:
-        current = self.get_state()
         with transaction_scope(self._repo.session):
+            current = self.get_state()
             updated = self._repo.update_runtime_state(
                 paused=paused,
                 expected_version=current.version,
@@ -109,8 +109,8 @@ class RuntimeService:
         return updated
 
     def set_kill_switch(self, enabled: bool) -> RuntimeState:
-        current = self.get_state()
         with transaction_scope(self._repo.session):
+            current = self.get_state()
             updated = self._repo.update_runtime_state(
                 kill_switch=enabled,
                 expected_version=current.version,

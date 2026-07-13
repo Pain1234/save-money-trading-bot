@@ -73,7 +73,7 @@ def test_scheduler_run_failed_persists_on_exception(
     )
     outcome = scheduler.run_job(SchedulerJobName.RUNTIME_HEARTBEAT, scheduled_for=scheduled)
     assert outcome.status == SchedulerRunStatus.FAILED
-    postgres_commit_session.commit()
+    assert postgres_commit_session.in_transaction() is False
 
     factory = sessionmaker(bind=migrated_engine)
     with factory() as fresh:
