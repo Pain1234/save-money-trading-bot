@@ -274,7 +274,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Railpack fallback | `deploy/railpack/*.railpack.json` |
 | Local test compose | `docker/docker-compose.paper-test.yml` |
 
-**CI:** **Current Gap** — no `.github/workflows/` in repository.
+**CI:** `.github/workflows/github-governance-setup.yml` — governance script validation and optional `workflow_dispatch` apply (PR #54). **Current Gap:** full pytest CI gate (Issue #53).
 
 ---
 
@@ -302,7 +302,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 
 ## Known cross-cutting risks
 
-See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S1), paper-to-live decay, missing CI, governance adoption (P0 — in progress; DoD and architecture docs verified in Issues #3/#5).
+See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S1), paper-to-live decay, full test CI gap (#53), DoD review enforcement (#5). P0 exit incomplete — see `ROADMAP.md` § P0 exit criteria.
 
 ---
 
@@ -311,6 +311,7 @@ See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S
 | Date | Change | Issue |
 |------|--------|-------|
 | 2026-07-13 | Production entrypoints table; migrations `001`–`009`; `trading_constraints` module | #3 |
+| 2026-07-13 | CI section: governance workflow present; full pytest CI still gap (#53) | #3 |
 
 ## Document maintenance
 

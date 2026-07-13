@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/ARCHITECTURE.md` — CI section corrected: governance workflow present; full pytest CI gap (#53) documented (Issue #3).
+- `docs/DEFINITION_OF_DONE.md` — removed incorrect post-governance baseline PR table; DoD enforcement evidence tracked in Issue #5.
+- `ROADMAP.md` — P0 exit criteria updated with evidence; `main` branch criterion deferred to Issue #52.
+
 ### Added
 
 - Project governance structure: `ROADMAP.md`, `AGENTS.md`, and phased research/operations roadmap (P0–P9).
@@ -26,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - `docs/ARCHITECTURE.md` — verified production entrypoints table; migrations `001`–`009`; `trading_constraints` module (Issue #3).
-- `docs/DEFINITION_OF_DONE.md` — binding review policy; baseline PR references (#29, #36, #43).
+- `docs/DEFINITION_OF_DONE.md` — binding review policy (ADR-010); enforcement evidence tracked in Issue #5.
 - `docs/RISK_REGISTER.md` — top-5 risks linked to GitHub issues #45–#49 (Issue #6).
 - `scripts/github_project_setup.py` — stable seed keys, refresh-before-create, duplicate repair mode, repository fail-closed guards, and sequential idempotency tests (Issue #51).
 - Governance docs — idempotency claims corrected; official Actions apply uses `--skip-project`; duplicate repair restricted to approved repository with identity verification.
