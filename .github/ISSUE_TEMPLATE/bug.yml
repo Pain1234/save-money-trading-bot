@@ -1,0 +1,113 @@
+name: Bug
+description: Report a defect with severity and reproduction steps
+title: "[Bug]: "
+labels:
+  - "type:bug"
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Title
+      description: Short summary of the bug
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Betroffener Bereich
+      options:
+        - area:data
+        - area:research
+        - area:strategy
+        - area:risk
+        - area:execution
+        - area:accounting
+        - area:monitoring
+        - area:dashboard
+        - area:infrastructure
+        - area:security
+        - area:governance
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Schweregrad
+      options:
+        - severity:S1-critical
+        - severity:S2-high
+        - severity:S3-medium
+        - severity:S4-low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Betroffene Umgebung
+      options:
+        - local
+        - railway-paper
+        - ci
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Beobachtetes Verhalten
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartetes Verhalten
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduktionsschritte
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Auswirkung
+      description: Capital, positions, PnL, research validity, uptime
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs oder Belege
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Betroffene Version
+      description: Git commit, tag, or deploy ID
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Akzeptanzkriterien
+    validations:
+      required: true
+
+  - type: textarea
+    id: collateral
+    attributes:
+      label: Mögliche Folgeschäden
+      description: Other modules, experiments, or deployments at risk

@@ -1,0 +1,87 @@
+name: Roadmap Task
+description: Scoped work item tied to a roadmap phase (P0–P9)
+title: "[Roadmap]: "
+labels:
+  - "type:feature"
+body:
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Roadmap-Phase
+      options:
+        - "P0 – Governance and Scope Freeze"
+        - "P1 – Reproducible Baseline Release"
+        - "P2 – Operational Reliability"
+        - "P3 – Versioned Historical Market Data"
+        - "P4 – Research Engine"
+        - "P5 – Honest Validation of Trend Strategy V1"
+        - "P6 – Paper Trading Soak"
+        - "P7 – Independent Strategy Candidates"
+        - "P8 – Separate Micro-Live System"
+        - "P9 – Controlled Scaling"
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Ziel
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Hintergrund
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_scope
+    attributes:
+      label: Nicht-Scope
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Akzeptanzkriterien
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Abhängigkeiten
+      description: Issues, phases, or external blockers
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risiken
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Testanforderungen
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Dokumentationsanforderungen
+
+  - type: checkboxes
+    id: human_approval
+    attributes:
+      label: Freigabe
+      options:
+        - label: Menschliche Freigabe erforderlich (P8/P9, Live, Kapital, Risikolimits)
+          required: false

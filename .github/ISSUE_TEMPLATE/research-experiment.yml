@@ -1,0 +1,82 @@
+name: Research Experiment
+description: Hypothesis-driven strategy research with accept/reject criteria
+title: "[Research]: "
+labels:
+  - "type:research"
+body:
+  - type: input
+    id: strategy
+    attributes:
+      label: Strategie
+      placeholder: e.g. Trend V1
+    validations:
+      required: true
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothese
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Wirtschaftliche Begründung
+    validations:
+      required: true
+
+  - type: input
+    id: dataset
+    attributes:
+      label: Dataset
+      description: Dataset ID or manifest reference
+    validations:
+      required: true
+
+  - type: input
+    id: in_sample
+    attributes:
+      label: In-Sample
+      placeholder: date range or bar range
+    validations:
+      required: true
+
+  - type: input
+    id: out_of_sample
+    attributes:
+      label: Out-of-Sample
+      description: Must remain untouched until final evaluation
+    validations:
+      required: true
+
+  - type: textarea
+    id: costs
+    attributes:
+      label: Kostenannahmen
+      placeholder: fees, slippage, funding
+
+  - type: input
+    id: benchmark
+    attributes:
+      label: Benchmark
+
+  - type: textarea
+    id: accept
+    attributes:
+      label: Akzeptanzkriterien
+    validations:
+      required: true
+
+  - type: textarea
+    id: reject
+    attributes:
+      label: Ablehnungskriterien
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Erwartete Artefakte
+      description: Experiment report path, configs, plots, metrics table

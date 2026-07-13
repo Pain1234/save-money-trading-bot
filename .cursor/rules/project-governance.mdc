@@ -1,0 +1,42 @@
+---
+description: Project governance — read ROADMAP and AGENTS, one issue per PR, no silent trading changes
+alwaysApply: true
+---
+
+# Project Governance
+
+Before any task, read `AGENTS.md` and `ROADMAP.md`. Use the linked GitHub issue as the **scope boundary**.
+
+## Hard rules
+
+- **One issue** per branch and pull request.
+- **No silent changes** to strategy parameters, fee/slippage assumptions, risk limits, production start commands (`deploy/scripts/`, Railway TOML), database migrations, or live-trading code paths.
+- **Do not enable** live trading, wallet signing, or real exchange orders — not implemented in V1; requires `human-approval-required` issue and sign-off (P8/P9).
+- **No drive-by refactors** during bugfixes — minimal diff only.
+- **New problems** discovered during work → separate GitHub issue, not scope creep.
+
+## Quality
+
+- Add **regression tests** for meaningful bugs when feasible.
+- **Never fabricate** test results — run commands and report honestly.
+- Update **docs and tests** with behavior changes.
+- Research: use `docs/EXPERIMENT_TEMPLATE.md`; do not overwrite old results (invalidate with reason).
+
+## Documentation
+
+- Decisions → `docs/DECISION_LOG.md` or issue; **never chat-only** for important outcomes.
+- S1/S2 execution/accounting/security failures → `docs/incidents/INCIDENT_TEMPLATE.md`.
+- Follow `docs/DEFINITION_OF_DONE.md` before merge.
+
+## Handover (required)
+
+```text
+Umgesetzt:
+Geänderte Dateien:
+Ausgeführte Tests:
+Offene Punkte:
+Risiken:
+Nächster sinnvoller Schritt:
+```
+
+Keep changes small and reviewable. GitHub is the project memory; chat is the workbench.
