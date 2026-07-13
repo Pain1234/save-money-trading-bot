@@ -14,7 +14,7 @@ from market_data.initial_backfill import (
     evaluate_native_strategy_bundle_readiness,
     format_initial_backfill_log,
 )
-from market_data.models import MarketSymbol, MarketTimeframe
+from market_data.models import ConnectionStatus, MarketSymbol, MarketTimeframe
 from market_data.repository import InMemoryCandleRepository
 from market_data.runtime import HyperliquidMarketDataRuntime
 from market_data.service import MarketDataService
@@ -121,7 +121,59 @@ def test_insufficient_monthly_candles_fail_closed() -> None:
     assert snapshot.bundle_usable is False
     assert snapshot.market_data_ready is False
     assert "initial_backfill_insufficient" in format_initial_backfill_log(snapshot)
-    assert f"monthly_candles=11/{MIN_MONTHLY_CANDLES}" in format_initial_backfill_log(snapshot)
+    assert "monthly_closed_count=11" in format_initial_backfill_log(snapshot)
+    assert f"monthly_required_count={MIN_MONTHLY_CANDLES}" in format_initial_backfill_log(snapshot)
+
+
+def test_twenty_raw_but_nineteen_closed_monthlies_fail_closed() -> None:
+    repo = InMemoryCandleRepository()
+    evaluation_time = _seed_native_bundle_history(
+        repo,
+        daily_count=364,
+        weekly_count=51,
+        monthly_count=0,
+    )
+    closed = _monthly_series(19, start_year=2022, start_month=6)
+    current = make_monthly(MarketSymbol.BTC, 2024, 1).model_copy(
+        update={"is_closed": False}
+    )
+    repo.upsert_many((*closed, current))
+
+    snapshot = evaluate_native_strategy_bundle_readiness(
+        repo,
+        (MarketSymbol.BTC,),
+        evaluation_time,
+    )[0]
+
+    assert snapshot.monthly.raw_count == 20
+    assert snapshot.monthly.closed_count == 19
+    assert snapshot.monthly.last_is_closed is False
+    assert snapshot.bundle_usable is False
+    assert "monthly_closed_below_minimum" in snapshot.unusable_reasons
+
+
+def test_running_monthly_candle_is_excluded_after_minimum_history() -> None:
+    repo = InMemoryCandleRepository()
+    evaluation_time = _seed_native_bundle_history(
+        repo,
+        daily_count=364,
+        weekly_count=51,
+        monthly_count=MIN_MONTHLY_CANDLES,
+    )
+    current = make_monthly(MarketSymbol.BTC, 2024, 1).model_copy(
+        update={"is_closed": False}
+    )
+    repo.upsert(current)
+
+    snapshot = evaluate_native_strategy_bundle_readiness(
+        repo,
+        (MarketSymbol.BTC,),
+        evaluation_time,
+    )[0]
+
+    assert snapshot.monthly.raw_count == MIN_MONTHLY_CANDLES + 1
+    assert snapshot.monthly.closed_count == MIN_MONTHLY_CANDLES
+    assert snapshot.bundle_usable is True
 
 
 @pytest.mark.asyncio
@@ -263,7 +315,13 @@ async def test_reconnect_does_not_reload_two_years() -> None:
         )
 
     runtime.backfill_symbol = _capture_backfill  # type: ignore[method-assign]
-    runtime._ws.reconnect = AsyncMock()  # type: ignore[method-assign]
+    runtime._ws._status = ConnectionStatus.RECONNECTING  # noqa: SLF001
+
+    async def _reconnect_transport() -> None:
+        runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
+        runtime._ws._acked_subs = set(runtime._ws._expected_subs)  # noqa: SLF001
+
+    runtime._ws.reconnect = _reconnect_transport  # type: ignore[method-assign]
     runtime._ws.end_buffer = lambda: []  # type: ignore[method-assign]
     runtime._refresh_strategy_bundle_readiness = lambda _: None  # type: ignore[method-assign]
 

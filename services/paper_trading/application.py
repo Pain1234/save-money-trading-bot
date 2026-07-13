@@ -21,8 +21,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from paper_trading.app_state import configure_app_state
 from paper_trading.clock import Clock, SystemClock
 from paper_trading.controlled_market_data import ControlledMarketDataRuntime
+from paper_trading.database_identity import inspect_database_identity, log_database_identity
 from paper_trading.db.session import create_db_engine, create_session_factory
 from paper_trading.enums import RuntimeStatus
+from paper_trading.heartbeat import persist_runtime_heartbeat
 from paper_trading.lock import PostgresAdvisoryLock
 from paper_trading.market_events import MarketEventBridge
 from paper_trading.orchestrator import PaperTradingOrchestrator
@@ -118,6 +120,7 @@ class PaperTradingApplication:
     _shutdown_event: asyncio.Event = field(default_factory=asyncio.Event, init=False)
     _started: bool = field(default=False, init=False)
     _last_loop_error: str | None = field(default=None, init=False)
+    _database_fingerprint: str | None = field(default=None, init=False)
 
     @property
     def repository(self) -> PaperTradingRepository:
@@ -185,6 +188,12 @@ class PaperTradingApplication:
 
         self._verify_database()
         self._verify_migration_head()
+        database_identity = inspect_database_identity(
+            self._engine,
+            service_role="worker",
+        )
+        self._database_fingerprint = database_identity.database_fingerprint
+        log_database_identity(logger, database_identity)
 
         if not self._advisory_lock.try_acquire():
             raise RuntimeError("postgres advisory lock not available")
@@ -493,14 +502,34 @@ class PaperTradingApplication:
                             SchedulerJobName.RUNTIME_HEARTBEAT,
                             scheduled_for=self.clock.now(),
                         )
-                    elif self._runtime is not None:
-                        self._runtime.heartbeat()
+                    elif self._runtime is not None and self._session_factory is not None:
+                        heartbeat = persist_runtime_heartbeat(
+                            self._session_factory,
+                            clock=self.clock,
+                        )
+                        previous_heartbeat = heartbeat.previous.heartbeat_at.isoformat()
+                        new_heartbeat = heartbeat.observed.heartbeat_at.isoformat()
+                        database_fingerprint = self._database_fingerprint or "unavailable"
                         logger.info(
-                            "worker_liveness_heartbeat",
+                            "worker_liveness_heartbeat previous_heartbeat_at=%s "
+                            "new_heartbeat_at=%s runtime_version_before=%s "
+                            "runtime_version_after=%s commit_success=yes "
+                            "database_fingerprint=%s",
+                            previous_heartbeat,
+                            new_heartbeat,
+                            heartbeat.previous.version,
+                            heartbeat.observed.version,
+                            database_fingerprint,
                             extra={
                                 "event_type": "worker_liveness_heartbeat",
                                 "market_data_ready": False,
                                 "reason": self._last_loop_error or "market_data_not_ready",
+                                "previous_heartbeat_at": previous_heartbeat,
+                                "new_heartbeat_at": new_heartbeat,
+                                "runtime_version_before": heartbeat.previous.version,
+                                "runtime_version_after": heartbeat.observed.version,
+                                "commit_success": "yes",
+                                "database_fingerprint": database_fingerprint,
                             },
                         )
                 await asyncio.sleep(self.config.heartbeat_interval_seconds)

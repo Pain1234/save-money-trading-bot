@@ -27,12 +27,12 @@ from paper_trading.lifecycle import (
 from paper_trading.market_event_errors import (
     RetryableContextNotReady,
 )
+from paper_trading.models import PaperExecutionConfig
+from paper_trading.repository import PaperTradingRepository
 from paper_trading.scheduler_context_diagnostics import (
     build_daily_open_defer_snapshot,
     format_daily_open_defer_log,
 )
-from paper_trading.models import PaperExecutionConfig
-from paper_trading.repository import PaperTradingRepository
 from paper_trading.stops import StopLifecycleService
 from paper_trading.symbol_constraints import SymbolConstraintsProvider
 

@@ -55,6 +55,11 @@ def _mark_ready(runtime: HyperliquidMarketDataRuntime) -> None:
     runtime._strategy_bundles_ready = True  # noqa: SLF001
 
 
+def _mark_transport_connected(runtime: HyperliquidMarketDataRuntime) -> None:
+    runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
+    runtime._ws._acked_subs = set(runtime._ws._expected_subs)  # noqa: SLF001
+
+
 async def _noop_backfill(*_args: object, **_kwargs: object) -> DataQualityReport:
     return DataQualityReport(
         status=DataQualityStatus.VALID,
@@ -70,7 +75,7 @@ async def test_ensure_connected_reconnects_without_deadlock() -> None:
 
     async def ws_reconnect() -> None:
         await asyncio.sleep(0.02)
-        runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
+        _mark_transport_connected(runtime)
 
     runtime._ws.reconnect = ws_reconnect  # type: ignore[method-assign]
     with patch.object(runtime, "backfill_symbol", side_effect=_noop_backfill):
@@ -90,7 +95,7 @@ async def test_concurrent_process_live_runs_single_reconnect() -> None:
         nonlocal reconnect_calls
         reconnect_calls += 1
         await asyncio.sleep(0.1)
-        runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
+        _mark_transport_connected(runtime)
 
     runtime._ws.reconnect = ws_reconnect  # type: ignore[method-assign]
     runtime._ws.drain_events = AsyncMock(return_value=())  # type: ignore[method-assign]
@@ -127,7 +132,7 @@ async def test_second_reconnect_caller_waits_and_returns_after_first() -> None:
     async def ws_reconnect() -> None:
         started.set()
         await release.wait()
-        runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
+        _mark_transport_connected(runtime)
 
     runtime._ws.reconnect = ws_reconnect  # type: ignore[method-assign]
     with patch.object(runtime, "backfill_symbol", side_effect=_noop_backfill):
@@ -149,14 +154,14 @@ async def test_reconnect_sets_connected_after_success() -> None:
     runtime._ws._status = ConnectionStatus.RECONNECTING  # noqa: SLF001
 
     async def ws_reconnect() -> None:
-        runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
+        _mark_transport_connected(runtime)
 
     runtime._ws.reconnect = ws_reconnect  # type: ignore[method-assign]
     with patch.object(runtime, "backfill_symbol", side_effect=_noop_backfill):
         await runtime.reconnect(_eval_time())
 
     assert runtime._ws.status == ConnectionStatus.CONNECTED
-    assert runtime._last_error is None
+    assert runtime._last_error == "market_data_readiness_not_recovered"
 
 
 @pytest.mark.asyncio

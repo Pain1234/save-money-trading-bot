@@ -67,6 +67,9 @@ def _readiness_body(
     repo: PaperTradingRepository,
     config: PaperTradingConfig,
 ) -> ReadinessResponse:
+    # API sessions are request-scoped, but explicitly expire here as defense
+    # against dependency overrides or future pooling that reuses a Session.
+    repo.session.expire_all()
     market_data_ready = _infer_market_data_ready(repo, config)
     snapshot = ReadinessService(repo, config).evaluate(
         market_data_ready=market_data_ready,
@@ -94,6 +97,7 @@ def _status_payload(
     repo: PaperTradingRepository,
     config: PaperTradingConfig,
 ) -> dict[str, Any]:
+    repo.session.expire_all()
     runtime = repo.get_runtime_state()
     readiness = _readiness_body(repo, config)
     heartbeat_age_seconds: float | None = None
@@ -146,6 +150,7 @@ def api_market_data(
     repo: Annotated[PaperTradingRepository, Depends(get_repository)],
     config: Annotated[PaperTradingConfig, Depends(get_config)],
 ) -> dict[str, Any]:
+    repo.session.expire_all()
     runtime = repo.get_runtime_state()
     market_data_ready = _infer_market_data_ready(repo, config)
     return {

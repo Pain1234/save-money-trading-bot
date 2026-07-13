@@ -17,6 +17,21 @@ def main() -> None:
     if os.environ.get("PAPER_CONTROL_API_ENABLED", "false").lower() in {"1", "true", "yes"}:
         raise SystemExit("PAPER_CONTROL_API_ENABLED must be false for read-only API")
 
+    from paper_trading.config import PaperTradingConfig
+    from paper_trading.database_identity import (
+        inspect_database_identity,
+        log_database_identity,
+    )
+    from paper_trading.db.session import create_db_engine
+
+    config = PaperTradingConfig.from_env()
+    engine = create_db_engine(str(config.database_url))
+    try:
+        identity = inspect_database_identity(engine, service_role="readonly-api")
+        log_database_identity(logger, identity)
+    finally:
+        engine.dispose()
+
     import uvicorn
 
     logger.info("starting_readonly_api host=%s port=%s", host, port)

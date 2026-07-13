@@ -135,14 +135,16 @@ function apiBaseUrl(): string {
 
 export async function fetchPaperApi<T>(
   path: string,
-  options: { revalidate: number },
+  options: { revalidate?: number; noStore?: boolean },
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
     const response = await fetch(`${apiBaseUrl()}${path}`, {
-      next: { revalidate: options.revalidate },
+      ...(options.noStore
+        ? { cache: "no-store" as const }
+        : { next: { revalidate: options.revalidate ?? REVALIDATE.MONITORING } }),
       headers: { Accept: "application/json" },
       signal: controller.signal,
     });
@@ -162,7 +164,7 @@ export async function fetchPaperApi<T>(
 
 export async function fetchStatus(): Promise<StatusResponse> {
   return fetchPaperApi<StatusResponse>("/api/v1/status", {
-    revalidate: REVALIDATE.STATUS,
+    noStore: true,
   });
 }
 
@@ -216,6 +218,6 @@ export async function fetchEquity(): Promise<Paginated<EquityPoint>> {
 
 export async function fetchMarketData(): Promise<Record<string, unknown>> {
   return fetchPaperApi<Record<string, unknown>>("/api/v1/market-data", {
-    revalidate: REVALIDATE.STATUS,
+    noStore: true,
   });
 }

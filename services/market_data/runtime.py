@@ -11,11 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig, all_subscriptions
 from market_data.gaps import detect_gaps
-from market_data.ingest import ingest_live_raw, ingest_raw_batch
+from market_data.ingest import ingest_live_raw
 from market_data.initial_backfill import (
+    StrategyBundleReadinessSnapshot,
     compute_initial_backfill_start,
     evaluate_native_strategy_bundle_readiness,
     format_initial_backfill_log,
+    initial_backfill_log_fields,
 )
 from market_data.models import (
     CandleConflict,
@@ -94,6 +96,7 @@ class HyperliquidMarketDataRuntime:
         self._backfill_ok = False
         self._reconnect_lock = asyncio.Lock()
         self._started = False
+        self._bundle_readiness: tuple[StrategyBundleReadinessSnapshot, ...] = ()
 
     @property
     def repository(self) -> InMemoryCandleRepository:
@@ -160,7 +163,10 @@ class HyperliquidMarketDataRuntime:
             raws = await self._historical.fetch_candles(
                 symbol, timeframe, start_time, end_time, evaluation_time
             )
-            ingest_raw_batch(self.repository, raws, evaluation_time)
+            # HTTP snapshots overlap the current open candle on reconnect.
+            # Permit replacement only while that candle is still open; a changed
+            # closed candle remains a fail-closed conflict.
+            ingest_live_raw(self.repository, raws, evaluation_time)
             closed = self.repository.get_closed_before(symbol, timeframe, evaluation_time)
             gaps = detect_gaps(closed, symbol, timeframe, evaluation_time)
             report = validate_series(
@@ -192,12 +198,20 @@ class HyperliquidMarketDataRuntime:
             self._config.symbols,
             evaluation_time,
         )
+        self._bundle_readiness = snapshots
         for snapshot in snapshots:
             message = format_initial_backfill_log(snapshot)
+            log_fields = initial_backfill_log_fields(snapshot)
             if snapshot.market_data_ready:
-                logger.info(message)
+                logger.info(
+                    message,
+                    extra={"event_type": "strategy_bundle_readiness", **log_fields},
+                )
             else:
-                logger.warning(message)
+                logger.warning(
+                    message,
+                    extra={"event_type": "strategy_bundle_readiness", **log_fields},
+                )
         self._strategy_bundles_ready = all(
             snapshot.market_data_ready for snapshot in snapshots
         )
@@ -245,6 +259,13 @@ class HyperliquidMarketDataRuntime:
     def _record_reconnect_failure(self, exc: BaseException) -> None:
         self._last_error = str(exc)
 
+    def _transport_ready(self) -> bool:
+        return (
+            self._ws.status == ConnectionStatus.CONNECTED
+            and self._ws.subscriptions_acknowledged
+            >= self._ws.subscriptions_expected
+        )
+
     async def _ensure_connected(self, evaluation_time: datetime) -> None:
         if self._ws.status != ConnectionStatus.RECONNECTING:
             return
@@ -269,6 +290,21 @@ class HyperliquidMarketDataRuntime:
             try:
                 async with asyncio.timeout(self._config.reconnect_total_timeout_seconds):
                     await self._ws.reconnect()
+                    if not self._transport_ready():
+                        raise HyperliquidWebSocketError(
+                            "reconnect transport incomplete after websocket reconnect"
+                        )
+                    logger.info(
+                        "market_data_transport_reconnect_succeeded",
+                        extra={
+                            "event_type": "market_data_transport_reconnect_succeeded",
+                            "reconnect_count": self._ws.reconnect_count,
+                            "subscriptions_expected": self._ws.subscriptions_expected,
+                            "subscriptions_acknowledged": (
+                                self._ws.subscriptions_acknowledged
+                            ),
+                        },
+                    )
                     for symbol, timeframe in all_subscriptions(self._config):
                         latest = self.repository.get_latest(symbol, timeframe)
                         if latest is None:
@@ -319,15 +355,37 @@ class HyperliquidMarketDataRuntime:
                 raise
             else:
                 elapsed = time.monotonic() - started
-                logger.info(
-                    "market_data_reconnect_succeeded",
-                    extra={
-                        "event_type": "market_data_reconnect_succeeded",
-                        "reconnect_count": self._ws.reconnect_count,
-                        "previous_status": previous_status.value,
-                        "duration_seconds": round(elapsed, 3),
-                    },
-                )
+                recovered = self.status(evaluation_time).readiness
+                common_fields = {
+                    "reconnect_count": self._ws.reconnect_count,
+                    "previous_status": previous_status.value,
+                    "duration_seconds": round(elapsed, 3),
+                    "evaluation_time": evaluation_time.isoformat(),
+                }
+                if recovered:
+                    logger.info(
+                        "market_data_readiness_recovered",
+                        extra={
+                            "event_type": "market_data_readiness_recovered",
+                            **common_fields,
+                        },
+                    )
+                else:
+                    reasons = tuple(
+                        f"{snapshot.symbol.value}:{reason}"
+                        for snapshot in self._bundle_readiness
+                        for reason in snapshot.unusable_reasons
+                    ) or ("runtime_readiness_false",)
+                    self._last_error = "market_data_readiness_not_recovered"
+                    logger.warning(
+                        "market_data_reconnect_degraded reasons=%s",
+                        ",".join(reasons),
+                        extra={
+                            "event_type": "market_data_reconnect_degraded",
+                            **common_fields,
+                            "reasons": reasons,
+                        },
+                    )
 
     def status(self, evaluation_time: datetime) -> HyperliquidRuntimeStatus:
         evaluation_time = ensure_utc(evaluation_time)

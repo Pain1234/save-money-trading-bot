@@ -34,11 +34,11 @@ def test_dashboard_client_uses_server_side_env_only() -> None:
     assert "NEXT_PUBLIC_" not in source
 
 
-def test_dashboard_client_uses_revalidation_not_no_store() -> None:
+def test_dashboard_status_bypasses_next_cache() -> None:
     source = _client_source()
-    assert 'cache: "no-store"' not in source
+    assert 'cache: "no-store"' in source
+    assert "noStore: true" in source
     assert "next: { revalidate:" in source
-    assert "REVALIDATE.STATUS" in source
     assert "REVALIDATE.MONITORING" in source
     assert "REVALIDATE.HISTORY" in source
 

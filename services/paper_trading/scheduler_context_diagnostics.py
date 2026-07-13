@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
+from market_data.models import (
+    MarketSymbol,
+    MarketTimeframe,
+    StrategyDataBundle,
+)
+from market_data.repository import InMemoryCandleRepository
+from market_data.service import MarketDataService
 from strategy_engine.constants import (
     MIN_DAILY_CANDLES,
     MIN_MONTHLY_CANDLES,
     MIN_WEEKLY_CANDLES,
 )
+from strategy_engine.models import StrategyParameters
 
 from paper_trading.market_event_errors import RetryableContextNotReady
 
@@ -68,12 +76,12 @@ def format_daily_open_defer_log(
 
 
 def _native_closed_count(
-    repository: object,
+    repository: InMemoryCandleRepository,
     symbol: str,
     timeframe: MarketTimeframe,
     evaluation_time: datetime,
 ) -> int:
-    closed = repository.get_closed_before(  # type: ignore[attr-defined]
+    closed = repository.get_closed_before(
         MarketSymbol(symbol),
         timeframe,
         evaluation_time,
@@ -82,21 +90,21 @@ def _native_closed_count(
 
 
 def _atr14_present(
-    bundle: object,
+    bundle: StrategyDataBundle,
     prior_eval_time: datetime,
-    strategy_params: object,
+    strategy_params: StrategyParameters,
 ) -> bool:
-    bundle_usable = bundle.is_usable  # type: ignore[attr-defined]
-    daily_candles = bundle.daily.candles  # type: ignore[attr-defined]
+    bundle_usable = bundle.is_usable
+    daily_candles = bundle.daily.candles
     if not bundle_usable or not daily_candles:
         return False
     from strategy_engine.engine import StrategyEngine
 
     engine = StrategyEngine()
     strategy_eval = engine.evaluate(
-        bundle.daily,  # type: ignore[attr-defined]
-        bundle.weekly,  # type: ignore[attr-defined]
-        bundle.monthly,  # type: ignore[attr-defined]
+        bundle.daily,
+        bundle.weekly,
+        bundle.monthly,
         prior_eval_time,
         strategy_params,
     )
@@ -108,12 +116,12 @@ def build_daily_open_defer_snapshot(
     *,
     symbol: str,
     error: RetryableContextNotReady,
-    market_data_service: object,
-    strategy_params: object,
+    market_data_service: MarketDataService,
+    strategy_params: StrategyParameters,
     market_data_ready: bool,
     prior_eval_time: datetime | None,
     evaluation_time: datetime,
-    build_strategy_bundle: object,
+    build_strategy_bundle: Callable[..., StrategyDataBundle],
 ) -> DailyOpenDeferSnapshot:
     """Collect read-only defer diagnostics without changing trading behavior."""
     if prior_eval_time is None:
@@ -134,7 +142,7 @@ def build_daily_open_defer_snapshot(
             evaluation_time=evaluation_time,
         )
 
-    repository = market_data_service.repository  # type: ignore[attr-defined]
+    repository = market_data_service.repository
     daily_count = _native_closed_count(
         repository, symbol, MarketTimeframe.DAILY, prior_eval_time
     )
@@ -154,8 +162,14 @@ def build_daily_open_defer_snapshot(
         backfill=False,
         aggregate_higher_timeframes=False,
     )
-    bundle_usable = bundle.is_usable
-    atr14_present = _atr14_present(bundle, prior_eval_time, strategy_params)
+    # Diagnostics must never turn a retryable lifecycle defer into a hard
+    # failure when a context builder cannot provide a typed bundle.
+    bundle_usable = isinstance(bundle, StrategyDataBundle) and bundle.is_usable
+    atr14_present = (
+        _atr14_present(bundle, prior_eval_time, strategy_params)
+        if isinstance(bundle, StrategyDataBundle)
+        else False
+    )
 
     return DailyOpenDeferSnapshot(
         symbol=symbol,
