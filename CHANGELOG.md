@@ -8,9 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `ROADMAP.md` — P0 marked complete with documented deviations (#52, ADR-011).
+- `docs/DEFINITION_OF_DONE.md` — Issue #5 closed; baseline PR evidence (#50, #54, #57).
+- `docs/DECISION_LOG.md` — ADR-011 solo-maintainer DoD enforcement.
 - `docs/ARCHITECTURE.md` — CI section corrected: governance workflow present; full pytest CI gap (#53) documented (Issue #3).
-- `docs/DEFINITION_OF_DONE.md` — removed incorrect post-governance baseline PR table; DoD enforcement evidence tracked in Issue #5.
-- `ROADMAP.md` — P0 exit criteria updated with evidence; `main` branch criterion deferred to Issue #52.
+- `docs/DEFINITION_OF_DONE.md` — removed incorrect post-governance baseline PR table; enforcement per ADR-011.
 
 ### Added
 

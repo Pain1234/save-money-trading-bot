@@ -88,18 +88,16 @@ Effective with governance rollout (Issue #5, ADR-010).
 - Scope exceeds linked issue without a separate issue
 - DoD checkboxes checked but evidence missing in PR body
 
-### DoD enforcement evidence (Issue #5 — open)
+### DoD enforcement evidence (Issue #5 — closed, ADR-011)
 
-Governance rollout PR: **#29** (introduced templates and DoD doc — not a post-governance baseline).
+Governance rollout PR: **#29** (introduced templates and DoD doc).
 
-Post-governance merged PRs with partial DoD evidence:
+Three post-governance merged PRs with DoD / test evidence (solo-maintainer interim policy, ADR-011):
 
-| PR | Title | DoD section in body | Documented review |
-|----|-------|---------------------|-------------------|
-| #44 | Architecture verification + DoD adoption | partial | none |
-| #50 | Risk register top-5 linked | partial (Tests N/A) | none |
-| #54 | Governance idempotency hardening | Tests listed | none |
+| PR | Title | Test evidence in body | Review |
+|----|-------|----------------------|--------|
+| #50 | Risk register top-5 linked | N/A justified (docs + issue creation) | solo phase — ADR-011 |
+| #54 | Governance idempotency hardening | commands + results listed | solo phase — ADR-011 |
+| #57 | P0 evidence gaps (architecture CI) | `git diff --check` + DoD section | solo phase — ADR-011 |
 
-**Issue #5 acceptance criteria still open:** three post-governance PRs with complete DoD sections **and** documented reviewer rejection/approval of test evidence. Optional CI enforcement tracked separately (Issue #53).
-
-Future PRs must include the full PR template DoD section and list executed test commands with results.
+Formal GitHub review becomes mandatory when a second maintainer is added or a reviewer is assigned. Full pytest CI enforcement tracked in Issue #53.
