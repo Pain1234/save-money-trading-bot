@@ -37,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `scripts/github_project_setup.py` — stable seed keys, refresh-before-create, duplicate repair mode, repository fail-closed guards, and sequential idempotency tests (Issue #51).
 - Governance docs — idempotency claims corrected; official Actions apply uses `--skip-project`; duplicate repair restricted to approved repository with identity verification.
 - `README.md` — aligned with PostgreSQL/Railway architecture; links P1 baseline doc.
-- `ROADMAP.md` — P0 marked complete; P1 active with partial exit criteria.
+- `ROADMAP.md` — P1 in progress; P0 exit remains open (see PR #57).
 - `services/paper_trading/README.md` — migration range corrected to `001`–`009`.
 
 ### Security

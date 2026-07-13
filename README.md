@@ -4,7 +4,7 @@ Research and operations repository for trend Strategy V1, paper trading, backtes
 
 **Governance source of truth:** GitHub (issues, milestones, pull requests). Chat is the workbench; GitHub is the project memory.
 
-**Active phase:** P1 — Reproducible Baseline Release (`ROADMAP.md`). Baseline reference: `docs/baseline-paper-v1.md`.
+**Current workstream:** P1 — Reproducible Baseline Release (`ROADMAP.md`). P0 exit remains open. Baseline reference: `docs/baseline-paper-v1.md`.
 
 ## Quick start
 
