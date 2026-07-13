@@ -92,12 +92,12 @@ Effective with governance rollout (Issue #5, ADR-010).
 
 Governance rollout PR: **#29** (introduced templates and DoD doc).
 
-Three post-governance merged PRs with DoD / test evidence (solo-maintainer interim policy, ADR-011):
+Three post-governance merged PRs with test evidence (solo-maintainer interim policy, ADR-011):
 
-| PR | Title | Test evidence in body | Review |
-|----|-------|----------------------|--------|
-| #50 | Risk register top-5 linked | N/A justified (docs + issue creation) | solo phase — ADR-011 |
-| #54 | Governance idempotency hardening | commands + results listed | solo phase — ADR-011 |
-| #57 | P0 evidence gaps (architecture CI) | `git diff --check` + DoD section | solo phase — ADR-011 |
+| PR | Title | Test evidence in body | DoD section in body |
+|----|-------|----------------------|---------------------|
+| #50 | Risk register top-5 linked | N/A justified (docs + issue creation) | no |
+| #54 | Governance idempotency hardening | commands + results listed | no |
+| #57 | P0 evidence gaps (architecture CI) | `git diff --check` | yes |
 
-Formal GitHub review becomes mandatory when a second maintainer is added or a reviewer is assigned. Full pytest CI enforcement tracked in Issue #53.
+DoD is referenced in the PR template and docs since #29; explicit DoD checklist in the PR body is mandatory from ADR-011 onward (first demonstrated in #57). Formal GitHub review becomes mandatory when a second maintainer is added or a reviewer is assigned. Full pytest CI enforcement tracked in Issue #53.

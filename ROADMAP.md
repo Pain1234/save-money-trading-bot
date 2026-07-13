@@ -74,9 +74,9 @@ Establish binding project memory in GitHub: roadmap, issue/PR process, responsib
 
 ### Exit criteria
 
-- [x] All governance files present on `main` — **accepted deviation:** files on default branch `cursor/railway-paper-dashboard-v1`; migration Issue #52
+- [x] Governance files present on default branch; main migration governed by Issue #52
 - [x] GitHub issue templates and PR template active (PR #29, #54)
-- [x] Definition of Done documented, referenced in PR template, enforced per ADR-011 (Issue #5, PRs #50/#54/#57)
+- [x] Definition of Done documented, referenced in PR template, enforced per ADR-011 (Issue #5; test evidence #50/#54/#57, DoD section demonstrated #57)
 - [x] First milestones and seed issues created via setup script (PR #54, sequential idempotency tested)
 - [x] Agents and Cursor rules point to GitHub as source of truth (`AGENTS.md`, `.cursor/rules/project-governance.mdc`)
 

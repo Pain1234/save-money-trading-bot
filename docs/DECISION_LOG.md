@@ -173,10 +173,10 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 ## ADR-011 – Solo-maintainer DoD enforcement (interim)
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 2026-07-14
 
-**Context:** Issue #5 requires DoD in three post-governance PRs and reviewer rejection of missing test evidence. The repository currently has a single active maintainer; merged PRs #29–#57 have no formal GitHub reviews. Blocking P0 on retroactive reviews would delay governance exit without improving safety.
+**Context:** Issue #5 requires test evidence in post-governance PRs and reviewer rejection of missing test evidence. The repository currently has a single active maintainer; merged PRs #29–#57 have no formal GitHub reviews. Blocking P0 on retroactive reviews would delay governance exit without improving safety.
 
 **Decision:** DoD is enforced in the solo-maintainer phase as follows:
 
@@ -185,7 +185,9 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 3. Governance-related paths are validated by `.github/workflows/github-governance-setup.yml` on pull requests.
 4. Formal GitHub review (approve / request changes) becomes mandatory when a second maintainer is added or a reviewer is explicitly assigned on the PR.
 
-**Baseline post-governance PRs demonstrating DoD reference and test evidence:** #50, #54, #57 (merged after governance rollout #29).
+**Baseline post-governance PRs with test evidence:** #50, #54, #57 (merged after governance rollout #29).
+
+**DoD checklist in PR body:** first demonstrated in #57; mandatory for all merges from ADR-011 onward. PR template and docs reference DoD since #29.
 
 **Alternatives:** Require retroactive reviews on closed PRs — rejected as performative without adding verification.
 
