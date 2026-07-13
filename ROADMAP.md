@@ -14,7 +14,7 @@ Central project goal:
 
 | Phase | Name | Status | Human approval required |
 |-------|------|--------|-------------------------|
-| **P0** | Governance and Scope Freeze | **Active (in progress)** | No |
+| **P0** | Governance and Scope Freeze | **Complete** | No |
 | **P1** | Reproducible Baseline Release | **Active (in progress)** | No |
 | P2 | Operational Reliability | In flight (partial; not exit-complete) | No |
 | P3 | Versioned Historical Market Data | Not started | No |
@@ -31,8 +31,8 @@ Central project goal:
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
 - Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
 - Governance workflow merged (PR #54); full pytest CI still open (#53); no formal baseline release tag — **P1 not complete**.
-- Governance files on default branch `cursor/railway-paper-dashboard-v1` (not `main` — migration tracked in #52, accepted deviation until human approval).
-- P0 infrastructure in place (PR #29, #54); **P0 exit not complete** — DoD enforcement evidence open (#5), architecture gap corrected in PR #57, `main` criterion deferred (#52).
+- Governance files on default branch `cursor/railway-paper-dashboard-v1` (`main` migration deferred — Issue #52, accepted deviation per ADR-011 / P0 exit).
+- **P0 complete** (2026-07-14): exit criteria met with documented deviations (#52 `main`, ADR-011 solo-maintainer DoD enforcement). Issues #2–#6 closed; #51/#54/#57 merged.
 - P1 baseline documentation in progress (`docs/baseline-paper-v1.md`); formal tag and full CI still open (#10, #53).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
@@ -74,9 +74,9 @@ Establish binding project memory in GitHub: roadmap, issue/PR process, responsib
 
 ### Exit criteria
 
-- [ ] All governance files present on `main` — **deferred:** default branch is `cursor/railway-paper-dashboard-v1`; migration plan in Issue #52 (accepted deviation until human approval)
+- [x] Governance files present on default branch; main migration governed by Issue #52
 - [x] GitHub issue templates and PR template active (PR #29, #54)
-- [ ] Definition of Done documented and referenced in PR template — documented; **enforcement evidence open** (Issue #5 reopened)
+- [x] Definition of Done documented, referenced in PR template, enforced per ADR-011 (Issue #5; test evidence #50/#54/#57, DoD section demonstrated #57)
 - [x] First milestones and seed issues created via setup script (PR #54, sequential idempotency tested)
 - [x] Agents and Cursor rules point to GitHub as source of truth (`AGENTS.md`, `.cursor/rules/project-governance.mdc`)
 

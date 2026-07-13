@@ -230,7 +230,7 @@ Strategy V1 parameters must be explicit and change-controlled.
 - Optional CI comment (future)
 
 ## Akzeptanzkriterien
-- [ ] DoD referenced in first 3 merged PRs after governance
+- [ ] Test evidence in three post-governance baseline PRs (#50, #54, #57 — ADR-011)
 - [ ] Reviewers reject PRs missing test evidence
 """,
     ),
