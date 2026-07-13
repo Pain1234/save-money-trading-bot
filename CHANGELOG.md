@@ -23,7 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- None to trading logic, strategy parameters, production start commands, or database migrations.
+- `scripts/github_project_setup.py` — robust idempotent matching for milestones/issues across encodings; GitHub Projects v2 JSON parsing; warning exit codes.
+- `README.md` — governance workflow and repository layout.
+- `docs/DECISION_LOG.md` — ADR-007 accepted (GitHub as project memory).
 
 ### Security
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Idempotent GitHub labels, milestones, and seed issues for project governance.
 
 Uses GitHub CLI (gh) when available. Safe dry-run without authentication.
@@ -14,12 +15,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
-from dataclasses import dataclass
+import unicodedata
+from dataclasses import dataclass, field
 from typing import Any
 
 PROJECT_NAME = "Trading System Roadmap"
+SEED_ISSUE_MARKER = "<!-- governance-seed-issue -->"
+PHASE_KEY_PATTERN = re.compile(r"^(P\d+)")
 
 LABELS: list[tuple[str, str, str]] = [
     # (name, color without #, description)
@@ -290,10 +295,49 @@ class GhContext:
     authenticated: bool
     repo: str  # owner/name
     dry_run: bool
+    warnings: list[str] = field(default_factory=list)
 
     def log(self, msg: str) -> None:
         prefix = "[dry-run] " if self.dry_run else ""
         print(f"{prefix}{msg}")
+
+    def warn(self, msg: str) -> None:
+        self.warnings.append(msg)
+        self.log(f"WARN: {msg}")
+
+
+def _repair_mojibake(text: str) -> str:
+    """Repair common double-encoded UTF-8 strings from older gh/Windows runs."""
+    repaired = text
+    for _ in range(2):
+        try:
+            candidate = repaired.encode("latin1").decode("utf-8")
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            break
+        if candidate == repaired:
+            break
+        repaired = candidate
+    return repaired
+
+
+def normalize_title(text: str) -> str:
+    """Normalize titles for idempotent matching across encodings."""
+    text = _repair_mojibake(text)
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    text = re.sub(r"\s+", " ", text).strip().casefold()
+    return text
+
+
+def milestone_phase_key(title: str) -> str | None:
+    match = PHASE_KEY_PATTERN.match(title.strip())
+    return match.group(1) if match else None
+
+
+def with_seed_marker(body: str) -> str:
+    if SEED_ISSUE_MARKER in body:
+        return body
+    return f"{SEED_ISSUE_MARKER}\n\n{body.lstrip()}"
 
 
 def run_gh(args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -337,7 +381,7 @@ def list_labels(ctx: GhContext) -> dict[str, dict[str, Any]]:
         return {}
     result = run_gh(["label", "list", "--repo", ctx.repo, "--limit", "200", "--json", "name,color,description"], check=False)
     if result.returncode != 0:
-        ctx.log(f"WARN: could not list labels: {result.stderr.strip()}")
+        ctx.warn(f"could not list labels: {result.stderr.strip()}")
         return {}
     items = json.loads(result.stdout or "[]")
     return {item["name"]: item for item in items}
@@ -368,7 +412,7 @@ def ensure_labels(ctx: GhContext) -> None:
         )
         if result.returncode != 0:
             # Most common: already exists (race), or insufficient permissions.
-            ctx.log(f"WARN: label create failed for '{name}': {result.stderr.strip()}")
+            ctx.warn(f"label create failed for '{name}': {result.stderr.strip()}")
 
 
 def list_milestones(ctx: GhContext) -> dict[str, dict[str, Any]]:
@@ -377,12 +421,12 @@ def list_milestones(ctx: GhContext) -> dict[str, dict[str, Any]]:
     # Use a stable JSON response to avoid CLI output variations.
     result = run_gh(["api", f"repos/{ctx.repo}/milestones?state=all&per_page=100"], check=False)
     if result.returncode != 0:
-        ctx.log(f"WARN: could not list milestones: {result.stderr.strip()}")
+        ctx.warn(f"could not list milestones: {result.stderr.strip()}")
         return {}
     try:
         items = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
-        ctx.log("WARN: could not parse milestones JSON")
+        ctx.warn("could not parse milestones JSON")
         return {}
     milestones: dict[str, dict[str, Any]] = {}
     if isinstance(items, list):
@@ -392,11 +436,23 @@ def list_milestones(ctx: GhContext) -> dict[str, dict[str, Any]]:
     return milestones
 
 
+def _milestone_maps(existing: dict[str, dict[str, Any]]) -> tuple[dict[str, int], dict[str, int]]:
+    """Return (title->number, phase_key->number) maps for milestone matching."""
+    title_to_number = {title: milestone["number"] for title, milestone in existing.items()}
+    phase_to_number: dict[str, int] = {}
+    for title, milestone in existing.items():
+        phase_key = milestone_phase_key(title)
+        if phase_key is not None:
+            phase_to_number.setdefault(phase_key, milestone["number"])
+    return title_to_number, phase_to_number
+
+
 def ensure_milestones(ctx: GhContext) -> dict[str, int]:
     existing = list_milestones(ctx)
-    title_to_number: dict[str, int] = {t: m["number"] for t, m in existing.items()}
+    title_to_number, phase_to_number = _milestone_maps(existing)
     for title, description in MILESTONES:
-        if title in title_to_number:
+        phase_key = milestone_phase_key(title)
+        if title in title_to_number or (phase_key is not None and phase_key in phase_to_number):
             ctx.log(f"milestone exists: {title}")
             continue
         ctx.log(f"create milestone: {title}")
@@ -415,40 +471,52 @@ def ensure_milestones(ctx: GhContext) -> dict[str, int]:
         )
         if result.returncode != 0:
             # Common: 422 validation failed (already exists), or missing scopes.
-            ctx.log(f"WARN: milestone create failed for '{title}': {result.stderr.strip()}")
+            ctx.warn(f"milestone create failed for '{title}': {result.stderr.strip()}")
             # If it already exists, we'll pick it up in the refresh below.
             continue
         try:
             created = json.loads(result.stdout)
         except json.JSONDecodeError:
-            ctx.log(f"WARN: milestone create returned non-JSON for '{title}'")
+            ctx.warn(f"milestone create returned non-JSON for '{title}'")
             continue
         if isinstance(created, dict) and "number" in created:
             title_to_number[title] = created["number"]
+            if phase_key is not None:
+                phase_to_number[phase_key] = created["number"]
     # refresh if we created any
     if not ctx.dry_run and ctx.authenticated:
-        title_to_number.update({t: m["number"] for t, m in list_milestones(ctx).items()})
-    return title_to_number
+        refreshed = list_milestones(ctx)
+        title_to_number, phase_to_number = _milestone_maps(refreshed)
+    return {title: phase_to_number[phase_key] for title, _ in MILESTONES if (phase_key := milestone_phase_key(title)) in phase_to_number}
 
 
 def list_issue_titles(ctx: GhContext) -> set[str]:
     if not ctx.available or not ctx.authenticated:
         return set()
     result = run_gh(
-        ["issue", "list", "--repo", ctx.repo, "--state", "all", "--limit", "500", "--json", "title"],
+        ["issue", "list", "--repo", ctx.repo, "--state", "all", "--limit", "500", "--json", "title,body"],
         check=False,
     )
     if result.returncode != 0:
-        ctx.log(f"WARN: could not list issues: {result.stderr.strip()}")
+        ctx.warn(f"could not list issues: {result.stderr.strip()}")
         return set()
     items = json.loads(result.stdout or "[]")
-    return {item["title"] for item in items}
+    titles: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title")
+        if isinstance(title, str):
+            titles.add(title)
+            titles.add(normalize_title(title))
+    return titles
 
 
 def ensure_seed_issues(ctx: GhContext, milestone_numbers: dict[str, int]) -> None:
     existing_titles = list_issue_titles(ctx)
     for title, milestone_title, labels, body in SEED_ISSUES:
-        if title in existing_titles:
+        normalized_title = normalize_title(title)
+        if title in existing_titles or normalized_title in existing_titles:
             ctx.log(f"issue exists: {title}")
             continue
         ctx.log(f"create issue: {title}")
@@ -462,7 +530,7 @@ def ensure_seed_issues(ctx: GhContext, milestone_numbers: dict[str, int]) -> Non
             "--title",
             title,
             "--body",
-            body,
+            with_seed_marker(body),
         ]
         for label in labels:
             args.extend(["--label", label])
@@ -471,7 +539,7 @@ def ensure_seed_issues(ctx: GhContext, milestone_numbers: dict[str, int]) -> Non
             args.extend(["--milestone", milestone_title])
         result = run_gh(args, check=False)
         if result.returncode != 0:
-            ctx.log(f"WARN: issue create failed for '{title}': {result.stderr.strip()}")
+            ctx.warn(f"issue create failed for '{title}': {result.stderr.strip()}")
 
 
 def try_create_project(ctx: GhContext) -> None:
@@ -486,15 +554,21 @@ def try_create_project(ctx: GhContext) -> None:
         check=False,
     )
     if result.returncode != 0:
-        ctx.log(f"WARN: cannot list projects (need `project` scope?): {result.stderr.strip()}")
+        ctx.warn(f"cannot list projects (need `project` scope?): {result.stderr.strip()}")
         ctx.log("Manual steps: see docs/PROJECT_OPERATING_SYSTEM.md")
         return
     try:
-        projects = json.loads(result.stdout or "[]")
+        payload = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
+        payload = []
+    if isinstance(payload, dict):
+        projects = payload.get("projects", [])
+    elif isinstance(payload, list):
+        projects = payload
+    else:
         projects = []
     if not isinstance(projects, list):
-        ctx.log("WARN: unexpected projects JSON shape; skipping project automation")
+        ctx.warn("unexpected projects JSON shape; skipping project automation")
         ctx.log("Manual steps: see docs/PROJECT_OPERATING_SYSTEM.md")
         return
     for p in projects:
@@ -510,7 +584,7 @@ def try_create_project(ctx: GhContext) -> None:
         check=False,
     )
     if create.returncode != 0:
-        ctx.log(f"WARN: project create failed: {create.stderr.strip()}")
+        ctx.warn(f"project create failed: {create.stderr.strip()}")
         ctx.log("Manual steps: see docs/PROJECT_OPERATING_SYSTEM.md")
         return
     ctx.log("project created — configure fields/views manually per docs/PROJECT_OPERATING_SYSTEM.md")
@@ -521,8 +595,8 @@ def build_context(dry_run: bool) -> GhContext:
     authenticated = gh_authenticated() if available else False
     repo = detect_repo() if available and authenticated else ""
     if not repo and available:
-        ctx = GhContext(available, authenticated, "", dry_run)
-        ctx.log("WARN: could not detect repo — use dry-run preview only")
+        preview_ctx = GhContext(available, authenticated, "", dry_run)
+        preview_ctx.warn("could not detect repo — use dry-run preview only")
     return GhContext(available, authenticated, repo or "UNKNOWN/UNKNOWN", dry_run)
 
 
@@ -558,6 +632,9 @@ def main() -> int:
         print("Dry-run complete. Re-run with --apply after `gh auth login`.")
     elif not ctx.authenticated:
         print("Apply requested but gh not authenticated. No changes made.")
+        return 1
+    elif ctx.warnings:
+        print(f"Apply finished with {len(ctx.warnings)} warning(s).")
         return 1
     else:
         print("Apply complete.")

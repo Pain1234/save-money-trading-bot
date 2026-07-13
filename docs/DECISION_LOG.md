@@ -108,9 +108,8 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 ## ADR-007 – GitHub as project memory (governance)
 
-**Status:** Proposed (pending merge of governance PR)
-
-**Date:** 2026-07
+**Status:** Accepted  
+**Date:** 2026-07-13
 
 **Context:** Roadmap, bugs, and research decisions were spread across chat and scattered docs without unified issue/PR discipline.
 
@@ -120,7 +119,7 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 **Consequences:** Agents must link PRs to issues; seed issues created for P0–P2 gaps.
 
-**Issues / PRs:** Governance branch `chore/project-governance`.
+**Issues / PRs:** PR #29 (`chore/project-governance`), Issue #2.
 
 ---
 
