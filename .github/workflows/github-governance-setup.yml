@@ -1,0 +1,63 @@
+name: GitHub governance setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply labels, milestones and seed issues"
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: github-governance-setup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  governance-setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate Python syntax
+        run: python -m py_compile scripts/github_project_setup.py
+
+      - name: Validate issue template YAML files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for path in sorted(Path(".github/ISSUE_TEMPLATE").glob("*.yml")):
+              text = path.read_text(encoding="utf-8")
+              for key in ("name:", "description:", "body:"):
+                  if key not in text:
+                      raise SystemExit(f"missing {key!r} in {path}")
+              print(f"ok: {path}")
+          PY
+
+      - name: Run governance unit tests
+        run: python -m unittest tests/governance/test_github_project_setup.py -v
+
+      - name: Run git diff whitespace check
+        run: git diff --check
+
+      - name: Dry run governance setup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/github_project_setup.py --dry-run
+
+      - name: Apply governance setup
+        if: inputs.apply
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/github_project_setup.py --apply

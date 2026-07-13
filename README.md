@@ -45,6 +45,10 @@ python scripts/github_project_setup.py --dry-run
 python scripts/github_project_setup.py --apply
 ```
 
+Sequential idempotency is covered by automated tests. Official apply runs are
+serialized through GitHub Actions concurrency (`.github/workflows/github-governance-setup.yml`).
+Uncoordinated parallel local apply processes are not claimed to be fully atomic.
+
 See `docs/PROJECT_OPERATING_SYSTEM.md` for the full operating model.
 
 ## Repository layout

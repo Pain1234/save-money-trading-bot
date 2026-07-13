@@ -31,7 +31,7 @@ Central project goal:
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
 - Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
 - No `.github/` CI, no formal baseline release tag — **P1 not complete**.
-- Governance docs merged via PR #29; setup script idempotent apply verified (Issue #2) — **P0 governance baseline in place**; remaining P0 items tracked in milestone issues (#3–#5).
+- Governance docs merged via PR #29; setup script sequential idempotency covered by automated tests (Issue #2, #51) — **P0 governance baseline in place**; remaining P0 items tracked in milestone issues (#3–#5).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---

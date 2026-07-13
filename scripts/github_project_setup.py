@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Idempotent GitHub labels, milestones, and seed issues for project governance.
+"""GitHub labels, milestones, and seed issues for project governance.
 
 Uses GitHub CLI (gh) when available. Safe dry-run without authentication.
 
 Usage:
     python scripts/github_project_setup.py --dry-run
     python scripts/github_project_setup.py --apply
+    python scripts/github_project_setup.py --repair-duplicates --dry-run
+    python scripts/github_project_setup.py --repair-duplicates --apply
 
-Never closes issues, deletes labels/milestones, or modifies branch protection.
+Sequential idempotency is covered by automated tests. Official apply runs are
+serialized through GitHub Actions concurrency. Uncoordinated parallel local
+apply processes are not claimed to be fully atomic.
+
+Normal setup never closes issues, deletes labels/milestones, or modifies branch
+protection. The explicit ``--repair-duplicates`` mode closes only the configured
+duplicate list after commenting.
 """
 
 from __future__ import annotations
@@ -23,8 +31,54 @@ from dataclasses import dataclass, field
 from typing import Any
 
 PROJECT_NAME = "Trading System Roadmap"
+GOVERNANCE_BUG_ISSUE = 51
 SEED_ISSUE_MARKER = "<!-- governance-seed-issue -->"
+SEED_KEY_MARKER_PREFIX = "<!-- governance-seed-key:"
 PHASE_KEY_PATTERN = re.compile(r"^(P\d+)")
+
+
+@dataclass(frozen=True)
+class SeedIssue:
+    key: str
+    title: str
+    milestone: str
+    labels: tuple[str, ...]
+    body: str
+
+
+# This migration is deliberately restricted to the repository that received
+# the original unkeyed governance seeds. Do not use it for similarly titled
+# issues in any other repository.
+CANONICAL_SEED_ISSUES: dict[str, dict[str, int]] = {
+    "Pain1234/save-money-trading-bot": {
+        "p0-repository-governance": 2,
+        "p0-verify-current-system-architecture": 3,
+        "p0-document-and-freeze-strategy-parameters": 4,
+        "p0-make-definition-of-done-binding": 5,
+        "p0-review-initial-risk-register": 6,
+        "p1-document-reproducible-baseline-start": 7,
+        "p1-review-runtime-and-dependency-versions": 8,
+        "p1-inventory-existing-test-and-ci-coverage": 9,
+        "p1-define-reproducible-baseline-release": 10,
+        "p2-review-backup-and-restore-process": 11,
+        "p2-document-reconciliation-requirements": 12,
+        "p2-review-idempotency-of-critical-processing-paths": 13,
+        "p2-test-worker-restart-after-process-abort": 14,
+        "p2-capture-incident-and-runbook-gaps": 15,
+        "p2-define-critical-operational-metrics": 16,
+    }
+}
+
+# Only these known duplicate issues may be repaired automatically. Each is
+# redirected to the appropriate canonical governance issue.
+DUPLICATE_REPAIRS: dict[int, int] = {
+    17: 2, 23: 2, 30: 2, 37: 2,
+    18: 6, 24: 6, 31: 6, 38: 6,
+    19: 8, 25: 8, 32: 8, 39: 8,
+    20: 11, 26: 11, 33: 11, 40: 11,
+    21: 13, 27: 13, 34: 13, 41: 13,
+    22: 15, 28: 15, 35: 15, 42: 15,
+}
 
 LABELS: list[tuple[str, str, str]] = [
     # (name, color without #, description)
@@ -71,12 +125,14 @@ MILESTONES: list[tuple[str, str]] = [
     ("P9 – Controlled Scaling", "Evidence-based scaling — human approval required"),
 ]
 
-# Seed issues: (title, milestone_title, labels, body)
-SEED_ISSUES: list[tuple[str, str, list[str], str]] = [
-    (
+# Seed issues are keyed so duplicate detection does not depend on localized
+# titles or historical encoding variants.
+SEED_ISSUES: list[SeedIssue] = [
+    SeedIssue(
+        "p0-repository-governance",
         "Repository-Governance einführen",
         "P0 – Governance and Scope Freeze",
-        ["type:documentation", "area:governance"],
+        ("type:documentation", "area:governance"),
         """## Hintergrund
 GitHub soll verbindliche Quelle für Roadmap, Aufgaben und Entscheidungen werden.
 
@@ -93,10 +149,11 @@ GitHub soll verbindliche Quelle für Roadmap, Aufgaben und Entscheidungen werden
 - [ ] Team nutzt Issue/PR-Workflow
 """,
     ),
-    (
+    SeedIssue(
+        "p0-verify-current-system-architecture",
         "Aktuelle Systemarchitektur verifizieren",
         "P0 – Governance and Scope Freeze",
-        ["type:documentation", "area:governance"],
+        ("type:documentation", "area:governance"),
         """## Hintergrund
 `docs/ARCHITECTURE.md` muss dem tatsächlichen Code entsprechen.
 
@@ -113,10 +170,11 @@ GitHub soll verbindliche Quelle für Roadmap, Aufgaben und Entscheidungen werden
 - [ ] Linked from README or AGENTS.md
 """,
     ),
-    (
+    SeedIssue(
+        "p0-document-and-freeze-strategy-parameters",
         "Bestehende Strategieparameter dokumentieren und einfrieren",
         "P0 – Governance and Scope Freeze",
-        ["type:documentation", "area:strategy", "status:needs-decision"],
+        ("type:documentation", "area:strategy", "status:needs-decision"),
         """## Hintergrund
 Strategy V1 parameters must be explicit and change-controlled.
 
@@ -133,10 +191,11 @@ Strategy V1 parameters must be explicit and change-controlled.
 - [ ] AGENTS.md references freeze
 """,
     ),
-    (
+    SeedIssue(
+        "p0-make-definition-of-done-binding",
         "Definition of Done verbindlich machen",
         "P0 – Governance and Scope Freeze",
-        ["type:documentation", "area:governance"],
+        ("type:documentation", "area:governance"),
         """## Hintergrund
 `docs/DEFINITION_OF_DONE.md` exists; adoption needed.
 
@@ -149,10 +208,11 @@ Strategy V1 parameters must be explicit and change-controlled.
 - [ ] Reviewers reject PRs missing test evidence
 """,
     ),
-    (
+    SeedIssue(
+        "p0-review-initial-risk-register",
         "Risk Register initial prüfen",
         "P0 – Governance and Scope Freeze",
-        ["type:documentation", "area:governance", "area:risk"],
+        ("type:documentation", "area:governance", "area:risk"),
         """## Hintergrund
 `docs/RISK_REGISTER.md` seeded; top risks need owners and issues.
 
@@ -164,10 +224,11 @@ Strategy V1 parameters must be explicit and change-controlled.
 - [ ] R-001 through R-005 have linked issues or justified deferral
 """,
     ),
-    (
+    SeedIssue(
+        "p1-document-reproducible-baseline-start",
         "Reproduzierbaren Baseline-Start dokumentieren",
         "P1 – Reproducible Baseline Release",
-        ["type:documentation", "area:infrastructure"],
+        ("type:documentation", "area:infrastructure"),
         """## Hintergrund
 README is stale; production paths are in deploy docs.
 
@@ -182,10 +243,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Fresh clone + documented env vars can start paper stack locally OR clear minimum env documented
 """,
     ),
-    (
+    SeedIssue(
+        "p1-review-runtime-and-dependency-versions",
         "Laufzeit- und Abhängigkeitsversionen prüfen",
         "P1 – Reproducible Baseline Release",
-        ["type:operations", "area:infrastructure"],
+        ("type:operations", "area:infrastructure"),
         """## Scope
 - Pin/document Python 3.12, Node 22, dependency lock strategy
 
@@ -193,10 +255,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Versions recorded in baseline doc or tag notes
 """,
     ),
-    (
+    SeedIssue(
+        "p1-inventory-existing-test-and-ci-coverage",
         "Bestehende Test- und CI-Abdeckung erfassen",
         "P1 – Reproducible Baseline Release",
-        ["type:documentation", "area:governance"],
+        ("type:documentation", "area:governance"),
         """## Scope
 - Document pytest markers, known failures, missing CI gap
 
@@ -205,10 +268,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Known bulk postgres failures documented if still present
 """,
     ),
-    (
+    SeedIssue(
+        "p1-define-reproducible-baseline-release",
         "Reproduzierbaren Baseline-Release definieren",
         "P1 – Reproducible Baseline Release",
-        ["type:feature", "area:governance"],
+        ("type:feature", "area:governance"),
         """## Scope
 - Define tag naming and exit criteria for baseline-paper-v*
 
@@ -217,10 +281,11 @@ README is stale; production paths are in deploy docs.
 - [ ] CHANGELOG notes baseline
 """,
     ),
-    (
+    SeedIssue(
+        "p2-review-backup-and-restore-process",
         "Backup- und Restore-Prozess prüfen",
         "P2 – Operational Reliability",
-        ["type:operations", "area:infrastructure"],
+        ("type:operations", "area:infrastructure"),
         """## Scope
 - Railway Postgres backup; restore drill once
 
@@ -229,10 +294,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Restore tested on non-prod
 """,
     ),
-    (
+    SeedIssue(
+        "p2-document-reconciliation-requirements",
         "Reconciliation-Anforderungen dokumentieren",
         "P2 – Operational Reliability",
-        ["type:documentation", "area:accounting"],
+        ("type:documentation", "area:accounting"),
         """## Scope
 - Daily reconciliation checklist for paper soak
 
@@ -241,10 +307,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Owner and frequency defined
 """,
     ),
-    (
+    SeedIssue(
+        "p2-review-idempotency-of-critical-processing-paths",
         "Idempotenz kritischer Verarbeitungspfade prüfen",
         "P2 – Operational Reliability",
-        ["type:feature", "area:execution"],
+        ("type:feature", "area:execution"),
         """## Scope
 - Review fills, scheduler runs, portfolio snapshots for duplicate safety
 
@@ -252,10 +319,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Test coverage noted or gaps filed as bugs
 """,
     ),
-    (
+    SeedIssue(
+        "p2-test-worker-restart-after-process-abort",
         "Worker-Wiederanlauf nach Prozessabbruch testen",
         "P2 – Operational Reliability",
-        ["type:operations", "area:execution"],
+        ("type:operations", "area:execution"),
         """## Scope
 - Kill worker mid-run; verify recovery and no duplicate entries
 
@@ -263,10 +331,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Test automated or runbook with recorded result
 """,
     ),
-    (
+    SeedIssue(
+        "p2-capture-incident-and-runbook-gaps",
         "Incident- und Runbook-Lücken erfassen",
         "P2 – Operational Reliability",
-        ["type:documentation", "area:governance"],
+        ("type:documentation", "area:governance"),
         """## Scope
 - Complete TODO runbooks in `docs/runbooks/README.md`
 
@@ -274,10 +343,11 @@ README is stale; production paths are in deploy docs.
 - [ ] Each critical op has issue or completed runbook
 """,
     ),
-    (
+    SeedIssue(
+        "p2-define-critical-operational-metrics",
         "Kritische Betriebsmetriken definieren",
         "P2 – Operational Reliability",
-        ["type:feature", "area:monitoring"],
+        ("type:feature", "area:monitoring"),
         """## Scope
 - heartbeat age, readiness state, reconnect count, DB fingerprint drift
 
@@ -334,10 +404,30 @@ def milestone_phase_key(title: str) -> str | None:
     return match.group(1) if match else None
 
 
-def with_seed_marker(body: str) -> str:
-    if SEED_ISSUE_MARKER in body:
-        return body
-    return f"{SEED_ISSUE_MARKER}\n\n{body.lstrip()}"
+def seed_key_marker(key: str) -> str:
+    """Return the stable, machine-readable marker for a governance seed."""
+    return f"{SEED_KEY_MARKER_PREFIX}{key} -->"
+
+
+def parse_seed_key_from_body(body: str | None) -> str | None:
+    """Extract a seed key from an issue body, if present."""
+    if not isinstance(body, str):
+        return None
+    match = re.search(r"<!--\s*governance-seed-key:\s*([a-z0-9][a-z0-9-]*)\s*-->", body)
+    return match.group(1) if match else None
+
+
+def with_seed_body(seed: SeedIssue | str, body: str | None = None) -> str:
+    """Prefix a body with both current and legacy governance seed markers."""
+    if isinstance(seed, SeedIssue):
+        key, original_body = seed.key, seed.body
+    else:
+        if body is None:
+            raise ValueError("body is required when passing a seed key")
+        key, original_body = seed, body
+    markers = (seed_key_marker(key), SEED_ISSUE_MARKER)
+    prefix = "\n".join(marker for marker in markers if marker not in original_body)
+    return f"{prefix}\n\n{original_body.lstrip()}" if prefix else original_body
 
 
 def run_gh(args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -490,36 +580,89 @@ def ensure_milestones(ctx: GhContext) -> dict[str, int]:
     return {title: phase_to_number[phase_key] for title, _ in MILESTONES if (phase_key := milestone_phase_key(title)) in phase_to_number}
 
 
-def list_issue_titles(ctx: GhContext) -> set[str]:
+def load_all_issues(ctx: GhContext) -> list[dict[str, Any]] | None:
+    """Load every issue across all states, excluding pull requests."""
     if not ctx.available or not ctx.authenticated:
-        return set()
-    result = run_gh(
-        ["issue", "list", "--repo", ctx.repo, "--state", "all", "--limit", "500", "--json", "title,body"],
-        check=False,
-    )
-    if result.returncode != 0:
-        ctx.warn(f"could not list issues: {result.stderr.strip()}")
-        return set()
-    items = json.loads(result.stdout or "[]")
-    titles: set[str] = set()
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        title = item.get("title")
-        if isinstance(title, str):
-            titles.add(title)
-            titles.add(normalize_title(title))
-    return titles
+        return []
+    issues: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        result = run_gh(
+            ["api", f"repos/{ctx.repo}/issues?state=all&per_page=100&page={page}"],
+            check=False,
+        )
+        if result.returncode != 0:
+            ctx.warn(f"could not list issues: {result.stderr.strip()}")
+            return None
+        try:
+            items = json.loads(result.stdout or "[]")
+        except json.JSONDecodeError:
+            ctx.warn("could not parse issues JSON")
+            return None
+        if not isinstance(items, list):
+            ctx.warn("unexpected issues JSON shape")
+            return None
+        issues.extend(
+            item for item in items
+            if isinstance(item, dict) and "pull_request" not in item
+        )
+        if len(items) < 100:
+            return issues
+        page += 1
+
+
+def find_seed_issue(
+    seed: SeedIssue,
+    issues: list[dict[str, Any]],
+    repo: str,
+) -> dict[str, Any] | None:
+    """Find a seed issue by marker, repo-scoped migration, then title."""
+    for issue in issues:
+        if parse_seed_key_from_body(issue.get("body")) == seed.key:
+            return issue
+
+    canonical_number = CANONICAL_SEED_ISSUES.get(repo, {}).get(seed.key)
+    if canonical_number is not None:
+        for issue in issues:
+            if issue.get("number") == canonical_number:
+                return issue
+
+    wanted_title = normalize_title(seed.title)
+    for issue in issues:
+        title = issue.get("title")
+        if isinstance(title, str) and normalize_title(title) == wanted_title:
+            return issue
+    return None
 
 
 def ensure_seed_issues(ctx: GhContext, milestone_numbers: dict[str, int]) -> None:
-    existing_titles = list_issue_titles(ctx)
-    for title, milestone_title, labels, body in SEED_ISSUES:
-        normalized_title = normalize_title(title)
-        if title in existing_titles or normalized_title in existing_titles:
-            ctx.log(f"issue exists: {title}")
+    issues = load_all_issues(ctx)
+    if issues is None:
+        return
+    for seed in SEED_ISSUES:
+        found = find_seed_issue(seed, issues, ctx.repo)
+        if found is not None:
+            number = found.get("number", "?")
+            ctx.log(f"FOUND canonical issue #{number} for seed {seed.key}")
+            ctx.log("SKIP duplicate creation")
             continue
-        ctx.log(f"create issue: {title}")
+
+        # A concurrent run may create the same issue after the first load.
+        refreshed_issues = load_all_issues(ctx)
+        if refreshed_issues is None:
+            return
+        issues = refreshed_issues
+        found = find_seed_issue(seed, issues, ctx.repo)
+        if found is not None:
+            number = found.get("number", "?")
+            ctx.log(f"FOUND canonical issue #{number} for seed {seed.key}")
+            ctx.log("SKIP duplicate creation")
+            continue
+
+        if ctx.dry_run:
+            ctx.log(f"WOULD CREATE seed {seed.key}: {seed.title}")
+            continue
+        ctx.log(f"create issue: {seed.title}")
         if ctx.dry_run or not ctx.authenticated:
             continue
         args = [
@@ -528,18 +671,132 @@ def ensure_seed_issues(ctx: GhContext, milestone_numbers: dict[str, int]) -> Non
             "--repo",
             ctx.repo,
             "--title",
-            title,
+            seed.title,
             "--body",
-            with_seed_marker(body),
+            with_seed_body(seed),
         ]
-        for label in labels:
+        for label in seed.labels:
             args.extend(["--label", label])
-        ms_num = milestone_numbers.get(milestone_title)
+        ms_num = milestone_numbers.get(seed.milestone)
         if ms_num is not None:
-            args.extend(["--milestone", milestone_title])
+            args.extend(["--milestone", seed.milestone])
         result = run_gh(args, check=False)
         if result.returncode != 0:
-            ctx.warn(f"issue create failed for '{title}': {result.stderr.strip()}")
+            ctx.warn(f"issue create failed for '{seed.title}': {result.stderr.strip()}")
+            continue
+        try:
+            created_number: int | None = int(result.stdout.rstrip("/\n").split("/")[-1])
+        except ValueError:
+            created_number = None
+        # Keep the newly-created issue in memory so this invocation cannot
+        # create it again even when the create response is not a standard URL.
+        issues.append({"number": created_number, "title": seed.title, "body": with_seed_body(seed)})
+
+
+def duplicate_repair_comment(canonical_number: int, bug_issue: int = GOVERNANCE_BUG_ISSUE) -> str:
+    """Return the standard duplicate-closure comment for governance seed issues."""
+    return (
+        f"Duplicate of #{canonical_number}.\n"
+        "Dieses Issue wurde durch einen früheren fehlerhaften oder konkurrierenden\n"
+        "Lauf der Governance-Automatisierung erzeugt.\n"
+        "Einzigartige Informationen wurden vor dem Schließen geprüft und, sofern\n"
+        "vorhanden, in das kanonische Issue übernommen.\n"
+        f"Tracking der technischen Ursache: #{bug_issue}"
+    )
+
+
+def load_issue_summary(ctx: GhContext, number: int) -> dict[str, Any] | None:
+    """Load issue state/title/body for duplicate repair decisions."""
+    if not ctx.available or not ctx.authenticated:
+        return None
+    result = run_gh(
+        [
+            "issue",
+            "view",
+            str(number),
+            "--repo",
+            ctx.repo,
+            "--json",
+            "number,state,title,body",
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        ctx.warn(f"could not load issue #{number}: {result.stderr.strip()}")
+        return None
+    try:
+        issue = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        ctx.warn(f"could not parse issue JSON for #{number}")
+        return None
+    return issue if isinstance(issue, dict) else None
+
+
+def repair_duplicate_issues(ctx: GhContext) -> None:
+    """Comment and close only the configured duplicate governance seed issues."""
+    for duplicate_number, canonical_number in sorted(DUPLICATE_REPAIRS.items()):
+        issue = load_issue_summary(ctx, duplicate_number)
+        if issue is None:
+            if ctx.dry_run:
+                ctx.log(
+                    f"WOULD COMMENT on duplicate #{duplicate_number} "
+                    f"(canonical #{canonical_number})"
+                )
+                ctx.log(f"WOULD CLOSE DUPLICATE #{duplicate_number}")
+            continue
+
+        state = str(issue.get("state", "")).upper()
+        if state == "CLOSED":
+            ctx.log(f"SKIP duplicate #{duplicate_number} (already closed)")
+            continue
+
+        comment = duplicate_repair_comment(canonical_number)
+        if ctx.dry_run:
+            ctx.log(
+                f"WOULD COMMENT on duplicate #{duplicate_number} "
+                f"(canonical #{canonical_number})"
+            )
+            ctx.log(f"WOULD CLOSE DUPLICATE #{duplicate_number}")
+            continue
+
+        ctx.log(f"comment duplicate #{duplicate_number} -> canonical #{canonical_number}")
+        comment_result = run_gh(
+            [
+                "issue",
+                "comment",
+                str(duplicate_number),
+                "--repo",
+                ctx.repo,
+                "--body",
+                comment,
+            ],
+            check=False,
+        )
+        if comment_result.returncode != 0:
+            ctx.warn(
+                f"duplicate comment failed for #{duplicate_number}: "
+                f"{comment_result.stderr.strip()}"
+            )
+            continue
+
+        ctx.log(f"close duplicate #{duplicate_number} as not planned")
+        close_result = run_gh(
+            [
+                "issue",
+                "close",
+                str(duplicate_number),
+                "--repo",
+                ctx.repo,
+                "--reason",
+                "not planned",
+            ],
+            check=False,
+        )
+        if close_result.returncode != 0:
+            ctx.warn(
+                f"duplicate close failed for #{duplicate_number}: "
+                f"{close_result.stderr.strip()}"
+            )
 
 
 def try_create_project(ctx: GhContext) -> None:
@@ -605,6 +862,11 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dry-run", action="store_true", help="Preview actions without writes")
     group.add_argument("--apply", action="store_true", help="Apply changes via gh")
+    parser.add_argument(
+        "--repair-duplicates",
+        action="store_true",
+        help="Comment and close the 24 known duplicate governance seed issues",
+    )
     args = parser.parse_args()
     dry_run = args.dry_run
 
@@ -622,10 +884,13 @@ def main() -> int:
         print("Dry-run will print planned labels, milestones, and issues only.")
         print()
 
-    ensure_labels(ctx)
-    milestone_numbers = ensure_milestones(ctx)
-    ensure_seed_issues(ctx, milestone_numbers)
-    try_create_project(ctx)
+    if args.repair_duplicates:
+        repair_duplicate_issues(ctx)
+    else:
+        ensure_labels(ctx)
+        milestone_numbers = ensure_milestones(ctx)
+        ensure_seed_issues(ctx, milestone_numbers)
+        try_create_project(ctx)
 
     print()
     if dry_run:

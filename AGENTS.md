@@ -170,5 +170,10 @@ Link the GitHub issue and PR. Do not rely on chat-only documentation for decisio
 | Migrations | `python -m alembic upgrade head` |
 | Worker start (prod path) | `deploy/scripts/start-worker.sh` |
 | Governance setup (dry) | `python scripts/github_project_setup.py --dry-run` |
+| Governance setup (official) | GitHub Actions workflow `github-governance-setup.yml` |
+
+Governance setup: sequential idempotency is covered by automated tests; official
+apply runs are serialized through GitHub Actions concurrency. Uncoordinated
+parallel local apply processes are not claimed to be fully atomic.
 
 See `README.md` and service READMEs for environment variables. Never commit secrets.

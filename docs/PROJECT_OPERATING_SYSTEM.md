@@ -161,11 +161,22 @@ python scripts/github_project_setup.py --dry-run
 
 # Create missing labels, milestones, seed issues
 python scripts/github_project_setup.py --apply
+
+# One-time duplicate repair (configured list only)
+python scripts/github_project_setup.py --repair-duplicates --dry-run
+python scripts/github_project_setup.py --repair-duplicates --apply
 ```
 
 Requirements: [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`).
 
-The script **never** closes issues, deletes labels/milestones, changes branch protection, or touches secrets.
+**Idempotency guarantees:** Sequential idempotency is covered by automated tests.
+Official apply runs are serialized through GitHub Actions concurrency
+(`.github/workflows/github-governance-setup.yml`). Uncoordinated parallel local
+apply processes are not claimed to be fully atomic.
+
+The normal setup script **never** closes issues, deletes labels/milestones,
+changes branch protection, or touches secrets. The explicit
+`--repair-duplicates` mode comments and closes only the configured duplicate list.
 
 If `gh` is unavailable, perform label/milestone/issue creation manually using lists in `scripts/github_project_setup.py` source.
 
