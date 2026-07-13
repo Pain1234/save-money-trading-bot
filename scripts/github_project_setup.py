@@ -374,27 +374,22 @@ def ensure_labels(ctx: GhContext) -> None:
 def list_milestones(ctx: GhContext) -> dict[str, dict[str, Any]]:
     if not ctx.available or not ctx.authenticated:
         return {}
-    result = run_gh(
-        ["api", f"repos/{ctx.repo}/milestones", "--paginate", "-q", ".[] | {title: .title, number: .number}"],
-        check=False,
-    )
+    # Use a stable JSON response to avoid CLI output variations.
+    result = run_gh(["api", f"repos/{ctx.repo}/milestones?state=all&per_page=100"], check=False)
     if result.returncode != 0:
-        # fallback: search via gh api raw
-        result = run_gh(["api", f"repos/{ctx.repo}/milestones?state=all&per_page=100"], check=False)
-        if result.returncode != 0:
-            ctx.log(f"WARN: could not list milestones: {result.stderr.strip()}")
-            return {}
+        ctx.log(f"WARN: could not list milestones: {result.stderr.strip()}")
+        return {}
+    try:
         items = json.loads(result.stdout or "[]")
-    else:
-        # paginate output may be multiple JSON objects; try parse as array
-        raw = result.stdout.strip()
-        if not raw:
-            items = []
-        elif raw.startswith("["):
-            items = json.loads(raw)
-        else:
-            items = [json.loads(line) for line in raw.splitlines() if line.strip()]
-    return {item["title"]: item for item in items}
+    except json.JSONDecodeError:
+        ctx.log("WARN: could not parse milestones JSON")
+        return {}
+    milestones: dict[str, dict[str, Any]] = {}
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict) and "title" in item:
+                milestones[item["title"]] = item
+    return milestones
 
 
 def ensure_milestones(ctx: GhContext) -> dict[str, int]:
@@ -421,6 +416,7 @@ def ensure_milestones(ctx: GhContext) -> dict[str, int]:
         if result.returncode != 0:
             # Common: 422 validation failed (already exists), or missing scopes.
             ctx.log(f"WARN: milestone create failed for '{title}': {result.stderr.strip()}")
+            # If it already exists, we'll pick it up in the refresh below.
             continue
         try:
             created = json.loads(result.stdout)
@@ -497,7 +493,14 @@ def try_create_project(ctx: GhContext) -> None:
         projects = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
         projects = []
+    if not isinstance(projects, list):
+        ctx.log("WARN: unexpected projects JSON shape; skipping project automation")
+        ctx.log("Manual steps: see docs/PROJECT_OPERATING_SYSTEM.md")
+        return
     for p in projects:
+        # Some gh versions may return a list of strings; ignore those safely.
+        if not isinstance(p, dict):
+            continue
         if p.get("title") == PROJECT_NAME or p.get("name") == PROJECT_NAME:
             ctx.log(f"project exists: {PROJECT_NAME}")
             return
