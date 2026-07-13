@@ -30,7 +30,8 @@ Central project goal:
 - Paper-trading orchestrator phases 1–9 implemented; phase 10 audit gate not closed (`services/paper_trading/README.md`, `docs/paper-trading-orchestrator-v1.md`).
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
 - Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
-- No `.github/` CI, no formal baseline release tag, no governance files before this branch — **P0 not complete** until merged and adopted.
+- No `.github/` CI, no formal baseline release tag — **P1 not complete**.
+- Governance docs merged via PR #29; setup script idempotent apply verified (Issue #2) — **P0 governance baseline in place**; remaining P0 items tracked in milestone issues (#3–#5).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---

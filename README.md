@@ -1,37 +1,72 @@
-# SAVE-MONEY BOT — Hyperliquid Trading Bot Dashboard
+# SAVE-MONEY BOT — Trading System
 
-Privates Frontend für den Hyperliquid Trading Bot unter **bot.save-money.xyz**.
+Research and operations repository for trend Strategy V1, paper trading, backtesting, and the monitoring dashboard.
 
-## Tech Stack
+**Governance source of truth:** GitHub (issues, milestones, pull requests). Chat is the workbench; GitHub is the project memory.
 
-- Next.js 15 (App Router)
-- TypeScript
-- Tailwind CSS v4
-- Recharts (Performance-Chart)
-- Lucide React (Icons)
+## Quick start
 
-## Entwicklung
+### Dashboard (UI)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Öffne [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). The dashboard currently uses mock data for local UI development.
 
-## Status
+### Paper trading stack
 
-Aktuell: **UI mit Mockdaten** — keine echte Hyperliquid-Integration, keine Trading-Logik, keine Wallet-Keys.
+See `services/paper_trading/README.md` and `deploy/scripts/` for worker/API start paths. PostgreSQL is required for the production-shaped paper path.
 
-## Struktur
+### Tests
+
+```bash
+python -m pytest tests/ -v
+python -m pytest tests/paper_trading -m postgres -v
+```
+
+See `AGENTS.md` for lint, types, and migration commands.
+
+## Governance
+
+Before starting work, read:
+
+1. `AGENTS.md` — agent and contributor rules
+2. `ROADMAP.md` — active phase (P0–P9) and exit criteria
+3. The **linked GitHub issue** for your branch/PR
+
+Workflow: **one issue → one branch → one PR**. Use the PR template and `docs/DEFINITION_OF_DONE.md`.
+
+Initialize or refresh GitHub labels, milestones, and seed issues:
+
+```bash
+python scripts/github_project_setup.py --dry-run
+python scripts/github_project_setup.py --apply
+```
+
+See `docs/PROJECT_OPERATING_SYSTEM.md` for the full operating model.
+
+## Repository layout
 
 ```
-src/
-├── app/              # Next.js App Router
-├── components/
-│   ├── dashboard/    # KPI, Chart, Tabellen, Steuerung
-│   ├── layout/       # Navbar, Sidebar, Footer
-│   └── ui/           # Card, Badge, KpiCard
-├── lib/              # Utils & Mockdaten
-└── types/            # TypeScript-Typen
+services/
+├── strategy_engine/   # Strategy V1 (frozen spec)
+├── risk_engine/       # Risk V1 (frozen spec)
+├── backtester/        # Backtest execution layer
+├── market_data/       # Hyperliquid market data
+└── paper_trading/     # Paper orchestrator (PostgreSQL)
+src/                   # Next.js dashboard
+docs/                  # Specs, runbooks, decision log
+deploy/                # Railway/Docker production paths
 ```
+
+## Key specs
+
+| Document | Purpose |
+|----------|---------|
+| `docs/strategy-specification.md` | Strategy V1 behavior (frozen) |
+| `docs/risk-specification.md` | Risk limits (frozen) |
+| `docs/strategy-v1-parameter-inventory.md` | Published parameter defaults |
+| `docs/ARCHITECTURE.md` | System architecture |
+| `docs/DECISION_LOG.md` | ADR-style decisions |
