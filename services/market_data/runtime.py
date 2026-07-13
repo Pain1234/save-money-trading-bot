@@ -9,7 +9,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig, all_subscriptions
+from market_data.aggregation import aggregate_weekly_from_daily
+from market_data.config import (
+    HyperliquidNetwork,
+    HyperliquidPublicConfig,
+    all_subscriptions,
+    provider_subscriptions,
+)
 from market_data.gaps import detect_gaps
 from market_data.ingest import ingest_live_raw
 from market_data.initial_backfill import (
@@ -146,6 +152,22 @@ class HyperliquidMarketDataRuntime:
         self._backfill_ok = True
         self._last_error = None
 
+    def _refresh_iso_weekly(self, evaluation_time: datetime) -> None:
+        """Build specification-aligned Monday-Sunday weeks from daily candles."""
+        evaluation_time = ensure_utc(evaluation_time)
+        for symbol in self._config.symbols:
+            daily_closed = self.repository.get_closed_before(
+                symbol,
+                MarketTimeframe.DAILY,
+                evaluation_time,
+            )
+            weeklies = aggregate_weekly_from_daily(
+                daily_closed,
+                symbol,
+                evaluation_time,
+            )
+            self.repository.upsert_many(weeklies)
+
     async def backfill_symbol(
         self,
         symbol: MarketSymbol,
@@ -225,7 +247,7 @@ class HyperliquidMarketDataRuntime:
             await fetch_perpetual_meta(self._http, self._config, cache=self._meta_cache)
             self._meta_ok = True
             await self._ws.connect_and_subscribe()
-            for symbol, timeframe in all_subscriptions(self._config):
+            for symbol, timeframe in provider_subscriptions(self._config):
                 latest = self.repository.get_latest(symbol, timeframe)
                 if latest is None:
                     start = compute_initial_backfill_start(
@@ -239,6 +261,7 @@ class HyperliquidMarketDataRuntime:
                 )
             buffered = self._ws.end_buffer()
             ingest_live_raw(self.repository, buffered, evaluation_time)
+            self._refresh_iso_weekly(evaluation_time)
             self._refresh_strategy_bundle_readiness(evaluation_time)
             self._initial_backfill_done = True
             self._backfill_ok = True
@@ -254,6 +277,7 @@ class HyperliquidMarketDataRuntime:
         await self._ensure_connected(evaluation_time)
         events = await self._ws.drain_events()
         result = ingest_live_raw(self.repository, events, evaluation_time)
+        self._refresh_iso_weekly(evaluation_time)
         return result.inserted
 
     def _record_reconnect_failure(self, exc: BaseException) -> None:
@@ -305,7 +329,7 @@ class HyperliquidMarketDataRuntime:
                             ),
                         },
                     )
-                    for symbol, timeframe in all_subscriptions(self._config):
+                    for symbol, timeframe in provider_subscriptions(self._config):
                         latest = self.repository.get_latest(symbol, timeframe)
                         if latest is None:
                             continue
@@ -318,6 +342,7 @@ class HyperliquidMarketDataRuntime:
                         )
                     buffered = self._ws.end_buffer()
                     ingest_live_raw(self.repository, buffered, evaluation_time)
+                    self._refresh_iso_weekly(evaluation_time)
                     self._refresh_strategy_bundle_readiness(evaluation_time)
                     self._last_error = None
             except TimeoutError:

@@ -16,6 +16,7 @@ class PaperServiceConfig(PaperTradingConfig):
     api_enabled: bool = Field(default=False)
     api_host: str = Field(default="127.0.0.1")
     api_port: int = Field(default=8080, ge=1, le=65535)
+    advisory_lock_startup_timeout_seconds: float = Field(default=30.0, gt=0)
     market_data_startup_timeout_seconds: int = Field(default=120, gt=0)
     shutdown_timeout_seconds: int = Field(default=30, gt=0)
     hyperliquid_network: HyperliquidNetwork = HyperliquidNetwork.TESTNET
@@ -31,6 +32,9 @@ class PaperServiceConfig(PaperTradingConfig):
                 in {"1", "true", "yes"},
                 "api_host": os.environ.get("PAPER_API_HOST", "127.0.0.1"),
                 "api_port": int(os.environ.get("PAPER_API_PORT", "8080")),
+                "advisory_lock_startup_timeout_seconds": float(
+                    os.environ.get("PAPER_ADVISORY_LOCK_STARTUP_TIMEOUT_SECONDS", "30")
+                ),
                 "market_data_startup_timeout_seconds": int(
                     os.environ.get("PAPER_MARKET_DATA_STARTUP_TIMEOUT_SECONDS", "120")
                 ),

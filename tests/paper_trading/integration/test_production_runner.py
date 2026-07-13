@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from paper_trading.application import FakeMarketDataRuntime, PaperTradingApplication
 from paper_trading.enums import RuntimeStatus
@@ -77,7 +79,10 @@ async def test_second_runner_stays_passive_while_first_holds_lock(
     migrated_engine,
     alembic_config,
 ) -> None:
-    config = PaperServiceConfig.from_env(database_url=_postgres_url())
+    config = PaperServiceConfig.from_env(
+        database_url=_postgres_url(),
+        advisory_lock_startup_timeout_seconds=0.05,
+    )
     first = PaperTradingApplication(
         config=config,
         market_data_runtime=FakeMarketDataRuntime(),
@@ -92,3 +97,34 @@ async def test_second_runner_stays_passive_while_first_holds_lock(
     with pytest.raises(RuntimeError, match="advisory lock"):
         await second.start()
     await first.stop()
+
+
+@pytest.mark.asyncio
+async def test_rolling_successor_waits_for_advisory_lock_release(
+    migrated_engine,
+    alembic_config,
+) -> None:
+    config = PaperServiceConfig.from_env(
+        database_url=_postgres_url(),
+        advisory_lock_startup_timeout_seconds=1.0,
+    )
+    first = PaperTradingApplication(
+        config=config,
+        market_data_runtime=FakeMarketDataRuntime(),
+        alembic_config=alembic_config,
+    )
+    second = PaperTradingApplication(
+        config=config,
+        market_data_runtime=FakeMarketDataRuntime(),
+        alembic_config=alembic_config,
+    )
+    await first.start()
+    successor = asyncio.create_task(second.start())
+    await asyncio.sleep(0.05)
+    assert successor.done() is False
+
+    await first.stop()
+    await successor
+
+    assert second.advisory_lock.held is True
+    await second.stop()

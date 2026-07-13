@@ -48,6 +48,10 @@ class PostgresAdvisoryLock:
             {"lock_id": self._lock_id},
         ).scalar_one()
         if acquired:
+            # The advisory lock is session-scoped, not transaction-scoped.
+            # End SQLAlchemy's implicit SELECT transaction immediately while
+            # keeping the dedicated connection (and therefore the lock) open.
+            self._connection.commit()
             self._held = True
             return True
         self._connection.close()
@@ -61,6 +65,7 @@ class PostgresAdvisoryLock:
             text("SELECT pg_advisory_unlock(:lock_id)"),
             {"lock_id": self._lock_id},
         )
+        self._connection.commit()
         self._connection.close()
         self._connection = None
         self._held = False

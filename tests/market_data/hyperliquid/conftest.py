@@ -9,7 +9,11 @@ from datetime import datetime
 
 import httpx
 import pytest
-from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig
+from market_data.config import (
+    HyperliquidNetwork,
+    HyperliquidPublicConfig,
+    provider_subscriptions,
+)
 from market_data.network.http_client import HyperliquidHttpClient
 from market_data.providers.hyperliquid import coin_for_symbol, interval_for_timeframe
 
@@ -145,11 +149,10 @@ def make_http_client(
 
 
 def all_ack_messages(config: HyperliquidPublicConfig) -> list[str]:
-    msgs: list[str] = []
-    for sym in config.symbols:
-        for tf in config.timeframes:
-            msgs.append(ws_ack(coin_for_symbol(sym), interval_for_timeframe(tf)))
-    return msgs
+    return [
+        ws_ack(coin_for_symbol(symbol), interval_for_timeframe(timeframe))
+        for symbol, timeframe in provider_subscriptions(config)
+    ]
 
 
 async def immediate_sleep(_: float) -> None:

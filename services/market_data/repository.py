@@ -67,6 +67,12 @@ class InMemoryCandleRepository:
             return True, None
         if candles_equal(existing, candle):
             return False, None
+        if not existing.is_closed and candle.is_closed:
+            # A provider's final update can arrive just after the canonical
+            # close boundary. Finalize the provisional candle exactly once;
+            # subsequent changes to the closed value remain conflicts.
+            self._store[key] = candle
+            return True, None
         if not is_candle_closed(existing.close_time, evaluation_time):
             self._store[key] = candle
             return True, None

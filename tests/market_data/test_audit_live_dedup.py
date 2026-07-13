@@ -50,6 +50,25 @@ def test_conflicting_live_replay_records_conflict_without_overwrite() -> None:
     assert len(repo.conflicts) == 1
 
 
+def test_final_update_after_close_finalizes_provisional_candle_once() -> None:
+    repo = InMemoryCandleRepository()
+    candle = make_daily(day=dt(2024, 1, 1), c="100", is_closed=False)
+    finalized = candle.model_copy(
+        update={"close": Decimal("102"), "high": Decimal("105"), "is_closed": True}
+    )
+    repo.upsert(candle)
+
+    added, conflict = repo.upsert_live(finalized, dt(2024, 1, 2))
+
+    assert added is True
+    assert conflict is None
+    assert repo.get_latest(MarketSymbol.BTC, MarketTimeframe.DAILY) == finalized
+    changed_closed = finalized.model_copy(update={"close": Decimal("103")})
+    added_again, closed_conflict = repo.upsert_live(changed_closed, dt(2024, 1, 2))
+    assert added_again is False
+    assert closed_conflict is not None
+
+
 def test_invalid_live_payload_not_stored() -> None:
     repo = InMemoryCandleRepository()
     service = MarketDataService(repo)

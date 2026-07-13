@@ -26,7 +26,7 @@ from tests.market_data.hyperliquid.conftest import (
 
 
 @pytest.mark.asyncio
-async def test_nine_subscriptions_sent() -> None:
+async def test_provider_subscriptions_exclude_non_iso_weekly_streams() -> None:
     config = HyperliquidPublicConfig.for_network(HyperliquidNetwork.TESTNET)
     incoming: asyncio.Queue[str | None] = asyncio.Queue()
     outgoing: list[str] = []
@@ -43,8 +43,9 @@ async def test_nine_subscriptions_sent() -> None:
         sleep=immediate_sleep,
     )
     await feed.connect_and_subscribe()
-    assert len(outgoing) == 9
-    assert feed.subscriptions_acknowledged == 9
+    assert len(outgoing) == 6
+    assert feed.subscriptions_acknowledged == 6
+    assert all('"interval":"1w"' not in message for message in outgoing)
     await feed.disconnect()
 
 

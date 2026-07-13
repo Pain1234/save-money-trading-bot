@@ -117,3 +117,19 @@ def all_subscriptions(
     config: HyperliquidPublicConfig,
 ) -> tuple[tuple[MarketSymbol, MarketTimeframe], ...]:
     return tuple((sym, tf) for sym in config.symbols for tf in config.timeframes)
+
+
+def provider_subscriptions(
+    config: HyperliquidPublicConfig,
+) -> tuple[tuple[MarketSymbol, MarketTimeframe], ...]:
+    """Return provider streams whose candle boundaries match the V1 calendar.
+
+    Hyperliquid ``1w`` candles are exchange-anchored and do not use the
+    specification's Monday-Sunday ISO week. Weekly strategy candles are
+    therefore derived from complete daily candles inside the runtime.
+    """
+    return tuple(
+        (symbol, timeframe)
+        for symbol, timeframe in all_subscriptions(config)
+        if timeframe != MarketTimeframe.WEEKLY
+    )

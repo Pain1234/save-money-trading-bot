@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from market_data.config import HyperliquidPublicConfig, all_subscriptions
+from market_data.config import HyperliquidPublicConfig, provider_subscriptions
 from market_data.models import ConnectionStatus, RawCandle
 from market_data.network.errors import (
     HyperliquidBufferOverflowError,
@@ -64,7 +64,7 @@ class HyperliquidWebSocketFeed:
         self._status = ConnectionStatus.DISCONNECTED
         self._expected_subs = {
             _sub_key(coin_for_symbol(sym), interval_for_timeframe(tf))
-            for sym, tf in all_subscriptions(config)
+            for sym, tf in provider_subscriptions(config)
         }
         self._acked_subs: set[tuple[str, str]] = set()
         self._live_queue: asyncio.Queue[RawCandle] = asyncio.Queue()
@@ -135,7 +135,7 @@ class HyperliquidWebSocketFeed:
         self._conn = await self._connect_fn(self._config.websocket_url)
         self._acked_subs.clear()
         self._subscribed.clear()
-        for symbol, timeframe in all_subscriptions(self._config):
+        for symbol, timeframe in provider_subscriptions(self._config):
             coin = coin_for_symbol(symbol)
             interval = interval_for_timeframe(timeframe)
             message = {

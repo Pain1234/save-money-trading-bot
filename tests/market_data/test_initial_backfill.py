@@ -356,3 +356,77 @@ def test_runtime_readiness_false_when_monthly_history_insufficient() -> None:
 def test_default_initial_backfill_days_is_730() -> None:
     config = HyperliquidPublicConfig.for_network(HyperliquidNetwork.TESTNET)
     assert config.initial_backfill_days == MINIMUM_INITIAL_BACKFILL_DAYS
+
+
+def test_runtime_derives_closed_iso_weekly_without_current_open_daily() -> None:
+    config = HyperliquidPublicConfig.for_network(
+        HyperliquidNetwork.TESTNET,
+        symbols=(MarketSymbol.BTC,),
+    )
+    repo = InMemoryCandleRepository()
+    dailies = list(make_daily_series(15, start=dt(2026, 6, 29)))
+    dailies[-1] = dailies[-1].model_copy(update={"is_closed": False})
+    repo.upsert_many(tuple(dailies))
+    evaluation_time = dt(2026, 7, 13, 17)
+    runtime = HyperliquidMarketDataRuntime(MarketDataService(repo), config)
+
+    runtime._refresh_iso_weekly(evaluation_time)  # noqa: SLF001
+
+    weeklies = repo.get_range(MarketSymbol.BTC, MarketTimeframe.WEEKLY)
+    assert len(weeklies) == 2
+    assert weeklies[-1].open_time == dt(2026, 7, 6)
+    assert weeklies[-1].close_time == dt(2026, 7, 12, 23).replace(
+        minute=59,
+        second=59,
+    )
+    assert weeklies[-1].is_closed is True
+    assert dailies[-1].open_time > weeklies[-1].close_time
+    assert repo.conflicts == ()
+
+    changed_open_daily = dailies[-1].model_copy(
+        update={"high": dailies[-1].high + 100, "close": dailies[-1].close + 100}
+    )
+    repo.upsert_live(changed_open_daily, evaluation_time)
+    runtime._refresh_iso_weekly(evaluation_time)  # noqa: SLF001
+    assert repo.get_range(MarketSymbol.BTC, MarketTimeframe.WEEKLY) == weeklies
+    assert repo.conflicts == ()
+
+
+@pytest.mark.asyncio
+async def test_runtime_never_requests_provider_native_weekly_backfill() -> None:
+    config = HyperliquidPublicConfig.for_network(
+        HyperliquidNetwork.TESTNET,
+        symbols=(MarketSymbol.BTC,),
+    )
+    runtime = HyperliquidMarketDataRuntime(
+        MarketDataService(InMemoryCandleRepository()),
+        config,
+    )
+    requested: list[MarketTimeframe] = []
+
+    async def _capture_backfill(
+        symbol: MarketSymbol,
+        timeframe: MarketTimeframe,
+        start_time: datetime,
+        end_time: datetime,
+        evaluation: datetime,
+    ):
+        del symbol, start_time, end_time
+        requested.append(timeframe)
+        from market_data.models import DataQualityReport, DataQualityStatus
+
+        runtime._record_backfill_success(evaluation)  # noqa: SLF001
+        return DataQualityReport(
+            status=DataQualityStatus.VALID,
+            evaluation_time=evaluation,
+        )
+
+    runtime.backfill_symbol = _capture_backfill  # type: ignore[method-assign]
+    runtime._ws.connect_and_subscribe = AsyncMock()  # type: ignore[method-assign]
+    runtime._ws.end_buffer = lambda: ()  # type: ignore[method-assign]
+    runtime._refresh_strategy_bundle_readiness = lambda _: None  # type: ignore[method-assign]
+    runtime._http.post_info = AsyncMock(return_value={"universe": [{"name": "BTC"}]})  # type: ignore[method-assign]
+
+    await runtime.start(dt(2026, 7, 13, 17))
+
+    assert requested == [MarketTimeframe.DAILY, MarketTimeframe.MONTHLY]

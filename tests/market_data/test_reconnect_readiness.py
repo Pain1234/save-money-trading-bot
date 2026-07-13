@@ -8,13 +8,14 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from market_data.aggregation import aggregate_weekly_from_daily
 from market_data.config import HyperliquidNetwork, HyperliquidPublicConfig
 from market_data.models import ConnectionStatus, MarketSymbol, MarketTimeframe
 from market_data.repository import InMemoryCandleRepository
 from market_data.runtime import HyperliquidMarketDataRuntime
 from market_data.service import MarketDataService
 
-from tests.market_data.conftest import dt, make_daily_series, make_monthly, make_weekly, to_raw
+from tests.market_data.conftest import dt, make_daily_series, make_monthly, to_raw
 
 RUNTIME_LOGGER = "market_data.runtime"
 
@@ -108,9 +109,11 @@ async def test_transport_reconnect_without_strategy_readiness_is_degraded() -> N
 def _seed_ready_history(repo: InMemoryCandleRepository):
     daily_start = dt(2023, 1, 16)
     dailies = make_daily_series(364, start=daily_start, symbol=MarketSymbol.BTC)
-    weeklies = tuple(
-        make_weekly(MarketSymbol.BTC, daily_start + timedelta(weeks=index))
-        for index in range(52)
+    evaluation_time = dailies[-1].close_time + timedelta(hours=1)
+    weeklies = aggregate_weekly_from_daily(
+        dailies,
+        MarketSymbol.BTC,
+        evaluation_time,
     )
     monthlies = []
     year, month = 2022, 5
@@ -123,7 +126,7 @@ def _seed_ready_history(repo: InMemoryCandleRepository):
     repo.upsert_many(dailies)
     repo.upsert_many(weeklies)
     repo.upsert_many(tuple(monthlies))
-    return dailies[-1].close_time + timedelta(hours=1)
+    return evaluation_time
 
 
 @pytest.mark.asyncio

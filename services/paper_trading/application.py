@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
@@ -212,8 +213,7 @@ class PaperTradingApplication:
         self._database_fingerprint = database_identity.database_fingerprint
         log_database_identity(logger, database_identity)
 
-        if not self._advisory_lock.try_acquire():
-            raise RuntimeError("postgres advisory lock not available")
+        await self._acquire_advisory_lock()
 
         self._set_worker_transaction_role("paper-worker-recovery")
         try:
@@ -287,6 +287,46 @@ class PaperTradingApplication:
         self._update_runtime_readiness()
         self._started = True
         logger.info("paper_trading_application_started")
+
+    async def _acquire_advisory_lock(self) -> None:
+        """Wait briefly for a predecessor during a rolling deployment."""
+        assert self._advisory_lock is not None
+        timeout = self.config.advisory_lock_startup_timeout_seconds
+        started = time.monotonic()
+        attempts = 0
+        while True:
+            attempts += 1
+            if self._advisory_lock.try_acquire():
+                logger.info(
+                    "postgres_advisory_lock_acquired attempts=%s wait_seconds=%.3f",
+                    attempts,
+                    time.monotonic() - started,
+                    extra={
+                        "event_type": "postgres_advisory_lock_acquired",
+                        "attempts": attempts,
+                        "task_role": "worker-startup",
+                    },
+                )
+                return
+            elapsed = time.monotonic() - started
+            remaining = timeout - elapsed
+            if remaining <= 0:
+                raise RuntimeError(
+                    "postgres advisory lock not available after "
+                    f"{timeout:.3f} seconds"
+                )
+            if attempts == 1:
+                logger.warning(
+                    "postgres_advisory_lock_waiting timeout_seconds=%.3f "
+                    "task_role=worker-startup",
+                    timeout,
+                    extra={
+                        "event_type": "postgres_advisory_lock_waiting",
+                        "timeout_seconds": timeout,
+                        "task_role": "worker-startup",
+                    },
+                )
+            await asyncio.sleep(min(0.25, remaining))
 
     async def stop(self) -> None:
         if not self._started:
