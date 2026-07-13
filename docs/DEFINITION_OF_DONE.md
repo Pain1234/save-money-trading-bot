@@ -2,6 +2,8 @@
 
 Checklist before merging any pull request. Copy relevant sections into the PR description.
 
+**Binding:** Reviewers must reject PRs that skip test evidence (see [Review policy](#review-policy-adopted)).
+
 ---
 
 ## General (all changes)
@@ -64,3 +66,34 @@ Additional requirements when changing or producing strategy/research artifacts:
 - Live trading activation without `human-approval-required` issue
 - Risk limit increases without approval
 - Undocumented migration or schema change
+
+---
+
+## Review policy (adopted)
+
+Effective with governance rollout (Issue #5, ADR-010).
+
+### Reviewer must verify
+
+1. Linked GitHub issue with acceptance criteria addressed
+2. PR template completed (including **Tests → Ausgeführte Befehle und Ergebnis**)
+3. At least one executed test command with pass/fail result **or** explicit justification why tests are not required
+4. Definition of Done section in PR checked honestly
+5. No silent changes to strategy parameters, risk limits, production start commands, or migrations
+
+### Reviewer must reject (request changes) when
+
+- Test section empty with no justification
+- Claims "tests pass" without listing commands run
+- Scope exceeds linked issue without a separate issue
+- DoD checkboxes checked but evidence missing in PR body
+
+### Baseline PRs referencing DoD (post-governance)
+
+| PR | Title | DoD reference |
+|----|-------|---------------|
+| #29 | Establish project governance and research roadmap | PR template § Definition of Done |
+| #36 | Strategy V1 parameters inventory | PR template § Definition of Done |
+| #43 | Repository governance adoption | PR template § Definition of Done |
+
+Future PRs must follow the same pattern. Optional CI enforcement tracked separately (not in scope for Issue #5).

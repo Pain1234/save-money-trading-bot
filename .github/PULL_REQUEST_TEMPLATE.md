@@ -24,13 +24,15 @@ Fixes #
 
 ## Tests
 
+> **Review policy:** PRs without test commands/results (or justified exception) must be rejected. See `docs/DEFINITION_OF_DONE.md`.
+
 - [ ] Unit-Tests
 - [ ] Integrationstests
 - [ ] End-to-End-Tests
 - [ ] manueller Test
 - [ ] nicht erforderlich, Begründung:
 
-**Ausgeführte Befehle und Ergebnis:**
+**Ausgeführte Befehle und Ergebnis:** *(required — paste commands and pass/fail)*
 
 
 ## Risiken
