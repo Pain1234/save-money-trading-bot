@@ -16,6 +16,16 @@ from market_data.service import MarketDataService
 
 from tests.market_data.conftest import dt, make_daily_series, make_monthly, make_weekly, to_raw
 
+RUNTIME_LOGGER = "market_data.runtime"
+
+
+def _runtime_log_messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == RUNTIME_LOGGER
+    ]
+
 
 def _connect_transport(runtime: HyperliquidMarketDataRuntime) -> None:
     runtime._ws._status = ConnectionStatus.CONNECTED  # noqa: SLF001
@@ -66,7 +76,6 @@ async def test_reconnect_backfill_replaces_open_candle_without_conflict() -> Non
 async def test_transport_reconnect_without_strategy_readiness_is_degraded(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    logging.getLogger("market_data.runtime").disabled = False
     config = HyperliquidPublicConfig.for_network(
         HyperliquidNetwork.TESTNET,
         symbols=(MarketSymbol.BTC,),
@@ -86,10 +95,10 @@ async def test_transport_reconnect_without_strategy_readiness_is_degraded(
     runtime._ws.end_buffer = lambda: ()  # type: ignore[method-assign]
     evaluation_time = dt(2026, 7, 13, 12)
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger=RUNTIME_LOGGER):
         await runtime.reconnect(evaluation_time)
 
-    messages = [record.getMessage() for record in caplog.records]
+    messages = _runtime_log_messages(caplog)
     assert "market_data_transport_reconnect_succeeded" in messages
     assert any(message.startswith("market_data_reconnect_degraded") for message in messages)
     assert runtime.status(evaluation_time).readiness is False
@@ -120,7 +129,6 @@ def _seed_ready_history(repo: InMemoryCandleRepository):
 async def test_reconnect_logs_readiness_recovered_and_returns_ready(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    logging.getLogger("market_data.runtime").disabled = False
     config = HyperliquidPublicConfig.for_network(
         HyperliquidNetwork.TESTNET,
         symbols=(MarketSymbol.BTC,),
@@ -138,10 +146,8 @@ async def test_reconnect_logs_readiness_recovered_and_returns_ready(
     runtime._ws.end_buffer = lambda: ()  # type: ignore[method-assign]
     runtime.backfill_symbol = AsyncMock()  # type: ignore[method-assign]
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger=RUNTIME_LOGGER):
         await runtime.reconnect(evaluation_time)
 
-    assert "market_data_readiness_recovered" in {
-        record.getMessage() for record in caplog.records
-    }
+    assert "market_data_readiness_recovered" in set(_runtime_log_messages(caplog))
     assert runtime.status(evaluation_time).readiness is True
