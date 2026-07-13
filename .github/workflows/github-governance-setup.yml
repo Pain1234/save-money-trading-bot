@@ -55,6 +55,8 @@ jobs:
           from pathlib import Path
 
           for path in sorted(Path(".github/ISSUE_TEMPLATE").glob("*.yml")):
+              if path.name == "config.yml":
+                  continue
               text = path.read_text(encoding="utf-8")
               for key in ("name:", "description:", "body:"):
                   if key not in text:
