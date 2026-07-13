@@ -45,6 +45,19 @@ python scripts/github_project_setup.py --dry-run
 python scripts/github_project_setup.py --apply
 ```
 
+Sequential idempotency is covered by automated tests. Official apply runs are
+serialized through GitHub Actions concurrency (`.github/workflows/github-governance-setup.yml`)
+and use `--skip-project`. Uncoordinated parallel local apply processes are not
+claimed to be fully atomic.
+
+The official GitHub Actions apply path intentionally uses `--skip-project`.
+The repository-scoped `GITHUB_TOKEN` manages labels, milestones and issues only.
+GitHub Projects v2 setup requires a separately authorized token or manual setup.
+
+Duplicate repair is hard-restricted to `Pain1234/save-money-trading-bot`.
+Before mutation, repository, issue numbers and expected titles are verified.
+Repair fails closed when identity cannot be proven.
+
 See `docs/PROJECT_OPERATING_SYSTEM.md` for the full operating model.
 
 ## Repository layout

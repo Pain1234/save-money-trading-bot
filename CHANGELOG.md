@@ -19,13 +19,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.cursor/rules/project-governance.mdc` — persistent Cursor agent rules.
 - `.github/ISSUE_TEMPLATE/` — bug, roadmap task, research experiment, incident forms.
 - `.github/PULL_REQUEST_TEMPLATE.md`.
-- `scripts/github_project_setup.py` — idempotent GitHub labels, milestones, and seed issues (`--dry-run` / `--apply`).
+- `scripts/github_project_setup.py` — GitHub labels, milestones, and seed issues (`--dry-run` / `--apply`); stable seed keys and sequential idempotency tests (Issue #51).
+- `.github/workflows/github-governance-setup.yml` — PR validation and manual governance apply with concurrency serialization; official apply uses `--skip-project`.
+- `tests/governance/test_github_project_setup.py` — governance setup unit tests including repository fail-closed repair guards.
 
 ### Changed
 
 - `docs/ARCHITECTURE.md` — verified production entrypoints table; migrations `001`–`009`; `trading_constraints` module (Issue #3).
 - `docs/DEFINITION_OF_DONE.md` — binding review policy; baseline PR references (#29, #36, #43).
-- `docs/RISK_REGISTER.md` — top-5 risks linked to GitHub issues #45–#49 (Issue #6). — robust idempotent matching for milestones/issues across encodings; GitHub Projects v2 JSON parsing; warning exit codes.
+- `docs/RISK_REGISTER.md` — top-5 risks linked to GitHub issues #45–#49 (Issue #6).
+- `scripts/github_project_setup.py` — stable seed keys, refresh-before-create, duplicate repair mode, repository fail-closed guards, and sequential idempotency tests (Issue #51).
+- Governance docs — idempotency claims corrected; official Actions apply uses `--skip-project`; duplicate repair restricted to approved repository with identity verification.
 - `README.md` — governance workflow and repository layout.
 - `docs/DECISION_LOG.md` — ADR-007 accepted (GitHub as project memory).
 
