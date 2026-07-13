@@ -169,11 +169,19 @@ Link the GitHub issue and PR. Do not rely on chat-only documentation for decisio
 | Types | `mypy .` (if configured) |
 | Migrations | `python -m alembic upgrade head` |
 | Worker start (prod path) | `deploy/scripts/start-worker.sh` |
-| Governance setup (dry) | `python scripts/github_project_setup.py --dry-run` |
+| Governance setup (dry) | `python scripts/github_project_setup.py --dry-run --skip-project` |
 | Governance setup (official) | GitHub Actions workflow `github-governance-setup.yml` |
 
 Governance setup: sequential idempotency is covered by automated tests; official
-apply runs are serialized through GitHub Actions concurrency. Uncoordinated
-parallel local apply processes are not claimed to be fully atomic.
+apply runs are serialized through GitHub Actions concurrency and use `--skip-project`.
+Uncoordinated parallel local apply processes are not claimed to be fully atomic.
+
+The official GitHub Actions apply path intentionally uses `--skip-project`.
+The repository-scoped `GITHUB_TOKEN` manages labels, milestones and issues only.
+GitHub Projects v2 setup requires a separately authorized token or manual setup.
+
+Duplicate repair is hard-restricted to `Pain1234/save-money-trading-bot`.
+Before mutation, repository, issue numbers and expected titles are verified.
+Repair fails closed when identity cannot be proven.
 
 See `README.md` and service READMEs for environment variables. Never commit secrets.

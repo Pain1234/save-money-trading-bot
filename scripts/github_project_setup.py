@@ -32,6 +32,7 @@ from typing import Any
 
 PROJECT_NAME = "Trading System Roadmap"
 GOVERNANCE_BUG_ISSUE = 51
+DUPLICATE_REPAIR_REPOSITORY = "Pain1234/save-money-trading-bot"
 SEED_ISSUE_MARKER = "<!-- governance-seed-issue -->"
 SEED_KEY_MARKER_PREFIX = "<!-- governance-seed-key:"
 PHASE_KEY_PATTERN = re.compile(r"^(P\d+)")
@@ -69,15 +70,40 @@ CANONICAL_SEED_ISSUES: dict[str, dict[str, int]] = {
     }
 }
 
-# Only these known duplicate issues may be repaired automatically. Each is
-# redirected to the appropriate canonical governance issue.
+@dataclass(frozen=True)
+class DuplicateRepair:
+    duplicate_number: int
+    canonical_number: int
+    expected_title: str
+    seed_key: str
+
+
+# Only these known duplicate issues may be repaired automatically. Each entry
+# requires duplicate and canonical issue identity verification before mutation.
+_DUPLICATE_REPAIR_GROUPS: tuple[tuple[int, str, str, tuple[int, ...]], ...] = (
+    (2, "p0-repository-governance", "Repository-Governance einführen", (17, 23, 30, 37)),
+    (6, "p0-review-initial-risk-register", "Risk Register initial prüfen", (18, 24, 31, 38)),
+    (8, "p1-review-runtime-and-dependency-versions", "Laufzeit- und Abhängigkeitsversionen prüfen", (19, 25, 32, 39)),
+    (11, "p2-review-backup-and-restore-process", "Backup- und Restore-Prozess prüfen", (20, 26, 33, 40)),
+    (13, "p2-review-idempotency-of-critical-processing-paths", "Idempotenz kritischer Verarbeitungspfade prüfen", (21, 27, 34, 41)),
+    (15, "p2-capture-incident-and-runbook-gaps", "Incident- und Runbook-Lücken erfassen", (22, 28, 35, 42)),
+)
+
+DUPLICATE_REPAIR_SPECS: tuple[DuplicateRepair, ...] = tuple(
+    DuplicateRepair(
+        duplicate_number=duplicate_number,
+        canonical_number=canonical_number,
+        expected_title=expected_title,
+        seed_key=seed_key,
+    )
+    for canonical_number, seed_key, expected_title, duplicate_numbers in _DUPLICATE_REPAIR_GROUPS
+    for duplicate_number in duplicate_numbers
+)
+
+# Legacy mapping retained for tests and migration references only.
 DUPLICATE_REPAIRS: dict[int, int] = {
-    17: 2, 23: 2, 30: 2, 37: 2,
-    18: 6, 24: 6, 31: 6, 38: 6,
-    19: 8, 25: 8, 32: 8, 39: 8,
-    20: 11, 26: 11, 33: 11, 40: 11,
-    21: 13, 27: 13, 34: 13, 41: 13,
-    22: 15, 28: 15, 35: 15, 42: 15,
+    repair.duplicate_number: repair.canonical_number
+    for repair in DUPLICATE_REPAIR_SPECS
 }
 
 LABELS: list[tuple[str, str, str]] = [
@@ -388,6 +414,24 @@ def _repair_mojibake(text: str) -> str:
             break
         repaired = candidate
     return repaired
+
+
+def normalize_repository_name(value: str) -> str:
+    """Normalize repository names for case-insensitive comparison."""
+    return value.strip().casefold()
+
+
+def validate_duplicate_repair_repository(ctx: GhContext) -> bool:
+    """Ensure duplicate repair runs only in the approved repository."""
+    expected = normalize_repository_name(DUPLICATE_REPAIR_REPOSITORY)
+    actual = normalize_repository_name(ctx.repo)
+    if actual != expected:
+        ctx.warn(
+            "duplicate repair is restricted to "
+            f"{DUPLICATE_REPAIR_REPOSITORY}; refusing repository {ctx.repo}"
+        )
+        return False
+    return True
 
 
 def normalize_title(text: str) -> str:
@@ -732,71 +776,170 @@ def load_issue_summary(ctx: GhContext, number: int) -> dict[str, Any] | None:
     return issue if isinstance(issue, dict) else None
 
 
-def repair_duplicate_issues(ctx: GhContext) -> None:
-    """Comment and close only the configured duplicate governance seed issues."""
-    for duplicate_number, canonical_number in sorted(DUPLICATE_REPAIRS.items()):
-        issue = load_issue_summary(ctx, duplicate_number)
-        if issue is None:
-            if ctx.dry_run:
-                ctx.log(
-                    f"WOULD COMMENT on duplicate #{duplicate_number} "
-                    f"(canonical #{canonical_number})"
-                )
-                ctx.log(f"WOULD CLOSE DUPLICATE #{duplicate_number}")
+def verify_duplicate_repair_identity(
+    ctx: GhContext,
+    repair: DuplicateRepair,
+    duplicate_issue: dict[str, Any],
+    canonical_issue: dict[str, Any],
+) -> bool:
+    """Verify duplicate/canonical issue identity before any mutation."""
+    duplicate_number = duplicate_issue.get("number")
+    canonical_number = canonical_issue.get("number")
+    if duplicate_number != repair.duplicate_number:
+        ctx.warn(
+            f"duplicate repair #{repair.duplicate_number}: loaded duplicate issue "
+            f"#{duplicate_number} does not match configured number"
+        )
+        return False
+    if canonical_number != repair.canonical_number:
+        ctx.warn(
+            f"duplicate repair #{repair.duplicate_number}: loaded canonical issue "
+            f"#{canonical_number} does not match configured number"
+        )
+        return False
+    if repair.duplicate_number == repair.canonical_number:
+        ctx.warn(
+            f"duplicate repair #{repair.duplicate_number}: duplicate and canonical "
+            "numbers must differ"
+        )
+        return False
+
+    expected_title = normalize_title(repair.expected_title)
+    duplicate_title = duplicate_issue.get("title")
+    canonical_title = canonical_issue.get("title")
+    if not isinstance(duplicate_title, str) or normalize_title(duplicate_title) != expected_title:
+        ctx.warn(
+            f"duplicate repair #{repair.duplicate_number}: duplicate title "
+            f"{duplicate_title!r} does not match expected {repair.expected_title!r}"
+        )
+        return False
+    if not isinstance(canonical_title, str) or normalize_title(canonical_title) != expected_title:
+        ctx.warn(
+            f"duplicate repair #{repair.duplicate_number}: canonical title "
+            f"{canonical_title!r} does not match expected {repair.expected_title!r}"
+        )
+        return False
+    return True
+
+
+def comment_duplicate_issue(ctx: GhContext, duplicate_number: int, comment: str) -> bool:
+    """Comment on a duplicate issue."""
+    if ctx.dry_run or not ctx.authenticated:
+        return True
+    result = run_gh(
+        [
+            "issue",
+            "comment",
+            str(duplicate_number),
+            "--repo",
+            ctx.repo,
+            "--body",
+            comment,
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        ctx.warn(
+            f"duplicate comment failed for #{duplicate_number}: "
+            f"{result.stderr.strip()}"
+        )
+        return False
+    return True
+
+
+def close_duplicate_issue(ctx: GhContext, duplicate_number: int) -> bool:
+    """Close a duplicate issue as not planned."""
+    if ctx.dry_run or not ctx.authenticated:
+        return True
+    result = run_gh(
+        [
+            "issue",
+            "close",
+            str(duplicate_number),
+            "--repo",
+            ctx.repo,
+            "--reason",
+            "not planned",
+        ],
+        check=False,
+    )
+    if result.returncode != 0:
+        ctx.warn(
+            f"duplicate close failed for #{duplicate_number}: "
+            f"{result.stderr.strip()}"
+        )
+        return False
+    return True
+
+
+def repair_duplicate_issues(ctx: GhContext) -> int:
+    """Comment and close only configured duplicate governance seed issues."""
+    failures = 0
+    for repair in sorted(DUPLICATE_REPAIR_SPECS, key=lambda item: item.duplicate_number):
+        duplicate_issue = load_issue_summary(ctx, repair.duplicate_number)
+        if duplicate_issue is None:
+            failures += 1
             continue
 
-        state = str(issue.get("state", "")).upper()
+        state = str(duplicate_issue.get("state", "")).upper()
         if state == "CLOSED":
-            ctx.log(f"SKIP duplicate #{duplicate_number} (already closed)")
+            ctx.log(f"SKIP duplicate #{repair.duplicate_number}: already closed")
             continue
 
-        comment = duplicate_repair_comment(canonical_number)
+        canonical_issue = load_issue_summary(ctx, repair.canonical_number)
+        if canonical_issue is None:
+            failures += 1
+            continue
+
+        if not verify_duplicate_repair_identity(ctx, repair, duplicate_issue, canonical_issue):
+            failures += 1
+            continue
+
         if ctx.dry_run:
             ctx.log(
-                f"WOULD COMMENT on duplicate #{duplicate_number} "
-                f"(canonical #{canonical_number})"
+                f"WOULD COMMENT on duplicate #{repair.duplicate_number} "
+                f"(canonical #{repair.canonical_number})"
             )
-            ctx.log(f"WOULD CLOSE DUPLICATE #{duplicate_number}")
+            ctx.log(f"WOULD CLOSE DUPLICATE #{repair.duplicate_number}")
             continue
 
-        ctx.log(f"comment duplicate #{duplicate_number} -> canonical #{canonical_number}")
-        comment_result = run_gh(
-            [
-                "issue",
-                "comment",
-                str(duplicate_number),
-                "--repo",
-                ctx.repo,
-                "--body",
-                comment,
-            ],
-            check=False,
+        ctx.log(
+            f"comment duplicate #{repair.duplicate_number} -> "
+            f"canonical #{repair.canonical_number}"
         )
-        if comment_result.returncode != 0:
-            ctx.warn(
-                f"duplicate comment failed for #{duplicate_number}: "
-                f"{comment_result.stderr.strip()}"
-            )
+        comment = duplicate_repair_comment(repair.canonical_number)
+        if not comment_duplicate_issue(ctx, repair.duplicate_number, comment):
+            failures += 1
             continue
 
-        ctx.log(f"close duplicate #{duplicate_number} as not planned")
-        close_result = run_gh(
-            [
-                "issue",
-                "close",
-                str(duplicate_number),
-                "--repo",
-                ctx.repo,
-                "--reason",
-                "not planned",
-            ],
-            check=False,
-        )
-        if close_result.returncode != 0:
-            ctx.warn(
-                f"duplicate close failed for #{duplicate_number}: "
-                f"{close_result.stderr.strip()}"
-            )
+        ctx.log(f"close duplicate #{repair.duplicate_number} as not planned")
+        if not close_duplicate_issue(ctx, repair.duplicate_number):
+            failures += 1
+
+    return 1 if failures else 0
+
+
+def run_normal_setup(ctx: GhContext, *, skip_project: bool) -> int:
+    """Apply labels, milestones, seed issues, and optional project setup."""
+    ensure_labels(ctx)
+    milestone_numbers = ensure_milestones(ctx)
+    ensure_seed_issues(ctx, milestone_numbers)
+    if skip_project:
+        ctx.log("skip GitHub Project operation: --skip-project")
+    else:
+        try_create_project(ctx)
+
+    if ctx.dry_run:
+        print("Dry-run complete. Re-run with --apply after `gh auth login`.")
+        return 0
+    if not ctx.authenticated:
+        print("Apply requested but gh not authenticated. No changes made.")
+        return 1
+    if ctx.warnings:
+        print(f"Apply finished with {len(ctx.warnings)} warning(s).")
+        return 1
+    print("Apply complete.")
+    return 0
 
 
 def try_create_project(ctx: GhContext) -> None:
@@ -867,6 +1010,11 @@ def main() -> int:
         action="store_true",
         help="Comment and close the 24 known duplicate governance seed issues",
     )
+    parser.add_argument(
+        "--skip-project",
+        action="store_true",
+        help="Skip GitHub Projects v2 discovery and creation",
+    )
     args = parser.parse_args()
     dry_run = args.dry_run
 
@@ -885,25 +1033,24 @@ def main() -> int:
         print()
 
     if args.repair_duplicates:
-        repair_duplicate_issues(ctx)
-    else:
-        ensure_labels(ctx)
-        milestone_numbers = ensure_milestones(ctx)
-        ensure_seed_issues(ctx, milestone_numbers)
-        try_create_project(ctx)
+        if not validate_duplicate_repair_repository(ctx):
+            print()
+            print("Duplicate repair refused for this repository.")
+            return 2
+        exit_code = repair_duplicate_issues(ctx)
+        print()
+        if exit_code == 0:
+            if dry_run:
+                print("Duplicate repair dry-run complete.")
+            else:
+                print("Duplicate repair complete.")
+        else:
+            print("Duplicate repair finished with errors.")
+        return exit_code
 
+    exit_code = run_normal_setup(ctx, skip_project=args.skip_project)
     print()
-    if dry_run:
-        print("Dry-run complete. Re-run with --apply after `gh auth login`.")
-    elif not ctx.authenticated:
-        print("Apply requested but gh not authenticated. No changes made.")
-        return 1
-    elif ctx.warnings:
-        print(f"Apply finished with {len(ctx.warnings)} warning(s).")
-        return 1
-    else:
-        print("Apply complete.")
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

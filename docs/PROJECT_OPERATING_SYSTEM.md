@@ -157,12 +157,12 @@ Add issues from milestones created by setup script.
 
 ```bash
 # Preview only (no GitHub writes)
-python scripts/github_project_setup.py --dry-run
+python scripts/github_project_setup.py --dry-run --skip-project
 
 # Create missing labels, milestones, seed issues
-python scripts/github_project_setup.py --apply
+python scripts/github_project_setup.py --apply --skip-project
 
-# One-time duplicate repair (configured list only)
+# One-time duplicate repair (configured list only; approved repository only)
 python scripts/github_project_setup.py --repair-duplicates --dry-run
 python scripts/github_project_setup.py --repair-duplicates --apply
 ```
@@ -171,12 +171,21 @@ Requirements: [GitHub CLI](https://cli.github.com/) (`gh`) installed and authent
 
 **Idempotency guarantees:** Sequential idempotency is covered by automated tests.
 Official apply runs are serialized through GitHub Actions concurrency
-(`.github/workflows/github-governance-setup.yml`). Uncoordinated parallel local
-apply processes are not claimed to be fully atomic.
+(`.github/workflows/github-governance-setup.yml`) and use `--skip-project`.
+Uncoordinated parallel local apply processes are not claimed to be fully atomic.
+
+The official GitHub Actions apply path intentionally uses `--skip-project`.
+The repository-scoped `GITHUB_TOKEN` manages labels, milestones and issues only.
+GitHub Projects v2 setup requires a separately authorized token or manual setup.
+
+Duplicate repair is hard-restricted to `Pain1234/save-money-trading-bot`.
+Before mutation, repository, issue numbers and expected titles are verified.
+Repair fails closed when identity cannot be proven.
 
 The normal setup script **never** closes issues, deletes labels/milestones,
 changes branch protection, or touches secrets. The explicit
-`--repair-duplicates` mode comments and closes only the configured duplicate list.
+`--repair-duplicates` mode comments and closes only the configured duplicate list
+after identity verification in the approved repository.
 
 If `gh` is unavailable, perform label/milestone/issue creation manually using lists in `scripts/github_project_setup.py` source.
 
