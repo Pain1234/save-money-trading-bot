@@ -296,7 +296,7 @@ class GhContext:
         print(f"{prefix}{msg}")
 
 
-def run_gh(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_gh(args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["gh", *args],
         capture_output=True,
@@ -352,7 +352,7 @@ def ensure_labels(ctx: GhContext) -> None:
         ctx.log(f"create label: {name}")
         if ctx.dry_run or not ctx.authenticated:
             continue
-        run_gh(
+        result = run_gh(
             [
                 "label",
                 "create",
@@ -363,8 +363,12 @@ def ensure_labels(ctx: GhContext) -> None:
                 color,
                 "--description",
                 description,
-            ]
+            ],
+            check=False,
         )
+        if result.returncode != 0:
+            # Most common: already exists (race), or insufficient permissions.
+            ctx.log(f"WARN: label create failed for '{name}': {result.stderr.strip()}")
 
 
 def list_milestones(ctx: GhContext) -> dict[str, dict[str, Any]]:
@@ -411,10 +415,20 @@ def ensure_milestones(ctx: GhContext) -> dict[str, int]:
                 f"title={title}",
                 "-f",
                 f"description={description}",
-            ]
+            ],
+            check=False,
         )
-        created = json.loads(result.stdout)
-        title_to_number[title] = created["number"]
+        if result.returncode != 0:
+            # Common: 422 validation failed (already exists), or missing scopes.
+            ctx.log(f"WARN: milestone create failed for '{title}': {result.stderr.strip()}")
+            continue
+        try:
+            created = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            ctx.log(f"WARN: milestone create returned non-JSON for '{title}'")
+            continue
+        if isinstance(created, dict) and "number" in created:
+            title_to_number[title] = created["number"]
     # refresh if we created any
     if not ctx.dry_run and ctx.authenticated:
         title_to_number.update({t: m["number"] for t, m in list_milestones(ctx).items()})
@@ -459,7 +473,9 @@ def ensure_seed_issues(ctx: GhContext, milestone_numbers: dict[str, int]) -> Non
         ms_num = milestone_numbers.get(milestone_title)
         if ms_num is not None:
             args.extend(["--milestone", milestone_title])
-        run_gh(args)
+        result = run_gh(args, check=False)
+        if result.returncode != 0:
+            ctx.log(f"WARN: issue create failed for '{title}': {result.stderr.strip()}")
 
 
 def try_create_project(ctx: GhContext) -> None:
