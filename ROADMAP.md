@@ -32,7 +32,7 @@ Central project goal:
 - Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
 - Governance workflow merged (PR #54); full pytest CI still open (#53); no formal baseline release tag — **P1 not complete**.
 - Governance files on default branch `cursor/railway-paper-dashboard-v1` (not `main` — migration tracked in #52, accepted deviation until human approval).
-- P0 infrastructure in place (PR #29, #54); **P0 exit not complete** — DoD enforcement evidence open (#5), architecture gap fixed pending merge, `main` criterion deferred (#52).
+- P0 infrastructure in place (PR #29, #54); **P0 exit not complete** — DoD enforcement evidence open (#5), architecture gap corrected in PR #57, `main` criterion deferred (#52).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---
