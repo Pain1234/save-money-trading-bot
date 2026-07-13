@@ -68,5 +68,6 @@ deploy/                # Railway/Docker production paths
 | `docs/strategy-specification.md` | Strategy V1 behavior (frozen) |
 | `docs/risk-specification.md` | Risk limits (frozen) |
 | `docs/strategy-v1-parameter-inventory.md` | Published parameter defaults |
-| `docs/ARCHITECTURE.md` | System architecture |
+| `docs/ARCHITECTURE.md` | System architecture (verified entrypoints) |
+| `docs/DEFINITION_OF_DONE.md` | Merge checklist + review policy |
 | `docs/DECISION_LOG.md` | ADR-style decisions |

@@ -48,6 +48,39 @@ trading_constraints — exchange meta, symbol constraints (shared)
 
 ---
 
+## Production entrypoints
+
+Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypoints (2026-07-13).
+
+| Role | How it starts (production) | Command / module | Required env (minimum) |
+|------|----------------------------|------------------|-------------------------|
+| **Paper worker** | `deploy/scripts/start-worker.sh` | `python -m paper_trading` → `paper_trading.runner:main` | `PAPER_TRADING_DATABASE_URL` |
+| **Read-only API** | `deploy/scripts/start-api.sh` | `python -m paper_trading.api_runner` → FastAPI via uvicorn | `PAPER_TRADING_DATABASE_URL`; `PAPER_CONTROL_API_ENABLED=false` |
+| **DB migrate** | worker start or `deploy/scripts/pre-deploy-migrate.sh` | `python -m alembic upgrade head` | `PAPER_TRADING_DATABASE_URL` |
+| **Pre-start verify** | worker start (after migrate) | `python scripts/verify_paper_state.py` | `PAPER_TRADING_DATABASE_URL` |
+| **Dashboard** | Railway `paper-trading-dashboard.toml` | `npm run build` → `node server.js` | `PAPER_API_URL`, session secret (see deploy docs) |
+
+**Not production-deployed (research / ops tooling):**
+
+| Role | Command | Notes |
+|------|---------|-------|
+| Backtester | `pytest tests/backtester` or import `backtester.engine` | No Railway service; library + tests |
+| Strategy / risk engines | imported by paper + backtester | No standalone process |
+| Market data runtime | embedded in paper worker | `HyperliquidMarketDataRuntime` via `PaperTradingApplication` — no separate `__main__` |
+| Schema check | `python scripts/verify_pg_schema.py` | Manual/CI helper |
+| Soak runner | `python scripts/run_paper_soak.py` | Long-running test harness |
+| Governance setup | `python scripts/github_project_setup.py --apply` | GitHub labels/milestones/issues |
+
+**Local development (non-production):**
+
+| Role | Command |
+|------|---------|
+| Dashboard UI | `npm run dev` (mock data) |
+| Full test suite | `python -m pytest tests/ -v` |
+| Postgres integration | `python -m pytest tests/paper_trading -m postgres -v` |
+
+---
+
 ## Module responsibilities
 
 ### Data ingestion — `services/market_data/`
@@ -62,7 +95,7 @@ trading_constraints — exchange meta, symbol constraints (shared)
 
 **Persistent state:** Candle rows, subscription cursors, advisory locks for refresh.
 
-**Entrypoints:** Invoked from paper worker application wiring (`services/paper_trading/application.py`).
+**Entrypoints:** No standalone production process. Started inside the paper worker via `PaperTradingApplication._build_market_data_runtime()` (`services/paper_trading/application.py`).
 
 **Risks:** Reconnect deadlocks (mitigated in recent fixes); gap detection not fully productized (**Current Gap** P3).
 
@@ -86,7 +119,7 @@ trading_constraints — exchange meta, symbol constraints (shared)
 |----------------|---------|
 | Paper trading domain | Intents, orders, fills, positions, wallet, snapshots, scheduler, audit |
 | Market data | Candles and related tables |
-| Migrations | Alembic `001`–`006` under paper trading service |
+| Migrations | Alembic `001`–`009` at repository root `migrations/` |
 
 **Production URL:** `PAPER_TRADING_DATABASE_URL` (Railway private network).
 
@@ -128,6 +161,17 @@ trading_constraints — exchange meta, symbol constraints (shared)
 
 ---
 
+### Shared constraints — `services/trading_constraints/`
+
+| Responsibility | Details |
+|----------------|---------|
+| Symbol constraint validation | `quantity_step`, `minimum_quantity`, tick size, notional floors |
+| Consumers | `risk_engine`, `paper_trading.constraint_validation`, backtester |
+
+**Entrypoints:** Library only — no production process.
+
+---
+
 ### Portfolio — `services/paper_trading/portfolio.py`
 
 | Responsibility | Details |
@@ -160,7 +204,7 @@ trading_constraints — exchange meta, symbol constraints (shared)
 | API (control) | `api.py` — read + control endpoints for ops |
 | Production runner | `application.py`, `api_runner.py` |
 
-**Production entrypoints (do not change without issue):**
+**Production entrypoints (do not change without issue):** see [Production entrypoints](#production-entrypoints) above.
 
 - Worker: `deploy/scripts/start-worker.sh`
 - API: `deploy/scripts/start-api.sh`
@@ -258,9 +302,15 @@ trading_constraints — exchange meta, symbol constraints (shared)
 
 ## Known cross-cutting risks
 
-See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S1), paper-to-live decay, missing CI, governance adoption (P0).
+See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S1), paper-to-live decay, missing CI, governance adoption (P0 — in progress; DoD and architecture docs verified in Issues #3/#5).
 
 ---
+
+## Verification log
+
+| Date | Change | Issue |
+|------|--------|-------|
+| 2026-07-13 | Production entrypoints table; migrations `001`–`009`; `trading_constraints` module | #3 |
 
 ## Document maintenance
 

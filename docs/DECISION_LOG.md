@@ -154,6 +154,23 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 ---
 
+## ADR-010 – Definition of Done adoption
+
+**Status:** Accepted  
+**Date:** 2026-07-13
+
+**Context:** `docs/DEFINITION_OF_DONE.md` existed but was not enforced in review. Governance PRs #29, #36, #43 used the PR template DoD section; formal adoption was missing.
+
+**Decision:** Bind DoD to review via PR template, `AGENTS.md`, `docs/PROJECT_OPERATING_SYSTEM.md`, and `docs/DEFINITION_OF_DONE.md` § Review policy. Reviewers must reject PRs lacking test evidence (commands + results) unless explicitly waived in the issue.
+
+**Alternatives:** Wait for CI automation — deferred; manual review policy adopted first.
+
+**Consequences:** Merge without test evidence is a process defect. Optional CI comment remains future work.
+
+**Related Issues / PRs:** Issue #5.
+
+---
+
 ## Template for new entries
 
 ```text

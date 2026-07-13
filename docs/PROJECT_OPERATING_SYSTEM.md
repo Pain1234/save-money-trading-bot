@@ -175,6 +175,16 @@ If `gh` is unavailable, perform label/milestone/issue creation manually using li
 
 All work must satisfy `docs/DEFINITION_OF_DONE.md` before merge unless explicitly waived in the issue with rationale.
 
+### Pull request review (binding)
+
+Reviewers **must request changes** when:
+
+- The PR omits executed test commands and results (or a justified exception)
+- Acceptance criteria are not addressed
+- The DoD section is checked without supporting evidence in the PR body
+
+See `docs/DEFINITION_OF_DONE.md` § Review policy (adopted).
+
 ---
 
 ## Related documents

@@ -109,6 +109,8 @@ Use `docs/EXPERIMENT_TEMPLATE.md`.
 - Behavior change → tests + doc update in the same PR when reasonable.
 - Governance-only changes → update relevant governance docs.
 
+**Definition of Done:** Every PR must satisfy `docs/DEFINITION_OF_DONE.md`. Reviewers reject PRs missing test evidence (commands + results) unless the issue explicitly waives testing.
+
 ---
 
 ## 10. Never fabricate test results
@@ -158,6 +160,8 @@ Link the GitHub issue and PR. Do not rely on chat-only documentation for decisio
 
 | Task | Command / path |
 |------|----------------|
+| System architecture | `docs/ARCHITECTURE.md` |
+| Definition of Done | `docs/DEFINITION_OF_DONE.md` |
 | Tests (paper, postgres) | `python -m pytest tests/paper_trading -m postgres -v` |
 | Full tests | `python -m pytest tests/ -v` |
 | Lint | `ruff check .` |
