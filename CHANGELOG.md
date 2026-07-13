@@ -25,8 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `docs/ARCHITECTURE.md` — verified production entrypoints table; migrations `001`–`009`; `trading_constraints` module (Issue #3).
 - `docs/DEFINITION_OF_DONE.md` — binding review policy; baseline PR references (#29, #36, #43).
-- `docs/PROJECT_OPERATING_SYSTEM.md`, `AGENTS.md`, `.github/PULL_REQUEST_TEMPLATE.md` — DoD enforcement in review (Issue #5, ADR-010).
-- `scripts/github_project_setup.py` — robust idempotent matching for milestones/issues across encodings; GitHub Projects v2 JSON parsing; warning exit codes.
+- `docs/RISK_REGISTER.md` — top-5 risks linked to GitHub issues #45–#49 (Issue #6). — robust idempotent matching for milestones/issues across encodings; GitHub Projects v2 JSON parsing; warning exit codes.
 - `README.md` — governance workflow and repository layout.
 - `docs/DECISION_LOG.md` — ADR-007 accepted (GitHub as project memory).
 

@@ -20,6 +20,7 @@ Read, in order:
    - `docs/PROJECT_OPERATING_SYSTEM.md`
    - `docs/strategy-specification.md`, `docs/risk-specification.md` (when touching strategy/risk)
    - `docs/paper-trading-orchestrator-v1.md` (when touching paper trading)
+   - `docs/RISK_REGISTER.md` (when assessing or updating risks)
    - Area-specific READMEs under `services/*/`
 
 Do not start implementation without a clear issue scope.

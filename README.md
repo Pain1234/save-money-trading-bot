@@ -70,4 +70,5 @@ deploy/                # Railway/Docker production paths
 | `docs/strategy-v1-parameter-inventory.md` | Published parameter defaults |
 | `docs/ARCHITECTURE.md` | System architecture (verified entrypoints) |
 | `docs/DEFINITION_OF_DONE.md` | Merge checklist + review policy |
+| `docs/RISK_REGISTER.md` | Risk catalog (R-001–R-005 linked to issues) |
 | `docs/DECISION_LOG.md` | ADR-style decisions |
