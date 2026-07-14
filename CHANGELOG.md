@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [baseline-paper-v1.0.0] - 2026-07-14
+
+P1 reproducible paper-trading baseline release. No trading-logic, strategy-parameter,
+risk-limit, migration, or production start-command changes.
+
+### Added
+
+- `.github/workflows/ci.yml` — mandatory CI gate (validate, lint, unit test, PostgreSQL integration).
+- `docs/default-branch-migration-plan.md` — plan for `main` default branch (#52; migration not executed).
+
+### Changed
+
+- `docs/baseline-paper-v1.md` — tag criteria marked met; CI inventory updated.
+- `docs/ARCHITECTURE.md` — CI section reflects `ci.yml`.
+- `pyproject.toml` — ruff per-file ignores for governance scripts/tests.
+
+### Known gaps (unchanged)
+
+- Dashboard build test (`tests/deploy/test_dashboard_bundle.py`) — local/CI Node setup (#58).
+- Branch protection on default branch — deferred until #52 human approval.
+- Railway production PostgreSQL version — pending external verification.
+
 ## [Unreleased]
 
 ### Changed

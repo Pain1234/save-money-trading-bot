@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """GitHub labels, milestones, and seed issues for project governance.
 
 Uses GitHub CLI (gh) when available. Safe dry-run without authentication.
