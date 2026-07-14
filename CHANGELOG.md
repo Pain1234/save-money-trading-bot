@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/runbooks/worker-restart.md` - worker restart runbook (Issue #14).
 - `scripts/reconcile_accounting.py` - wallet reconciliation CLI (Issue #12).
 - `tests/scripts/test_reconcile_accounting.py` - exit code and cleanup tests.
+- P2 runbooks: deployment-verify, worker-safe-stop, kill-switch (Issue #15).
+- Tabletop incident docs/incidents/INC-20260714-001-tabletop-duplicate-fill.md.
 
 ### Changed
 
@@ -23,30 +25,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
   status.
 - `docs/runbooks/reconciliation-daily.md` - weekly reconciliation procedure (Issue #12).
+- docs/runbooks/README.md - runbook index; backup TODO until Issue #11 merges.
+- ROADMAP.md - P2 exit criteria honest (not complete).
+- docs/RISK_REGISTER.md - R-006/R-007 linked to P2 runbooks and audit.
+
+### Note
+
+Issue #15 bundles three runbooks; see docs/P2-PR-SPLIT.md.
+P2 not exit-complete until Issue #11 restore drill done.
+Rebase onto main after each prior P2 PR merge before opening this PR.
 
 ## [baseline-paper-v1.0.1] — 2026-07-14
-Post-tag baseline after `baseline-paper-v1.0.0` (merge of PR #63). Documentation and
-lock-file fixes only — `baseline-paper-v1.0.0` (`daacb627`) is unchanged.
-
-### Added
-
-- `requirements-baseline.txt` — portable pinned Python transitive PyPI dependencies (Issue #8); regenerated on Python 3.12.
-- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv; strips local project refs; Python 3.12 export enforcement.
-- CI job `requirements-baseline` — `pip install -r requirements-baseline.txt` on Python 3.12 / ubuntu-latest.
-- CI jobs `test-market-data` and `test-deploy` in `.github/workflows/ci.yml`.
-
-### Changed
-
-- `docs/baseline-paper-v1.md` — dashboard env vars documented; honest CI vs full-suite test counts.
-- `README.md` — dashboard local dev requires `PRIVATE_PAPER_API_URL` for server routes; Railway uses `node server.js` standalone.
-- `ROADMAP.md` — P1 tag released; post-tag follow-ups documented separately.
-- `.github/workflows/ci.yml` — unit job includes `paper_trading` and `market_data` (excludes `postgres`, `live`, `soak`).
-
-### Fixed
-
-- Issue #58 — dashboard build test failure traced to missing `npm ci` (not source defect); documentation corrected (not mock-by-default for `/dashboard`).
-
-## [baseline-paper-v1.0.0] — 2026-07-14
 
 Tagged at commit `daacb627` (merge of PR #62). P1 reproducible paper-trading baseline.
 

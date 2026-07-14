@@ -1,8 +1,11 @@
 # Runbooks
 
-Operational procedures for paper trading stack. **Stubs marked TODO** until verified in target environment.
+Operational procedures for paper trading stack.
 
 Only commands evidenced in repository docs are listed verbatim. Do not invent production secrets or URLs.
+
+**Operations docs:** [`docs/operations/metrics.md`](../operations/metrics.md),
+[`docs/operations/idempotency-audit.md`](../operations/idempotency-audit.md)
 
 ---
 
@@ -10,18 +13,18 @@ Only commands evidenced in repository docs are listed verbatim. Do not invent pr
 
 | Runbook | Status | Reference |
 |---------|--------|-----------|
-| Paper worker start | Partial | Below |
-| Read-only API start | Partial | Below |
-| Dashboard start | Partial | Below |
-| Pre-deploy migrations | Documented | Below |
-| Deployment verify | TODO | `docs/railway-paper-trading-dashboard-v1.md` |
-| Backup create | TODO | P2 issue |
-| Restore | TODO | P2 issue |
-| Reconciliation check | TODO | P2 issue |
-| Worker safe stop | TODO | P2 issue |
-| Kill switch | Partial | API control + spec |
+| Paper worker start | Complete | [Below](#paper-worker-start-production-path) |
+| Read-only API start | Complete | [Below](#read-only-api-start) |
+| Dashboard start | Complete | [Below](#dashboard-start) |
+| Pre-deploy migrations | Complete | [Below](#migrations-local-dev) |
+| Deployment verify | Complete | [deployment-verify.md](deployment-verify.md) |
+| Backup and restore | TODO - Issue #11 (draft PR; do not merge until drill) | Issue #11 |
+| Reconciliation check | Complete | [reconciliation-daily.md](reconciliation-daily.md) |
+| Worker safe stop | Complete | [worker-safe-stop.md](worker-safe-stop.md) |
+| Worker restart | Complete | [worker-restart.md](worker-restart.md) |
+| Kill switch | Partial (production: worker stop; control API local/dev) | [kill-switch.md](kill-switch.md) |
 | Quarantine bad data | TODO | P3 issue |
-| Incident response | Partial | `docs/incidents/README.md` |
+| Incident response | Complete | [`docs/incidents/README.md`](../incidents/README.md) |
 
 ---
 
@@ -43,7 +46,10 @@ deploy/scripts/start-worker.sh
 
 Source: `docs/railway-paper-trading-dashboard-v1.md`, `services/paper_trading/README.md`.
 
-**TODO runbook sections:** health check URLs, expected readiness timeline, log markers for READY.
+**Health check:** Monitor via readonly API — `GET /api/v1/status` (`display_status`, heartbeat age).
+Worker has no public HTTP port. Log markers: `worker_liveness_heartbeat`, `recover_on_startup`.
+
+See [`docs/operations/metrics.md`](../operations/metrics.md) for readiness timeline expectations.
 
 ---
 
@@ -65,7 +71,7 @@ Built and started via `deploy/Dockerfile.dashboard` / Railway dashboard service 
 
 Public URL (documented): `https://bot.save-money.xyz`
 
-**TODO:** local dev start command from `package.json` if different from prod — document without changing prod commands.
+**Local dev:** `npm ci` then `npm run dev` with `PRIVATE_PAPER_API_URL` set (see README).
 
 ---
 
@@ -88,32 +94,6 @@ ruff check .
 ```
 
 Full suite may require PostgreSQL and has known bulk-run isolation issues — document results in PR.
-
----
-
-## Kill switch (V1 FREEZE)
-
-**Intent:** Stop new entries; document current behavior in `docs/risk-specification.md`.
-
-**TODO runbook:** exact API endpoint and auth steps from `services/paper_trading/api.py` — verify before ops use.
-
----
-
-## Reconciliation check
-
-**TODO:** Daily procedure comparing DB positions/wallet vs expected paper model; funding/mark checks for soak (P6).
-
----
-
-## Backup and restore
-
-**TODO:** Railway Postgres backup schedule, restore test steps, RPO/RTO targets (P2).
-
----
-
-## Worker safe stop
-
-**TODO:** Graceful shutdown order (worker vs API), advisory lock release verification (P2).
 
 ---
 

@@ -10,9 +10,7 @@ Incidents are blameless factual records. They complement GitHub issues labeled `
 
 | Incident-ID | Date | Severity | Title | Status | Report |
 |-------------|------|----------|-------|--------|--------|
-| — | — | — | — | — | — |
-
-*No incident reports filed yet.*
+| INC-20260714-001 | 2026-07-14 | S2 (tabletop) | Duplicate fill reconciliation scenario | postmortem-complete | [INC-20260714-001-tabletop-duplicate-fill.md](INC-20260714-001-tabletop-duplicate-fill.md) |
 
 ---
 
