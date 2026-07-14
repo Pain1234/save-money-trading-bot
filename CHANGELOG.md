@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `docs/P3_HISTORICAL_DATA_PLAN.md` - P3 historical data planning document with nine issue drafts (Phase A; sub-issues after plan review).
+- ADR-012 in `docs/DECISION_LOG.md` - P2 dependency decision for P3 (#11 waiver).
+
+### Changed
+
+- `docs/ARCHITECTURE.md` - candle persistence described accurately (in-memory today; P3 planned).
+- `ROADMAP.md` - cross-link to P3 planning document.
+
+### Added (P2)
+
 - `docs/operations/metrics.md` - critical operational metrics catalog (Issue #16).
 - `docs/operations/idempotency-audit.md` - idempotency path inventory (Issue #13).
 - `docs/runbooks/worker-restart.md` - worker restart runbook (Issue #14).

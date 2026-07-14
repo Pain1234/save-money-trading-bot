@@ -197,6 +197,29 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 ---
 
+## ADR-012 – P2 dependency decision for P3 historical data
+
+**Status:** Accepted
+**Date:** 2026-07-14
+
+**Context:** P3 (versioned historical market data) requires an operational baseline for database backup and restore when storage ADR selects PostgreSQL. Issue #11 (backup/restore drill) has a completed local restore drill (PR #71 merged) but an outstanding Railway non-production restore.
+
+**Decision:**
+
+The local PostgreSQL restore drill and recovery procedures provide the operational minimum required for P3 planning and implementation.
+
+The outstanding Railway non-production restore in Issue #11 remains mandatory for full P2 completion but does **not** block local P3 historical-data development.
+
+P3 changes must not depend on untested Railway restore behavior.
+
+**Alternatives:** Block all P3 work until Railway restore is proven — rejected; local drill satisfies planning and implementation risk for dataset work.
+
+**Consequences:** #11 stays open on the P2 milestone. Epic #45 and P3 sub-issues may proceed. Any P3 storage implementation that shares PostgreSQL must document backup/restore assumptions explicitly.
+
+**Related Issues / PRs:** Issue #11, Issue #45, PR #71, `docs/P3_HISTORICAL_DATA_PLAN.md`.
+
+---
+
 ## Template for new entries
 
 ```text
