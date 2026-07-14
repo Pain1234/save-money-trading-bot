@@ -38,11 +38,13 @@ def test_quality_valid_series() -> None:
     )
     published = catalog.publish_dataset(manifest)
     catalog.append_candles(published.dataset_id, candles)
+    eval_time = candles[-1].close_time
     record = evaluate_dataset_quality(
         catalog,
         published.dataset_id,
         MarketSymbol.BTC,
         MarketTimeframe.DAILY,
-        EVAL,
+        eval_time,
     )
-    assert record.report.status in {DataQualityStatus.VALID, DataQualityStatus.STALE}
+    assert record.gap_count == 0
+    assert record.report.status == DataQualityStatus.VALID
