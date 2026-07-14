@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `docs/operations/metrics.md` - critical operational metrics catalog (Issue #16).
+
 ### Changed
 
 - GitHub default branch migrated from `cursor/railway-paper-dashboard-v1` to `main`
@@ -14,7 +18,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.github/workflows/ci.yml` — CI push trigger includes `main`.
 - `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
   status.
-
 ## [baseline-paper-v1.0.1] — 2026-07-14
 
 Post-tag baseline after `baseline-paper-v1.0.0` (merge of PR #63). Documentation and
