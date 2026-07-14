@@ -8,7 +8,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from market_data.content_hash import (
     HASH_ALGORITHM,
     canonical_decimal,
