@@ -220,6 +220,39 @@ P3 changes must not depend on untested Railway restore behavior.
 
 ---
 
+## ADR-013 – Immutable dataset storage (hybrid PostgreSQL + filesystem)
+
+**Status:** Accepted
+**Date:** 2026-07-14
+
+**Context:** P3 requires append-only dataset catalog, immutable raw provider payloads, and normalized candle persistence (#79). Options: PostgreSQL only, filesystem/object store only, or hybrid. Paper trading already uses Railway PostgreSQL (ADR-004); local backup/restore drill exists (ADR-012, #71).
+
+**Decision:** Adopt a **hybrid** storage architecture:
+
+1. **PostgreSQL** (shared paper DB, new `market_data_*` tables only): dataset manifest catalog, normalized candle rows, quarantine/quality metadata references. Append-only by convention: no `UPDATE`/`DELETE` on published dataset rows; corrections insert new `dataset_id` with `parent_dataset_id`.
+2. **Filesystem** (configurable `MARKET_DATA_DATASET_ROOT`): content-addressed raw JSON artifacts at `raw/{sha256}.json`. Immutable: write-if-not-exists; hash verified on read.
+3. **Lookup:** Research and import tooling resolve `dataset_id` via PostgreSQL catalog; raw bytes loaded by `raw_content_hash` / path.
+
+**Alternatives considered:**
+
+| Option | Rejected because |
+|--------|------------------|
+| PostgreSQL only (bytea blobs) | Large raw payloads bloat DB backups and migration cost |
+| Filesystem only | No transactional catalog alongside paper trading; weaker query by `dataset_id` |
+| Separate database | Extra Railway service and backup scope for solo-maintainer phase |
+
+**Backup/restore impact (R-009):**
+
+- PostgreSQL tables included in existing `pg_dump` / restore drill scope.
+- Raw files require `MARKET_DATA_DATASET_ROOT` volume backup documented in storage runbook addendum (#79).
+- P3 must not depend on untested Railway restore (#11 waiver per ADR-012).
+
+**Consequences:** Alembic migration `010` adds market-data tables only; paper-trading tables untouched. Import pipeline (#80) writes raw files before normalization.
+
+**Related Issues / PRs:** Issue #78, Issue #79, `docs/market-data-contract.md`.
+
+---
+
 ## Template for new entries
 
 ```text

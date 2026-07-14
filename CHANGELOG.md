@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).
 - `services/market_data/manifest.py`, `content_hash.py` - dataset manifest schema and SHA-256 hashing (#77).
 - `tests/market_data/fixtures/example_dataset_manifest.json` - example manifest (#77).
+
+### Changed
+
+- ADR-013 in `docs/DECISION_LOG.md` - hybrid PostgreSQL + filesystem dataset storage (#78).
 - ADR-012 in `docs/DECISION_LOG.md` - P2 dependency decision for P3 (#11 waiver).
 
 ### Changed
