@@ -274,7 +274,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Railpack fallback | `deploy/railpack/*.railpack.json` |
 | Local test compose | `docker/docker-compose.paper-test.yml` |
 
-**CI:** `.github/workflows/github-governance-setup.yml` — governance script validation and optional `workflow_dispatch` apply (PR #54). **Current Gap:** full pytest CI gate (Issue #53).
+**CI:** `.github/workflows/ci.yml` — mandatory compile, governance tests, ruff, unit pytest, and PostgreSQL integration (#53). Path-filtered governance apply: `.github/workflows/github-governance-setup.yml` (PR #54). Dashboard build test excluded from CI (Issue #58). Branch protection pending default-branch migration (#52).
 
 ---
 
@@ -311,7 +311,7 @@ See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S
 | Date | Change | Issue |
 |------|--------|-------|
 | 2026-07-13 | Production entrypoints table; migrations `001`–`009`; `trading_constraints` module | #3 |
-| 2026-07-13 | CI section: governance workflow present; full pytest CI still gap (#53) | #3 |
+| 2026-07-14 | CI workflow `ci.yml`; branch migration plan doc (#52); baseline tag criteria met | #53, #10, #52 |
 
 ## Document maintenance
 

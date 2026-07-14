@@ -191,12 +191,18 @@ Failure:
 
 PostgreSQL-marked tests were **not executed** in this run (require database setup).
 
-### CI coverage gap
+### CI coverage
 
 | Workflow | Scope |
 |----------|-------|
-| `.github/workflows/github-governance-setup.yml` | Governance script validation only |
-| Full pytest / dashboard build CI | **Not present** — tracked in Issue #53 |
+| `.github/workflows/github-governance-setup.yml` | Governance script validation (path-filtered PRs) |
+| `.github/workflows/ci.yml` | Mandatory CI: compile, governance tests, ruff, unit pytest, PostgreSQL integration (#53) |
+
+Required status checks (for branch protection after #52): `validate`, `lint`, `test`, `postgres`.
+See `docs/default-branch-migration-plan.md` § Branch protection plan.
+
+Dashboard build test (`tests/deploy/test_dashboard_bundle.py`) is excluded from CI until
+Node 22 is added to the workflow; known local failure tracked in Issue #58.
 
 ---
 
@@ -209,13 +215,13 @@ documentation-only or test-inventory updates without trading-logic changes.
 
 ### Tag criteria (all required)
 
-- [ ] This document merged and linked from `README.md`
-- [ ] P1 issues #7–#9 closed with evidence in PR
-- [ ] Start commands unchanged from `deploy/scripts/` (verified by review)
-- [ ] At least one documented test run with PostgreSQL (`-m postgres`) recorded in PR or issue
-- [ ] Known failures/flakes recorded (see table above)
-- [ ] `CHANGELOG.md` section for the tag
-- [ ] No strategy-parameter or risk-limit changes in tagged commit range
+- [x] This document merged and linked from `README.md`
+- [x] P1 issues #7–#9 closed with evidence in PR #55
+- [x] Start commands unchanged from `deploy/scripts/` (verified by review)
+- [x] At least one documented test run with PostgreSQL (`-m postgres`) — CI job `postgres` in `.github/workflows/ci.yml` (local run blocked without Docker; see Issue #10 PR)
+- [x] Known failures/flakes recorded (see table above; dashboard build #58)
+- [x] `CHANGELOG.md` section for the tag
+- [x] No strategy-parameter or risk-limit changes in tagged commit range
 
 ### Tag creation (manual, after criteria met)
 
@@ -236,5 +242,5 @@ Do not create the tag until exit criteria are agreed and recorded.
 | Versions recorded | Python 3.12 / Node 22 / Postgres 16 (local baseline); Railway Postgres version pending verification |
 | Test commands documented | See table above |
 | Known failures recorded | Dashboard build test (local) |
-| Baseline tag exists | **Pending** — criteria above |
-| Full CI for tests | **Pending** — Issue #53 |
+| Baseline tag exists | **Ready** — tag `baseline-paper-v1.0.0` after CI PR merge |
+| Full CI for tests | `.github/workflows/ci.yml` (#53) |

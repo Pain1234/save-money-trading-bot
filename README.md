@@ -4,7 +4,7 @@ Research and operations repository for trend Strategy V1, paper trading, backtes
 
 **Governance source of truth:** GitHub (issues, milestones, pull requests). Chat is the workbench; GitHub is the project memory.
 
-**Current workstream:** P1 — Reproducible Baseline Release (`ROADMAP.md`). P0 exit remains open. Baseline reference: `docs/baseline-paper-v1.md`.
+**Current workstream:** P1 — Reproducible Baseline Release (`ROADMAP.md`). Baseline reference: `docs/baseline-paper-v1.md`. CI: `.github/workflows/ci.yml`.
 
 ## Quick start
 
@@ -43,7 +43,7 @@ python -m pytest tests/paper_trading -m postgres -v   # requires PostgreSQL
 ruff check .
 ```
 
-See `docs/baseline-paper-v1.md` for markers, CI gaps, and recorded baseline results.
+See `docs/baseline-paper-v1.md` for markers, CI jobs, and recorded baseline results.
 
 ## Governance
 
@@ -83,6 +83,7 @@ deploy/                # Railway/Docker production paths
 | Document | Purpose |
 |----------|---------|
 | `docs/baseline-paper-v1.md` | P1 reproducible baseline (start, versions, tests) |
+| `docs/default-branch-migration-plan.md` | Plan for `main` default branch (#52; not executed) |
 | `docs/strategy-specification.md` | Strategy V1 behavior (frozen) |
 | `docs/risk-specification.md` | Risk limits (frozen) |
 | `docs/strategy-v1-parameter-inventory.md` | Published parameter defaults |
