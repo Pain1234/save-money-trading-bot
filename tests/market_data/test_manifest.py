@@ -8,7 +8,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from market_data.content_hash import (
     HASH_ALGORITHM,
     canonical_decimal,
@@ -16,7 +15,7 @@ from market_data.content_hash import (
     hash_normalized_candles,
     hash_raw_bytes,
 )
-from market_data.manifest import DatasetManifest, parse_manifest
+from market_data.manifest import parse_manifest
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
 
 FIXTURE = Path(__file__).parent / "fixtures" / "example_dataset_manifest.json"

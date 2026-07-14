@@ -1,7 +1,7 @@
 # P3 Dataset Reproducibility Audit
 
-**Issue:** #84  
-**Epic:** #45 (R-001)  
+**Issue:** #84
+**Epic:** #45 (R-001)
 **Date:** 2026-07-14
 
 ## ROADMAP P3 exit criteria

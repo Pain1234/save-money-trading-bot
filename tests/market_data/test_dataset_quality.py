@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from market_data.dataset_catalog import InMemoryDatasetCatalog
 from market_data.dataset_quality import evaluate_dataset_quality
 from market_data.models import DataQualityStatus, MarketSymbol, MarketTimeframe
+
 from tests.market_data.conftest import make_daily_series
 
 EVAL = datetime(2026, 6, 1, tzinfo=UTC)

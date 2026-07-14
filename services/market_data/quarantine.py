@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from market_data.dataset_catalog import DatasetCatalog, DatasetCatalogError
+from market_data.dataset_catalog import DatasetCatalog
 from market_data.dataset_quality import DatasetQualityReportRecord, evaluate_dataset_quality
 from market_data.manifest import DatasetManifest
 from market_data.models import DataQualityStatus, MarketSymbol, MarketTimeframe
@@ -31,7 +31,10 @@ class QuarantineDecision:
 _BLOCKING_STATUSES = frozenset({DataQualityStatus.INVALID, DataQualityStatus.DISCONNECTED})
 
 
-def assess_quarantine(manifest: DatasetManifest, report: DatasetQualityReportRecord) -> QuarantineDecision:
+def assess_quarantine(
+    manifest: DatasetManifest,
+    report: DatasetQualityReportRecord,
+) -> QuarantineDecision:
     status = report.report.status
     warnings = tuple(manifest.known_issues)
     if status in _BLOCKING_STATUSES:
