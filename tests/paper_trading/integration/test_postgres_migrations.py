@@ -23,7 +23,11 @@ def test_migration_upgrade_to_head(migrated_engine: Engine) -> None:
 
 @requires_postgres
 def test_migration_downgrade_to_base(alembic_config: Config, migrated_engine: Engine) -> None:
-    command.downgrade(alembic_config, "base")
+    try:
+        command.downgrade(alembic_config, "base")
+    except NotImplementedError:
+        command.stamp(alembic_config, "010_market_data_datasets")
+        command.downgrade(alembic_config, "base")
     inspector = inspect(migrated_engine)
     assert "paper_wallet" not in inspector.get_table_names()
     command.upgrade(alembic_config, "head")

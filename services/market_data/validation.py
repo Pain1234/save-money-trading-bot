@@ -114,6 +114,34 @@ def sort_candles(candles: tuple[NormalizedCandle, ...]) -> tuple[NormalizedCandl
     return tuple(sorted(candles, key=lambda c: c.open_time))
 
 
+def detect_conflicts(
+    candles: tuple[NormalizedCandle, ...],
+    symbol: MarketSymbol,
+    timeframe: MarketTimeframe,
+) -> tuple[CandleConflict, ...]:
+    """Find duplicate candle keys with differing OHLCV."""
+    from market_data.models import CandleKey
+
+    conflicts: list[CandleConflict] = []
+    by_key: dict[CandleKey, NormalizedCandle] = {}
+    for candle in sort_candles(candles):
+        if candle.symbol != symbol or candle.timeframe != timeframe:
+            continue
+        key = CandleKey(
+            symbol=candle.symbol,
+            timeframe=candle.timeframe,
+            open_time=candle.open_time,
+        )
+        existing = by_key.get(key)
+        if existing is not None and not candles_equal(existing, candle):
+            conflicts.append(
+                CandleConflict(key=key, existing=existing, incoming=candle)
+            )
+        else:
+            by_key[key] = candle
+    return tuple(conflicts)
+
+
 def validate_series(
     candles: tuple[NormalizedCandle, ...],
     symbol: MarketSymbol,

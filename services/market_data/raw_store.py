@@ -37,6 +37,7 @@ class FileRawArtifactStore:
         *,
         source: str,
         fetch_metadata: dict[str, Any],
+        fetch_id: str | None = None,
     ) -> RawArtifactRecord:
         content_hash = hash_raw_bytes(payload)
         relpath = f"raw/{content_hash}.json"
@@ -48,7 +49,7 @@ class FileRawArtifactStore:
                 raise RawArtifactStoreError(msg)
         else:
             path.write_bytes(payload)
-        raw_dataset_id = content_hash[:32]
+        raw_dataset_id = fetch_id or self.new_fetch_id()
         return RawArtifactRecord(
             raw_dataset_id=raw_dataset_id,
             content_hash=content_hash,
@@ -69,5 +70,5 @@ class FileRawArtifactStore:
         return data
 
     def new_fetch_id(self) -> str:
-        """Unique id when same bytes stored as new observation."""
+        """Unique id for each fetch observation (bytes may be content-addressed)."""
         return uuid.uuid4().hex[:32]

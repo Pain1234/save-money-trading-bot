@@ -8,7 +8,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from market_data.content_hash import derive_dataset_id
-from market_data.models import DataQualityStatus, MarketSymbol, MarketTimeframe
+from market_data.models import (
+    DataQualityReport,
+    DataQualityStatus,
+    MarketSymbol,
+    MarketTimeframe,
+)
 
 
 class DatasetManifest(BaseModel):
@@ -32,7 +37,12 @@ class DatasetManifest(BaseModel):
     created_at: datetime
     parent_dataset_id: str | None = None
     quality_status: DataQualityStatus = DataQualityStatus.VALID
+    allow_quality_warnings: bool = Field(
+        default=False,
+        description="Explicit approval to use STALE/INCOMPLETE datasets for research",
+    )
     known_issues: tuple[str, ...] = Field(default_factory=tuple)
+    quality_report: DataQualityReport | None = None
     dataset_id: str | None = None
     layer: str = Field(default="normalized", description="normalized | derived")
 

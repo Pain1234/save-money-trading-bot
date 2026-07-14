@@ -19,8 +19,10 @@ class PostgresDatasetCatalog:
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
+        self._append_conflicts: dict[str, list] = {}
 
     def register_raw_artifact(self, record: RawArtifactRecord) -> None:
+        """Register one fetch observation; same bytes may have many raw_dataset_ids."""
         stmt = text(
             """
             INSERT INTO market_data_raw_artifacts
@@ -30,7 +32,7 @@ class PostgresDatasetCatalog:
                     :raw_dataset_id, :content_hash, :storage_relpath, :source,
                     CAST(:fetch_metadata AS jsonb)
                 )
-            ON CONFLICT (content_hash) DO NOTHING
+            ON CONFLICT (raw_dataset_id) DO NOTHING
             """
         )
         with self._engine.begin() as conn:
@@ -93,7 +95,13 @@ class PostgresDatasetCatalog:
         dataset_id: str,
         candles: tuple[NormalizedCandle, ...],
     ) -> int:
-        stmt = text(
+        from market_data.models import CandleConflict, CandleKey
+        from market_data.validation import candles_equal
+
+        existing = self.list_candles(dataset_id)
+        keys = {(c.symbol, c.timeframe, c.open_time) for c in existing}
+        existing_by_key = {(c.symbol, c.timeframe, c.open_time): c for c in existing}
+        insert_stmt = text(
             """
             INSERT INTO market_data_normalized_candles
                 (dataset_id, symbol, timeframe, open_time, close_time,
@@ -104,11 +112,37 @@ class PostgresDatasetCatalog:
             ON CONFLICT ON CONSTRAINT uq_market_data_normalized_candles_key DO NOTHING
             """
         )
+        fetch_stmt = text(
+            """
+            SELECT symbol, timeframe, open_time, close_time,
+                   open, high, low, close, volume, is_closed
+            FROM market_data_normalized_candles
+            WHERE dataset_id = :dataset_id
+              AND symbol = :symbol
+              AND timeframe = :timeframe
+              AND open_time = :open_time
+            """
+        )
         added = 0
         with self._engine.begin() as conn:
             for candle in candles:
+                key = (candle.symbol, candle.timeframe, candle.open_time)
+                if key in keys:
+                    prior = existing_by_key[key]
+                    if not candles_equal(prior, candle):
+                        conflict = CandleConflict(
+                            key=CandleKey(
+                                symbol=candle.symbol,
+                                timeframe=candle.timeframe,
+                                open_time=candle.open_time,
+                            ),
+                            existing=prior,
+                            incoming=candle,
+                        )
+                        self._append_conflicts.setdefault(dataset_id, []).append(conflict)
+                    continue
                 result = conn.execute(
-                    stmt,
+                    insert_stmt,
                     {
                         "dataset_id": dataset_id,
                         "symbol": candle.symbol.value,
@@ -125,6 +159,43 @@ class PostgresDatasetCatalog:
                 )
                 if result.rowcount:
                     added += 1
+                    keys.add(key)
+                    existing_by_key[key] = candle
+                    continue
+                row = conn.execute(
+                    fetch_stmt,
+                    {
+                        "dataset_id": dataset_id,
+                        "symbol": candle.symbol.value,
+                        "timeframe": candle.timeframe.value,
+                        "open_time": candle.open_time,
+                    },
+                ).fetchone()
+                if row is None:
+                    continue
+                prior = NormalizedCandle(
+                    symbol=MarketSymbol(row[0]),
+                    timeframe=MarketTimeframe(row[1]),
+                    open_time=row[2],
+                    close_time=row[3],
+                    open=Decimal(row[4]),
+                    high=Decimal(row[5]),
+                    low=Decimal(row[6]),
+                    close=Decimal(row[7]),
+                    volume=Decimal(row[8]),
+                    is_closed=row[9],
+                )
+                if not candles_equal(prior, candle):
+                    conflict = CandleConflict(
+                        key=CandleKey(
+                            symbol=candle.symbol,
+                            timeframe=candle.timeframe,
+                            open_time=candle.open_time,
+                        ),
+                        existing=prior,
+                        incoming=candle,
+                    )
+                    self._append_conflicts.setdefault(dataset_id, []).append(conflict)
         return added
 
     def list_candles(self, dataset_id: str) -> tuple[NormalizedCandle, ...]:
@@ -156,3 +227,79 @@ class PostgresDatasetCatalog:
                 )
             )
         return tuple(candles)
+
+    def persist_quality_report(
+        self,
+        dataset_id: str,
+        record,
+        *,
+        known_issues: tuple[str, ...] | None = None,
+    ) -> None:
+        from market_data.dataset_quality import DatasetQualityReportRecord
+
+        if not isinstance(record, DatasetQualityReportRecord):
+            msg = "expected DatasetQualityReportRecord"
+            raise TypeError(msg)
+        manifest = self.get_manifest(dataset_id)
+        merged_issues = manifest.known_issues
+        if known_issues:
+            merged_issues = tuple(dict.fromkeys(manifest.known_issues + known_issues))
+        updated_manifest = manifest.model_copy(
+            update={
+                "quality_status": record.report.status,
+                "known_issues": merged_issues,
+                "quality_report": record.report,
+            }
+        )
+        stmt = text(
+            """
+            UPDATE market_data_datasets
+            SET quality_status = :quality_status,
+                manifest = CAST(:manifest AS jsonb)
+            WHERE dataset_id = :dataset_id
+            """
+        )
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                stmt,
+                {
+                    "dataset_id": dataset_id,
+                    "quality_status": record.report.status.value,
+                    "manifest": json.dumps(updated_manifest.to_catalog_dict()),
+                },
+            )
+            if result.rowcount != 1:
+                raise DatasetCatalogError(f"unknown dataset_id: {dataset_id}")
+
+    def update_manifest_known_issues(
+        self,
+        dataset_id: str,
+        known_issues: tuple[str, ...],
+    ) -> None:
+        manifest = self.get_manifest(dataset_id)
+        merged = tuple(dict.fromkeys(manifest.known_issues + known_issues))
+        updated_manifest = {
+            **manifest.to_catalog_dict(),
+            "known_issues": list(merged),
+        }
+        stmt = text(
+            """
+            UPDATE market_data_datasets
+            SET manifest = CAST(:manifest AS jsonb)
+            WHERE dataset_id = :dataset_id
+            """
+        )
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                stmt,
+                {
+                    "dataset_id": dataset_id,
+                    "manifest": json.dumps(updated_manifest),
+                },
+            )
+            if result.rowcount != 1:
+                raise DatasetCatalogError(f"unknown dataset_id: {dataset_id}")
+
+    def get_append_conflicts(self, dataset_id: str) -> tuple:
+        stored = self._append_conflicts.get(dataset_id, [])
+        return tuple(stored)
