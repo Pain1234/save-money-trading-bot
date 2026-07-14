@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -27,7 +26,10 @@ class PostgresDatasetCatalog:
             INSERT INTO market_data_raw_artifacts
                 (raw_dataset_id, content_hash, storage_relpath, source, fetch_metadata)
             VALUES
-                (:raw_dataset_id, :content_hash, :storage_relpath, :source, CAST(:fetch_metadata AS jsonb))
+                (
+                    :raw_dataset_id, :content_hash, :storage_relpath, :source,
+                    CAST(:fetch_metadata AS jsonb)
+                )
             ON CONFLICT (content_hash) DO NOTHING
             """
         )
