@@ -96,7 +96,6 @@ def test_dashboard_build_succeeds() -> None:
         capture_output=True,
         text=True,
         timeout=300,
-        shell=True,
         env={
             **__import__("os").environ,
             "SESSION_SECRET": "x" * 32,
