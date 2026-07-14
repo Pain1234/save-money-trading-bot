@@ -242,6 +242,8 @@ Persistent historical store with gap/duplicate detection, dataset manifests, dat
 
 **Current gap:** Live ingestion exists; full versioning/manifest pipeline not implemented.
 
+**Planning document:** [`docs/P3_HISTORICAL_DATA_PLAN.md`](docs/P3_HISTORICAL_DATA_PLAN.md) (Phase A — sub-issues created after plan review).
+
 ---
 
 ## P4 – Research Engine

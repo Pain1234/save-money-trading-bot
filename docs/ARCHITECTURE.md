@@ -91,9 +91,9 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Candle aggregation | Multiple intervals; ISO weekly derived from daily (not native `1w` subscription) |
 | Reconnect / degraded mode | Transport reconnect; readiness interaction with paper worker |
 | Backfill | `initial_backfill.py`, repository upserts |
-| Persistence | PostgreSQL candle tables (shared DB with paper trading in deployment) |
+| Persistence | **In-process only** — `InMemoryCandleRepository` (`repository.py`); lost on worker restart |
 
-**Persistent state:** Candle rows, subscription cursors, advisory locks for refresh.
+**Persistent state:** No durable candle rows or market-data catalog today. HTTP pagination cursors in `providers/hyperliquid_historical.py` exist only for the duration of a single backfill request (in-process). The PostgreSQL advisory lock (`paper_trading/lock.py`) serializes the **entire paper worker** via `PaperTradingApplication`; it is not a market-data refresh lock and does not live under `services/market_data/`. **P3 gap:** versioned raw artifact storage and normalized catalog per storage ADR.
 
 **Entrypoints:** No standalone production process. Started inside the paper worker via `PaperTradingApplication._build_market_data_runtime()` (`services/paper_trading/application.py`).
 
@@ -118,7 +118,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Responsibility | Details |
 |----------------|---------|
 | Paper trading domain | Intents, orders, fills, positions, wallet, snapshots, scheduler, audit |
-| Market data | Candles and related tables |
+| Market data | **Not persisted today** — in-memory candles only; Alembic has no candle tables (P3) |
 | Migrations | Alembic `001`–`009` at repository root `migrations/` |
 
 **Production URL:** `PAPER_TRADING_DATABASE_URL` (Railway private network).
@@ -280,7 +280,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 
 ## Data flows (paper production path)
 
-1. **Market data** ingests candles → PostgreSQL.
+1. **Market data** ingests candles → in-memory repository (PostgreSQL persistence planned in P3).
 2. **Market events** bridge notifies paper **scheduler** on new closed bars.
 3. **Evaluation** runs strategy at daily close boundaries.
 4. **Lifecycle** creates intents; **scheduler** executes scheduled fills (paper model).
