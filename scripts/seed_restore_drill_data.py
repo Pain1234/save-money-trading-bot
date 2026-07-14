@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Seed committed paper-trading rows for local restore drill (Issue #11)."""
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -113,7 +113,8 @@ def main() -> int:
         return 1
 
     snapshot_path = ROOT / "restore_drill_snapshot.json"
-    snapshot_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    snapshot_text = json.dumps(snapshot, indent=2, sort_keys=True) + "\n"
+    snapshot_path.write_text(snapshot_text, encoding="utf-8")
     print(f"Seeded committed trade lifecycle; snapshot written to {snapshot_path}")
     print(json.dumps(snapshot, indent=2, sort_keys=True))
     return 0

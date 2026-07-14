@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Capture and compare PostgreSQL state for restore drill verification."""
 
 from __future__ import annotations
