@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from market_data.manifest import DatasetManifest, parse_manifest
-from market_data.models import DataQualityStatus, NormalizedCandle
+from market_data.models import NormalizedCandle
 from market_data.raw_store import RawArtifactRecord
 
 

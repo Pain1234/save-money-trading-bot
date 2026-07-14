@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).
 - `services/market_data/manifest.py`, `content_hash.py` - dataset manifest schema and SHA-256 hashing (#77).
 - `tests/market_data/fixtures/example_dataset_manifest.json` - example manifest (#77).
+- ADR-012 in `docs/DECISION_LOG.md` - P2 dependency decision for P3 (#11 waiver).
 
 ### Changed
 
@@ -18,10 +19,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Migration `010_market_data_datasets` - catalog tables (#79).
 - `services/market_data/raw_store.py`, `dataset_catalog.py`, `postgres_catalog.py` (#79).
 - `services/market_data/historical_import.py` - raw capture and deterministic import (#80).
-- ADR-012 in `docs/DECISION_LOG.md` - P2 dependency decision for P3 (#11 waiver).
-
-### Changed
-
 - `docs/ARCHITECTURE.md` - candle persistence and market-data state described accurately (in-memory today; advisory lock is paper-worker scope).
 - `docs/P3_HISTORICAL_DATA_PLAN.md` - determinism contract requires immutable raw artifact; raw capture assigned to issue drafts 4/5.
 - `ROADMAP.md` - cross-link to P3 planning document.

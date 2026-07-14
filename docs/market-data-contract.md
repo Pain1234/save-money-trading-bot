@@ -1,7 +1,7 @@
 # Canonical Historical Market Data Contract
 
-**Issue:** #76  
-**Parent plan:** [P3_HISTORICAL_DATA_PLAN.md](P3_HISTORICAL_DATA_PLAN.md)  
+**Issue:** #76
+**Parent plan:** [P3_HISTORICAL_DATA_PLAN.md](P3_HISTORICAL_DATA_PLAN.md)
 **Epic:** #45 (R-001)
 
 This document is the normative contract for versioned historical market datasets in P3. Implementation issues (#77–#84) must conform to it.
