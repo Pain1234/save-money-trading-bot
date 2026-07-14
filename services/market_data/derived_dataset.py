@@ -9,7 +9,6 @@ from market_data.content_hash import hash_aggregate_candles
 from market_data.manifest import DatasetManifest
 from market_data.models import MarketSymbol, MarketTimeframe
 from market_data.timeframes import weekly_close, weekly_open_containing
-from tests.market_data.conftest import make_daily_series
 
 
 def build_derived_weekly_manifest(
