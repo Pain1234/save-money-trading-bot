@@ -7,8 +7,8 @@ Creates a clean virtual environment, installs the project with dev extras
 local project references (``-e``, ``file://``, absolute paths) are stripped.
 
 **Regeneration requires Python 3.12** (matches ``deploy/Dockerfile.paper-python``).
-CI and baseline lock files must be produced on 3.12; the script warns on other
-versions.
+The script exits with a non-zero code on any other Python version and does not
+overwrite ``requirements-baseline.txt``.
 
 Usage::
 
@@ -41,6 +41,25 @@ def _run(cmd: list[str], *, cwd: Path) -> None:
         )
 
 
+REQUIRED_PYTHON = (3, 12)
+
+
+def check_python_version() -> int | None:
+    """Return exit code 1 when Python is not 3.12.x; otherwise None (ok)."""
+    if sys.version_info[:2] != REQUIRED_PYTHON:
+        major, minor = sys.version_info[:2]
+        print(
+            f"ERROR: Python 3.12 is required (got {major}.{minor}).",
+            file=sys.stderr,
+        )
+        print(
+            "  Regenerate with: py -3.12 scripts/export_requirements_baseline.py",
+            file=sys.stderr,
+        )
+        return 1
+    return None
+
+
 def _is_local_project_ref(line: str) -> bool:
     """Return True if *line* is an editable or path install of this repo."""
     stripped = line.strip()
@@ -63,13 +82,11 @@ def _is_local_project_ref(line: str) -> bool:
 
 
 def main() -> int:
+    if (exit_code := check_python_version()) is not None:
+        return exit_code
+
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     print(f"Using Python {py_version} ({sys.executable})")
-    if sys.version_info[:2] != (3, 12):
-        print(
-            "WARNING: regenerate on Python 3.12 to match deploy/Dockerfile.paper-python.",
-            file=sys.stderr,
-        )
 
     with tempfile.TemporaryDirectory(prefix="baseline-export-") as tmp:
         venv_dir = Path(tmp) / ".venv"

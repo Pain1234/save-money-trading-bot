@@ -52,13 +52,38 @@ jobs:
           PY
 
       - name: Run governance unit tests
-        run: python -m unittest tests/governance/test_github_project_setup.py -v
+        run: python -m unittest discover -s tests/governance -p 'test_*.py' -v
 
       - name: Check pull request diff for whitespace errors
         if: github.event_name == 'pull_request'
         run: |
           git diff --check \
             "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+  requirements-baseline:
+    name: requirements-baseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sanity check baseline file has no local paths
+        run: |
+          if grep -E '(^-e |file://|[@] file:)' requirements-baseline.txt; then
+            echo "requirements-baseline.txt contains editable or file:// paths"
+            exit 1
+          fi
+
+      - name: Install from requirements-baseline.txt in clean venv
+        run: |
+          python -m venv .venv-baseline-test
+          .venv-baseline-test/bin/pip install --upgrade pip
+          .venv-baseline-test/bin/pip install -r requirements-baseline.txt
 
   lint:
     name: lint
