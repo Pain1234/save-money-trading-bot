@@ -21,17 +21,17 @@ See also `docs/PROJECT_OPERATING_SYSTEM.md` § GitHub Project (v2).
 
 ## P2.5 issues — recommended project fields
 
-| Seed key | Title | Phase | Workstream | Status | Priority |
-|----------|-------|-------|------------|--------|----------|
-| `p25-perf-establish-dashboard-api-performance-baseline` | perf: establish dashboard and API performance baseline | P2.5 | Platform | Ready | P1 High |
-| `p25-perf-add-request-timing-database-query-instrumentation` | perf: add request timing and database query instrumentation | P2.5 | Platform | Backlog | P1 High |
-| `p25-perf-audit-dashboard-sql-queries-database-indexes` | perf: audit dashboard SQL queries and database indexes | P2.5 | Platform | Backlog | P1 High |
-| `p25-perf-remove-redundant-status-readiness-database-reads` | perf: remove redundant status and readiness database reads | P2.5 | Platform | Backlog | P2 Medium |
-| `p25-feat-add-dashboard-summary-api-endpoint` | feat: add dashboard summary API endpoint | P2.5 | Platform | Backlog | P2 Medium |
-| `p25-perf-define-implement-dashboard-cache-policy` | perf: define and implement dashboard cache policy | P2.5 | Platform | Backlog | P2 Medium |
-| `p25-ux-add-loading-states-streaming-dashboard-routes` | ux: add loading states and streaming to dashboard routes | P2.5 | Platform | Backlog | P2 Medium |
-| `p25-test-add-dashboard-performance-regression-checks` | test: add dashboard performance regression checks | P2.5 | Platform | Backlog | P2 Medium |
-| `p25-ops-complete-production-dashboard-acceptance` | ops: complete production dashboard acceptance | P2.5 | Operations | Backlog | P1 High |
+| Seed key | Issue | Title | Phase | Workstream | Status | Priority |
+|----------|-------|-------|-------|------------|--------|----------|
+| `p25-perf-establish-dashboard-api-performance-baseline` | [#95](https://github.com/Pain1234/save-money-trading-bot/issues/95) | perf: establish dashboard and API performance baseline | P2.5 | Platform | Ready | P1 High |
+| `p25-perf-add-request-timing-database-query-instrumentation` | [#96](https://github.com/Pain1234/save-money-trading-bot/issues/96) | perf: add request timing and database query instrumentation | P2.5 | Platform | Backlog | P1 High |
+| `p25-perf-audit-dashboard-sql-queries-database-indexes` | [#101](https://github.com/Pain1234/save-money-trading-bot/issues/101) | perf: audit dashboard SQL queries and database indexes | P2.5 | Platform | Backlog | P1 High |
+| `p25-perf-remove-redundant-status-readiness-database-reads` | [#97](https://github.com/Pain1234/save-money-trading-bot/issues/97) | perf: remove redundant status and readiness database reads | P2.5 | Platform | Backlog | P2 Medium |
+| `p25-feat-add-dashboard-summary-api-endpoint` | [#98](https://github.com/Pain1234/save-money-trading-bot/issues/98) | feat: add dashboard summary API endpoint | P2.5 | Platform | Backlog | P2 Medium |
+| `p25-perf-define-implement-dashboard-cache-policy` | [#99](https://github.com/Pain1234/save-money-trading-bot/issues/99) | perf: define and implement dashboard cache policy | P2.5 | Platform | Backlog | P2 Medium |
+| `p25-ux-add-loading-states-streaming-dashboard-routes` | [#100](https://github.com/Pain1234/save-money-trading-bot/issues/100) | ux: add loading states and streaming to dashboard routes | P2.5 | Platform | Backlog | P2 Medium |
+| `p25-test-add-dashboard-performance-regression-checks` | [#102](https://github.com/Pain1234/save-money-trading-bot/issues/102) | test: add dashboard performance regression checks | P2.5 | Platform | Backlog | P2 Medium |
+| `p25-ops-complete-production-dashboard-acceptance` | [#103](https://github.com/Pain1234/save-money-trading-bot/issues/103) | ops: complete production dashboard acceptance | P2.5 | Operations | Backlog | P1 High |
 
 **Recommended sequencing:** baseline → instrumentation → SQL audit → redundant reads → summary API → cache → loading states → regression tests → production acceptance.
 
@@ -41,11 +41,11 @@ Do not set all P2.5 issues to **Ready** simultaneously (WIP limit: one large iss
 
 ## P7 issues — recommended project fields
 
-| Seed key | Title | Phase | Workstream | Status | Priority |
-|----------|-------|-------|------------|--------|----------|
-| `p7-research-define-hyperliquid-multi-asset-market-metadata-contract` | research: define Hyperliquid multi-asset market metadata contract | P7 | Research | Backlog | P3 Low |
-| `p7-research-define-hip3-equity-perpetual-validation-requirements` | research: define HIP-3 equity perpetual validation requirements | P7 | Research | Backlog | P3 Low |
-| `p7-risk-define-correlated-multi-asset-exposure-model` | risk: define correlated multi-asset exposure model | P7 | Risk | Backlog | P3 Low |
+| Seed key | Issue | Title | Phase | Workstream | Status | Priority |
+|----------|-------|-------|-------|------------|--------|----------|
+| `p7-research-define-hyperliquid-multi-asset-market-metadata-contract` | [#104](https://github.com/Pain1234/save-money-trading-bot/issues/104) | research: define Hyperliquid multi-asset market metadata contract | P7 | Research | Backlog | P3 Low |
+| `p7-research-define-hip3-equity-perpetual-validation-requirements` | [#105](https://github.com/Pain1234/save-money-trading-bot/issues/105) | research: define HIP-3 equity perpetual validation requirements | P7 | Research | Backlog | P3 Low |
+| `p7-risk-define-correlated-multi-asset-exposure-model` | [#106](https://github.com/Pain1234/save-money-trading-bot/issues/106) | risk: define correlated multi-asset exposure model | P7 | Risk | Backlog | P3 Low |
 
 P7 issues are **planning only** until P5 validation and P6 paper soak complete (ADR-014).
 
@@ -56,4 +56,4 @@ P7 issues are **planning only** until P5 validation and P6 paper soak complete (
 1. Run `python scripts/github_project_setup.py --apply --skip-project` to create milestones and seed issues.
 2. In GitHub: **Projects → Trading System Roadmap → Add item** — search by seed key marker or title.
 3. Set Phase, Workstream, Status, and Priority per tables above.
-4. Update `docs/RISK_REGISTER.md` issue links (R-019–R-024) when issue numbers are known.
+4. `docs/RISK_REGISTER.md` links R-018–R-024 to issues [#95](https://github.com/Pain1234/save-money-trading-bot/issues/95)–[#106](https://github.com/Pain1234/save-money-trading-bot/issues/106).
