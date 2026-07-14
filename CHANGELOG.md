@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Migration `010_market_data_datasets` - catalog tables (#79).
 - `services/market_data/raw_store.py`, `dataset_catalog.py`, `postgres_catalog.py` (#79).
 - `services/market_data/historical_import.py` - raw capture and deterministic import (#80).
+- `services/market_data/dataset_quality.py` (#81), `quarantine.py` (#82).
+- `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md` (#84).
 
 ### Changed
 
