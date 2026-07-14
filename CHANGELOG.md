@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/operations/metrics.md` - critical operational metrics catalog (Issue #16).
 - `docs/operations/idempotency-audit.md` - idempotency path inventory (Issue #13).
 - `docs/runbooks/worker-restart.md` - worker restart runbook (Issue #14).
+- `scripts/reconcile_accounting.py` - wallet reconciliation CLI (Issue #12).
+- `tests/scripts/test_reconcile_accounting.py` - exit code and cleanup tests.
 
 ### Changed
 
@@ -20,9 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.github/workflows/ci.yml` — CI push trigger includes `main`.
 - `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
   status.
+- `docs/runbooks/reconciliation-daily.md` - weekly reconciliation procedure (Issue #12).
 
 ## [baseline-paper-v1.0.1] — 2026-07-14
-
 Post-tag baseline after `baseline-paper-v1.0.0` (merge of PR #63). Documentation and
 lock-file fixes only — `baseline-paper-v1.0.0` (`daacb627`) is unchanged.
 
