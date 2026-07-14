@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `docs/operations/metrics.md` - critical operational metrics catalog (Issue #16).
 - `docs/operations/idempotency-audit.md` - idempotency path inventory (Issue #13).
+- `docs/runbooks/worker-restart.md` - worker restart runbook (Issue #14).
 
 ### Changed
 
