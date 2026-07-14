@@ -59,6 +59,8 @@ def test_quality_valid_series() -> None:
     assert record.report.status == DataQualityStatus.VALID
     manifest = catalog.get_manifest(dataset_id)
     assert manifest.quality_status == DataQualityStatus.VALID
+    assert manifest.quality_report is not None
+    assert manifest.quality_report.status == DataQualityStatus.VALID
 
 
 def test_quality_detects_gap() -> None:

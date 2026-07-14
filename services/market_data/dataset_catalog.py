@@ -136,7 +136,10 @@ class InMemoryDatasetCatalog:
             raise DatasetCatalogError("unknown dataset")
         self._quality_reports[dataset_id] = record
         manifest = self._manifests[dataset_id]
-        updates: dict = {"quality_status": record.report.status}
+        updates: dict = {
+            "quality_status": record.report.status,
+            "quality_report": record.report,
+        }
         if known_issues:
             updates["known_issues"] = tuple(
                 dict.fromkeys(manifest.known_issues + known_issues)

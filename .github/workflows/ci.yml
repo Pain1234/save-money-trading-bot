@@ -210,4 +210,4 @@ jobs:
 
       - name: Run PostgreSQL integration tests
         run: |
-          python -m pytest tests/paper_trading -m "postgres and not soak" -q --tb=short
+          python -m pytest tests/paper_trading tests/market_data -m "postgres and not soak" -q --tb=short

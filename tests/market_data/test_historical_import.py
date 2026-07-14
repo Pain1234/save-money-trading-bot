@@ -67,6 +67,22 @@ def test_renormalize_is_idempotent_on_existing_dataset(tmp_path: Path) -> None:
     assert second.manifest.content_hash == first.manifest.content_hash
 
 
+def test_renormalize_without_evaluation_time_is_deterministic(tmp_path: Path) -> None:
+    catalog = InMemoryDatasetCatalog()
+    store = FileRawArtifactStore(tmp_path)
+    payload = FIXTURE.read_bytes()
+    config = _config()
+    first = import_from_raw_payload(catalog, store, payload, config)
+    second = renormalize_from_raw_hash(
+        catalog,
+        store,
+        first.raw_content_hash,
+        config,
+    )
+    assert second.manifest.dataset_id == first.manifest.dataset_id
+    assert second.manifest.content_hash == first.manifest.content_hash
+
+
 def test_identical_payloads_get_distinct_raw_dataset_ids(tmp_path: Path) -> None:
     catalog = InMemoryDatasetCatalog()
     store = FileRawArtifactStore(tmp_path)

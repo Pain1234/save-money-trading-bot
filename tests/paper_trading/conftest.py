@@ -52,6 +52,12 @@ _PAPER_TRADING_RESET_TABLES = (
     "scheduler_runs",
 )
 
+_MARKET_DATA_RESET_TABLES = (
+    "market_data_normalized_candles",
+    "market_data_datasets",
+    "market_data_raw_artifacts",
+)
+
 ALLOWED_POSTGRES_TEST_DATABASE = "paper_trading_test"
 
 
@@ -102,6 +108,21 @@ def _reset_postgres_trading_state(engine: Engine) -> None:
                 """
             )
         )
+        conn.commit()
+
+
+def _reset_postgres_market_data_state(engine: Engine) -> None:
+    with engine.connect() as conn:
+        assert_postgres_test_database_safe(conn)
+        exists = conn.execute(
+            text("SELECT to_regclass('public.market_data_datasets') IS NOT NULL")
+        ).scalar()
+        if not exists:
+            return
+        tables = ", ".join(_MARKET_DATA_RESET_TABLES)
+        conn.execute(text("SET lock_timeout = '2s'"))
+        conn.execute(text("SET statement_timeout = '5s'"))
+        conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
         conn.commit()
 
 
@@ -170,11 +191,9 @@ def _reset_postgres_trading_tables_before_test(request: pytest.FixtureRequest) -
     if "postgres" not in request.node.keywords or not _is_postgres_available():
         yield
         return
-    engine = create_engine(_postgres_url(), pool_pre_ping=True)
-    try:
-        _reset_postgres_trading_state(engine)
-    finally:
-        engine.dispose()
+    engine: Engine = request.getfixturevalue("migrated_engine")
+    _reset_postgres_trading_state(engine)
+    _reset_postgres_market_data_state(engine)
     yield
 
 
@@ -191,7 +210,11 @@ def migrated_engine(alembic_config: Config) -> Iterator[Engine]:
     command.upgrade(alembic_config, "head")
     engine = create_engine(_postgres_url(), pool_pre_ping=True)
     yield engine
-    command.downgrade(alembic_config, "base")
+    try:
+        command.downgrade(alembic_config, "base")
+    except NotImplementedError:
+        command.stamp(alembic_config, "010_market_data_datasets")
+        command.downgrade(alembic_config, "base")
     engine.dispose()
 
 

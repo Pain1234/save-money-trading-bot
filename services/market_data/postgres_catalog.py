@@ -19,6 +19,7 @@ class PostgresDatasetCatalog:
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
+        self._append_conflicts: dict[str, list] = {}
 
     def register_raw_artifact(self, record: RawArtifactRecord) -> None:
         """Register one fetch observation; same bytes may have many raw_dataset_ids."""
@@ -94,7 +95,13 @@ class PostgresDatasetCatalog:
         dataset_id: str,
         candles: tuple[NormalizedCandle, ...],
     ) -> int:
-        stmt = text(
+        from market_data.models import CandleConflict, CandleKey
+        from market_data.validation import candles_equal
+
+        existing = self.list_candles(dataset_id)
+        keys = {(c.symbol, c.timeframe, c.open_time) for c in existing}
+        existing_by_key = {(c.symbol, c.timeframe, c.open_time): c for c in existing}
+        insert_stmt = text(
             """
             INSERT INTO market_data_normalized_candles
                 (dataset_id, symbol, timeframe, open_time, close_time,
@@ -108,8 +115,23 @@ class PostgresDatasetCatalog:
         added = 0
         with self._engine.begin() as conn:
             for candle in candles:
+                key = (candle.symbol, candle.timeframe, candle.open_time)
+                if key in keys:
+                    prior = existing_by_key[key]
+                    if not candles_equal(prior, candle):
+                        conflict = CandleConflict(
+                            key=CandleKey(
+                                symbol=candle.symbol,
+                                timeframe=candle.timeframe,
+                                open_time=candle.open_time,
+                            ),
+                            existing=prior,
+                            incoming=candle,
+                        )
+                        self._append_conflicts.setdefault(dataset_id, []).append(conflict)
+                    continue
                 result = conn.execute(
-                    stmt,
+                    insert_stmt,
                     {
                         "dataset_id": dataset_id,
                         "symbol": candle.symbol.value,
@@ -126,6 +148,8 @@ class PostgresDatasetCatalog:
                 )
                 if result.rowcount:
                     added += 1
+                    keys.add(key)
+                    existing_by_key[key] = candle
         return added
 
     def list_candles(self, dataset_id: str) -> tuple[NormalizedCandle, ...]:
@@ -174,12 +198,13 @@ class PostgresDatasetCatalog:
         merged_issues = manifest.known_issues
         if known_issues:
             merged_issues = tuple(dict.fromkeys(manifest.known_issues + known_issues))
-        updated_manifest = {
-            **manifest.to_catalog_dict(),
-            "quality_status": record.report.status.value,
-            "known_issues": list(merged_issues),
-            "quality_report": record.report.model_dump(mode="json"),
-        }
+        updated_manifest = manifest.model_copy(
+            update={
+                "quality_status": record.report.status,
+                "known_issues": merged_issues,
+                "quality_report": record.report,
+            }
+        )
         stmt = text(
             """
             UPDATE market_data_datasets
@@ -194,7 +219,7 @@ class PostgresDatasetCatalog:
                 {
                     "dataset_id": dataset_id,
                     "quality_status": record.report.status.value,
-                    "manifest": json.dumps(updated_manifest),
+                    "manifest": json.dumps(updated_manifest.to_catalog_dict()),
                 },
             )
             if result.rowcount != 1:
@@ -230,4 +255,5 @@ class PostgresDatasetCatalog:
                 raise DatasetCatalogError(f"unknown dataset_id: {dataset_id}")
 
     def get_append_conflicts(self, dataset_id: str) -> tuple:
-        return ()
+        stored = self._append_conflicts.get(dataset_id, [])
+        return tuple(stored)

@@ -80,6 +80,23 @@ def load_import_checkpoint(checkpoint_dir: Path, job_id: str) -> ImportCheckpoin
     )
 
 
+_FAR_FUTURE_EVALUATION = datetime(2099, 12, 31, 23, 59, 59, tzinfo=UTC)
+
+
+def _stable_evaluation_time(
+    payload: bytes,
+    config: HistoricalImportConfig,
+    evaluation_time: datetime | None,
+) -> datetime:
+    """Derive a deterministic evaluation time from frozen raw bytes."""
+    if evaluation_time is not None:
+        return evaluation_time
+    raws = _parse_hyperliquid_snapshot(payload, config, _FAR_FUTURE_EVALUATION)
+    if raws:
+        return max(r.close_time for r in raws)
+    return datetime.now(tz=UTC)
+
+
 def _parse_hyperliquid_snapshot(
     payload: bytes,
     config: HistoricalImportConfig,
@@ -162,7 +179,7 @@ def import_from_raw_payload(
     raw_record: RawArtifactRecord | None = None,
 ) -> HistoricalImportResult:
     """Capture raw bytes, normalize deterministically, publish dataset."""
-    evaluation_time = evaluation_time or datetime.now(tz=UTC)
+    evaluation_time = _stable_evaluation_time(payload, config, evaluation_time)
     if checkpoint_dir and job_id:
         existing = load_import_checkpoint(checkpoint_dir, job_id)
         if existing and existing.phase == "published" and existing.dataset_id:
@@ -255,8 +272,8 @@ def renormalize_from_raw_hash(
     evaluation_time: datetime | None = None,
 ) -> HistoricalImportResult:
     """Re-normalize from stored raw artifact (determinism check)."""
-    evaluation_time = evaluation_time or datetime.now(tz=UTC)
     payload = raw_store.load(raw_content_hash)
+    evaluation_time = _stable_evaluation_time(payload, config, evaluation_time)
     raws = _parse_hyperliquid_snapshot(payload, config, evaluation_time)
     normalized = normalize_batch(raws, evaluation_time)
     if not normalized:
@@ -312,6 +329,7 @@ def resume_import_from_checkpoint(
         msg = f"checkpoint {job_id} missing raw_content_hash"
         raise ValueError(msg)
     payload = raw_store.load(checkpoint.raw_content_hash)
+    evaluation_time = _stable_evaluation_time(payload, config, evaluation_time)
     raw_record = None
     if checkpoint.raw_dataset_id:
         raw_record = RawArtifactRecord(

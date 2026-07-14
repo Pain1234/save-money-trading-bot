@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+pytest_plugins = ["tests.paper_trading.conftest"]
+
 _SERVICES = Path(__file__).resolve().parents[2] / "services"
 if str(_SERVICES) not in sys.path:
     sys.path.insert(0, str(_SERVICES))

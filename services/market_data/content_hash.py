@@ -23,6 +23,7 @@ EXCLUDED_FROM_CONTENT_HASH = frozenset(
         "quality_status",
         "known_issues",
         "allow_quality_warnings",
+        "quality_report",
     }
 )
 
