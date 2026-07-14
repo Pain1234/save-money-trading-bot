@@ -6,19 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Post-tag improvements after `baseline-paper-v1.0.0` (PR #63). A patch tag
-`baseline-paper-v1.0.1` may follow this PR merge for documentation and lock-file
-fixes only — do not retag or move `baseline-paper-v1.0.0`.
+## [baseline-paper-v1.0.1] — 2026-07-14
+
+Post-tag baseline after `baseline-paper-v1.0.0` (merge of PR #63). Documentation and
+lock-file fixes only — `baseline-paper-v1.0.0` (`daacb627`) is unchanged.
 
 ### Added
 
-- `requirements-baseline.txt` — pinned Python transitive PyPI dependencies (Issue #8); regenerated on Python 3.12.
-- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv; strips local project refs.
+- `requirements-baseline.txt` — portable pinned Python transitive PyPI dependencies (Issue #8); regenerated on Python 3.12.
+- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv; strips local project refs; Python 3.12 export enforcement.
+- CI job `requirements-baseline` — `pip install -r requirements-baseline.txt` on Python 3.12 / ubuntu-latest.
 - CI jobs `test-market-data` and `test-deploy` in `.github/workflows/ci.yml`.
 
 ### Changed
 
-- `docs/baseline-paper-v1.md` — tag status **released** at `baseline-paper-v1.0.0`; honest CI vs full-suite test counts; dashboard env vars documented.
+- `docs/baseline-paper-v1.md` — dashboard env vars documented; honest CI vs full-suite test counts.
 - `README.md` — dashboard local dev requires `PRIVATE_PAPER_API_URL` for server routes; Railway uses `node server.js` standalone.
 - `ROADMAP.md` — P1 tag released; post-tag follow-ups documented separately.
 - `.github/workflows/ci.yml` — unit job includes `paper_trading` and `market_data` (excludes `postgres`, `live`, `soak`).
