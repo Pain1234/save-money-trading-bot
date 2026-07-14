@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - ADR-013 in `docs/DECISION_LOG.md` - hybrid PostgreSQL + filesystem dataset storage (#78).
+- Migration `010_market_data_datasets` - catalog tables (#79).
+- `services/market_data/raw_store.py`, `dataset_catalog.py`, `postgres_catalog.py` (#79).
+- `services/market_data/historical_import.py` - raw capture and deterministic import (#80).
 - ADR-012 in `docs/DECISION_LOG.md` - P2 dependency decision for P3 (#11 waiver).
 
 ### Changed
