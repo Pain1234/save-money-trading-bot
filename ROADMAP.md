@@ -30,10 +30,10 @@ Central project goal:
 - Paper-trading orchestrator phases 1–9 implemented; phase 10 audit gate not closed (`services/paper_trading/README.md`, `docs/paper-trading-orchestrator-v1.md`).
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
 - Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
-- Governance workflow merged (PR #54); mandatory CI in `.github/workflows/ci.yml` (#53); baseline tag after CI PR merge — **P1 nearly complete**.
+- Governance workflow merged (PR #54); mandatory CI in `.github/workflows/ci.yml` (#53); baseline tag **open** — prerequisites incomplete (Issue #10).
 - Governance files on default branch `cursor/railway-paper-dashboard-v1`; `main` migration plan in `docs/default-branch-migration-plan.md` (#52 plan done; execution requires human approval).
-- **P0 complete** (2026-07-14): exit criteria met with documented deviations (#52 `main`, ADR-011 solo-maintainer DoD enforcement). Issues #2–#6 closed; #51/#54/#57 merged.
-- P1 baseline documentation complete (`docs/baseline-paper-v1.md`, PR #55); formal tag `baseline-paper-v1.0.0` with CI PR (#10).
+- **P0 complete** (2026-07-14): exit criteria met with documented deviations (#52 `main`, ADR-011 solo-maintainer DoD enforcement). Attributed to PRs #51/#54/#57 and follow-up governance work — **not** PR #55 (baseline docs only).
+- P1 baseline documentation merged (`docs/baseline-paper-v1.md`, PR #55); formal tag `baseline-paper-v1.0.0` remains **open** (Issue #10).
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---
@@ -124,9 +124,9 @@ Current paper-trading stack reproducible from a tagged commit: pinned dependenci
 
 - [x] Start paths documented from `deploy/scripts/` (`docs/baseline-paper-v1.md`)
 - [x] Python 3.12 / Node 22 / PostgreSQL 16 recorded
-- [x] Test suite and markers documented; known local failure recorded
+- [x] Test suite and markers documented; known local failure recorded and resolved (#58)
 - [ ] Tag exists; checkout + documented commands reproduce paper worker locally or in CI
-- [ ] Full test CI gate (Issue #53)
+- [ ] Full test CI gate green with recorded evidence (Issue #53 — workflow exists; tag gate open)
 
 ### Stop criteria
 

@@ -26,14 +26,28 @@ Full baseline: **`docs/baseline-paper-v1.md`** (env vars, versions, tests, tag c
 
 ### Dashboard (UI)
 
+**Local UI development** (mock data by default; no paper API required):
+
 ```bash
 npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Local `npm run dev` uses mock
-data for UI work. Production dashboard reads the private paper API via Railway
-(see `docs/railway-paper-trading-dashboard-v1.md`).
+Open [http://localhost:3000](http://localhost:3000). Set `PRIVATE_PAPER_API_URL`
+in `.env.local` to use a running read-only API locally.
+
+**Production-shaped build** (matches Railway; requires Node **22+** and build env):
+
+```bash
+npm ci
+# SESSION_SECRET, PRIVATE_PAPER_API_URL, AUTH_USERNAME, AUTH_PASSWORD_HASH — see .env.example
+npm run build
+npm start
+```
+
+`npm ci` is required before `npm run build` or `npm run dev` on a fresh clone.
+Production dashboard reads the private paper API via Railway
+(`docs/railway-paper-trading-dashboard-v1.md`).
 
 ### Tests
 

@@ -4,29 +4,34 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [baseline-paper-v1.0.0] - 2026-07-14
-
-P1 reproducible paper-trading baseline release. No trading-logic, strategy-parameter,
-risk-limit, migration, or production start-command changes.
+## [Unreleased]
 
 ### Added
 
-- `.github/workflows/ci.yml` — mandatory CI gate (validate, lint, unit test, PostgreSQL integration).
-- `docs/default-branch-migration-plan.md` — plan for `main` default branch (#52; migration not executed).
+- `requirements-baseline.txt` — pinned Python transitive dependencies for P1 baseline (Issue #8).
+- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv.
 
 ### Changed
 
-- `docs/baseline-paper-v1.md` — tag criteria marked met; CI inventory updated.
-- `docs/ARCHITECTURE.md` — CI section reflects `ci.yml`.
-- `pyproject.toml` — ruff per-file ignores for governance scripts/tests.
+- `docs/baseline-paper-v1.md` — dashboard local vs production guidance; honest test inventory; tag gate remains **open**; PostgreSQL local blocker documented; Issue #58 resolution.
+- `README.md` — dashboard requires `npm ci`; separate local dev vs production build paths.
+- `ROADMAP.md` — P0 attribution corrected (not PR #55); P1 tag gate open.
+- Removed premature `[baseline-paper-v1.0.0]` changelog section — tag not created; gate open (Issue #10).
 
-### Known gaps (unchanged)
+### Fixed
 
-- Dashboard build test (`tests/deploy/test_dashboard_bundle.py`) — local/CI Node setup (#58).
-- Branch protection on default branch — deferred until #52 human approval.
-- Railway production PostgreSQL version — pending external verification.
+- Issue #58 — dashboard build test failure traced to missing `npm ci` (not source defect).
 
-## [Unreleased]
+### Planned — `baseline-paper-v1.0.0` (Issue #10, tag not created)
+
+Criteria and notes for the future tag release (do not tag until checklist in
+`docs/baseline-paper-v1.md` is complete):
+
+- `.github/workflows/ci.yml` — mandatory CI gate (validate, lint, unit test, PostgreSQL integration).
+- `docs/default-branch-migration-plan.md` — plan for `main` default branch (#52; migration not executed).
+- Remaining gaps before tag: documented PostgreSQL run evidence, Python lock on 3.12, branch protection (#52).
+
+## [Unreleased — prior entries]
 
 ### Changed
 
