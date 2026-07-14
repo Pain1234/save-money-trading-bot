@@ -96,6 +96,51 @@ async def test_open_candle_update_allowed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_failed_reconnect_remains_retryable_with_exponential_backoff() -> None:
+    config = HyperliquidPublicConfig.for_network(
+        HyperliquidNetwork.TESTNET,
+        reconnect_initial_delay_seconds=0.25,
+        reconnect_max_delay_seconds=10.0,
+    )
+    incoming: asyncio.Queue[str | None] = asyncio.Queue()
+    for ack in all_ack_messages(config):
+        await incoming.put(ack)
+
+    attempts = 0
+    delays: list[float] = []
+
+    async def connect(_: str) -> FakeWebSocketConnection:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("server rejected WebSocket connection: HTTP 502")
+        return FakeWebSocketConnection(incoming, outgoing=[])
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    feed = HyperliquidWebSocketFeed(
+        config,
+        connect_fn=connect,
+        clock=fixed_clock(datetime(2024, 1, 2, tzinfo=UTC)),
+        sleep=record_sleep,
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 502"):
+        await feed.reconnect()
+
+    assert feed.status == ConnectionStatus.RECONNECTING
+    assert feed.background_error == "server rejected WebSocket connection: HTTP 502"
+
+    await feed.reconnect()
+
+    assert feed.status == ConnectionStatus.CONNECTED
+    assert attempts == 2
+    assert delays == [0.25, 0.5]
+    await feed.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_shutdown_status() -> None:
     config = HyperliquidPublicConfig.for_network(HyperliquidNetwork.TESTNET)
     incoming: asyncio.Queue[str | None] = asyncio.Queue()
