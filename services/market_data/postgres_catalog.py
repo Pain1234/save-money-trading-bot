@@ -112,6 +112,17 @@ class PostgresDatasetCatalog:
             ON CONFLICT ON CONSTRAINT uq_market_data_normalized_candles_key DO NOTHING
             """
         )
+        fetch_stmt = text(
+            """
+            SELECT symbol, timeframe, open_time, close_time,
+                   open, high, low, close, volume, is_closed
+            FROM market_data_normalized_candles
+            WHERE dataset_id = :dataset_id
+              AND symbol = :symbol
+              AND timeframe = :timeframe
+              AND open_time = :open_time
+            """
+        )
         added = 0
         with self._engine.begin() as conn:
             for candle in candles:
@@ -150,6 +161,41 @@ class PostgresDatasetCatalog:
                     added += 1
                     keys.add(key)
                     existing_by_key[key] = candle
+                    continue
+                row = conn.execute(
+                    fetch_stmt,
+                    {
+                        "dataset_id": dataset_id,
+                        "symbol": candle.symbol.value,
+                        "timeframe": candle.timeframe.value,
+                        "open_time": candle.open_time,
+                    },
+                ).fetchone()
+                if row is None:
+                    continue
+                prior = NormalizedCandle(
+                    symbol=MarketSymbol(row[0]),
+                    timeframe=MarketTimeframe(row[1]),
+                    open_time=row[2],
+                    close_time=row[3],
+                    open=Decimal(row[4]),
+                    high=Decimal(row[5]),
+                    low=Decimal(row[6]),
+                    close=Decimal(row[7]),
+                    volume=Decimal(row[8]),
+                    is_closed=row[9],
+                )
+                if not candles_equal(prior, candle):
+                    conflict = CandleConflict(
+                        key=CandleKey(
+                            symbol=candle.symbol,
+                            timeframe=candle.timeframe,
+                            open_time=candle.open_time,
+                        ),
+                        existing=prior,
+                        incoming=candle,
+                    )
+                    self._append_conflicts.setdefault(dataset_id, []).append(conflict)
         return added
 
     def list_candles(self, dataset_id: str) -> tuple[NormalizedCandle, ...]:

@@ -140,9 +140,9 @@ jobs:
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
 
-      - name: Run market_data tests (no live network)
+      - name: Run market_data tests (no live network, no PostgreSQL)
         run: |
-          python -m pytest tests/market_data -m "not live" -q --tb=short
+          python -m pytest tests/market_data -m "not live and not postgres" -q --tb=short
 
   test-deploy:
     name: test-deploy

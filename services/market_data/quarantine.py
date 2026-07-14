@@ -33,7 +33,9 @@ _WARNING_STATUSES = frozenset({DataQualityStatus.INCOMPLETE, DataQualityStatus.S
 
 
 def _quality_warnings(report: DatasetQualityReportRecord) -> tuple[str, ...]:
-    warnings: list[str] = [f"quality_status={report.report.status.value}"]
+    warnings: list[str] = []
+    if report.report.status != DataQualityStatus.VALID:
+        warnings.append(f"quality_status={report.report.status.value}")
     if report.gap_count:
         warnings.append(f"gap_count={report.gap_count}")
     if report.conflict_count:

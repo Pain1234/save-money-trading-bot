@@ -129,6 +129,37 @@ def test_quarantine_allows_stale_with_explicit_waiver() -> None:
     assert result.known_issues
 
 
+def test_quarantine_allows_valid_dataset_without_known_issues() -> None:
+    catalog = InMemoryDatasetCatalog()
+    catalog.register_raw_artifact(
+        RawArtifactRecord("r5", "c" * 64, "raw/c.json", "hl/mainnet", {})
+    )
+    candles = make_daily_series(3, symbol=MarketSymbol.BTC)
+    manifest = DatasetManifest(
+        source="hyperliquid/mainnet",
+        symbols=(MarketSymbol.BTC,),
+        timeframes=(MarketTimeframe.DAILY,),
+        start_timestamp=candles[0].open_time,
+        end_timestamp=candles[-1].close_time,
+        row_count=len(candles),
+        content_hash=hash_normalized_candles(candles),
+        raw_dataset_id="r5",
+        raw_content_hash="c" * 64,
+        code_commit="abc1234",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    published = catalog.publish_dataset(manifest)
+    catalog.append_candles(published.dataset_id, candles)
+    result = require_research_dataset(
+        catalog,
+        published.dataset_id,
+        MarketSymbol.BTC,
+        MarketTimeframe.DAILY,
+        candles[-1].close_time,
+    )
+    assert result.known_issues == ()
+
+
 def test_quarantine_blocks_empty_dataset() -> None:
     catalog = InMemoryDatasetCatalog()
     catalog.register_raw_artifact(

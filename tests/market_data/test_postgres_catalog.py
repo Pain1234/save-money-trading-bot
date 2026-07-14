@@ -6,14 +6,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy.engine import Engine
-
 from market_data.content_hash import hash_normalized_candles
 from market_data.dataset_quality import evaluate_dataset_quality
 from market_data.manifest import DatasetManifest
 from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
 from market_data.postgres_catalog import PostgresDatasetCatalog
 from market_data.raw_store import RawArtifactRecord
+from sqlalchemy.engine import Engine
 
 from tests.market_data.conftest import dt, make_daily
 
@@ -74,6 +73,32 @@ def test_postgres_append_detects_conflicts(migrated_engine: Engine) -> None:
         base.close_time,
     )
     assert record.conflict_count == 1
+    assert len(catalog.get_append_conflicts(dataset_id)) == 1
+
+
+@pytest.mark.postgres
+def test_postgres_append_detects_concurrent_conflict(
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stale pre-read + concurrent insert must still record append conflicts."""
+    catalog = PostgresDatasetCatalog(migrated_engine)
+    base = make_daily(day=dt(2024, 1, 2))
+    conflict = NormalizedCandle(
+        symbol=base.symbol,
+        timeframe=base.timeframe,
+        open_time=base.open_time,
+        close_time=base.close_time,
+        open=Decimal("300"),
+        high=Decimal("301"),
+        low=Decimal("299"),
+        close=Decimal("300"),
+        volume=Decimal("2"),
+        is_closed=True,
+    )
+    dataset_id = _publish_btc_daily(catalog, (base,), raw_id="pg-concurrent-conflict-raw")
+    monkeypatch.setattr(catalog, "list_candles", lambda _: ())
+    catalog.append_candles(dataset_id, (conflict,))
     assert len(catalog.get_append_conflicts(dataset_id)) == 1
 
 
