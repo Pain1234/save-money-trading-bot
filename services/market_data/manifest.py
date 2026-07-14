@@ -32,6 +32,10 @@ class DatasetManifest(BaseModel):
     created_at: datetime
     parent_dataset_id: str | None = None
     quality_status: DataQualityStatus = DataQualityStatus.VALID
+    allow_quality_warnings: bool = Field(
+        default=False,
+        description="Explicit approval to use STALE/INCOMPLETE datasets for research",
+    )
     known_issues: tuple[str, ...] = Field(default_factory=tuple)
     dataset_id: str | None = None
     layer: str = Field(default="normalized", description="normalized | derived")

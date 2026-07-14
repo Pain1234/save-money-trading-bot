@@ -8,7 +8,7 @@ from market_data.aggregation import aggregate_weekly_from_daily
 from market_data.content_hash import hash_aggregate_candles
 from market_data.manifest import DatasetManifest
 from market_data.models import MarketSymbol, MarketTimeframe
-from market_data.timeframes import weekly_close, weekly_open_containing
+from market_data.timeframes import ensure_utc
 
 
 def build_derived_weekly_manifest(
@@ -47,9 +47,14 @@ def derive_iso_weekly_from_parent(
 ) -> tuple[DatasetManifest, tuple]:
     """Aggregate ISO weekly candles and return derived manifest."""
     assert parent.dataset_id is not None
-    monday = weekly_open_containing(dailies[0].open_time)
-    close = weekly_close(monday)
-    weekly = aggregate_weekly_from_daily(dailies, symbol, close)
+    if not dailies:
+        msg = "cannot derive weekly from empty daily series"
+        raise ValueError(msg)
+    evaluation_time = ensure_utc(evaluation_time)
+    weekly = aggregate_weekly_from_daily(dailies, symbol, evaluation_time)
+    if not weekly:
+        msg = "no complete ISO weeks in daily series at evaluation_time"
+        raise ValueError(msg)
     manifest = build_derived_weekly_manifest(
         parent,
         weekly,

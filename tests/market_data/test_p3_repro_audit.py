@@ -28,12 +28,14 @@ def test_p3_pipeline_smoke(tmp_path) -> None:
     result = import_from_raw_payload(
         catalog, store, FIXTURE.read_bytes(), config, evaluation_time=EVAL
     )
+    candles = catalog.list_candles(result.manifest.dataset_id)
+    eval_time = candles[-1].close_time
     manifest = require_research_dataset(
         catalog,
         result.manifest.dataset_id,
         MarketSymbol.BTC,
         MarketTimeframe.DAILY,
-        EVAL,
+        eval_time,
     )
     assert manifest.dataset_id is not None
     assert len(catalog.list_candles(manifest.dataset_id)) == 2

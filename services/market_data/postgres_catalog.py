@@ -21,6 +21,7 @@ class PostgresDatasetCatalog:
         self._engine = engine
 
     def register_raw_artifact(self, record: RawArtifactRecord) -> None:
+        """Register one fetch observation; same bytes may have many raw_dataset_ids."""
         stmt = text(
             """
             INSERT INTO market_data_raw_artifacts
@@ -30,7 +31,7 @@ class PostgresDatasetCatalog:
                     :raw_dataset_id, :content_hash, :storage_relpath, :source,
                     CAST(:fetch_metadata AS jsonb)
                 )
-            ON CONFLICT (content_hash) DO NOTHING
+            ON CONFLICT (raw_dataset_id) DO NOTHING
             """
         )
         with self._engine.begin() as conn:
@@ -156,3 +157,77 @@ class PostgresDatasetCatalog:
                 )
             )
         return tuple(candles)
+
+    def persist_quality_report(
+        self,
+        dataset_id: str,
+        record,
+        *,
+        known_issues: tuple[str, ...] | None = None,
+    ) -> None:
+        from market_data.dataset_quality import DatasetQualityReportRecord
+
+        if not isinstance(record, DatasetQualityReportRecord):
+            msg = "expected DatasetQualityReportRecord"
+            raise TypeError(msg)
+        manifest = self.get_manifest(dataset_id)
+        merged_issues = manifest.known_issues
+        if known_issues:
+            merged_issues = tuple(dict.fromkeys(manifest.known_issues + known_issues))
+        updated_manifest = {
+            **manifest.to_catalog_dict(),
+            "quality_status": record.report.status.value,
+            "known_issues": list(merged_issues),
+            "quality_report": record.report.model_dump(mode="json"),
+        }
+        stmt = text(
+            """
+            UPDATE market_data_datasets
+            SET quality_status = :quality_status,
+                manifest = CAST(:manifest AS jsonb)
+            WHERE dataset_id = :dataset_id
+            """
+        )
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                stmt,
+                {
+                    "dataset_id": dataset_id,
+                    "quality_status": record.report.status.value,
+                    "manifest": json.dumps(updated_manifest),
+                },
+            )
+            if result.rowcount != 1:
+                raise DatasetCatalogError(f"unknown dataset_id: {dataset_id}")
+
+    def update_manifest_known_issues(
+        self,
+        dataset_id: str,
+        known_issues: tuple[str, ...],
+    ) -> None:
+        manifest = self.get_manifest(dataset_id)
+        merged = tuple(dict.fromkeys(manifest.known_issues + known_issues))
+        updated_manifest = {
+            **manifest.to_catalog_dict(),
+            "known_issues": list(merged),
+        }
+        stmt = text(
+            """
+            UPDATE market_data_datasets
+            SET manifest = CAST(:manifest AS jsonb)
+            WHERE dataset_id = :dataset_id
+            """
+        )
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                stmt,
+                {
+                    "dataset_id": dataset_id,
+                    "manifest": json.dumps(updated_manifest),
+                },
+            )
+            if result.rowcount != 1:
+                raise DatasetCatalogError(f"unknown dataset_id: {dataset_id}")
+
+    def get_append_conflicts(self, dataset_id: str) -> tuple:
+        return ()

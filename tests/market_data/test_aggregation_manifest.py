@@ -38,7 +38,7 @@ def test_derived_manifest_links_parent() -> None:
     )
     assert derived_manifest.parent_dataset_id == parent.dataset_id
     assert derived_manifest.layer == "derived"
-    assert len(weekly) >= 1
+    assert len(weekly) == 2
 
 
 def test_aggregation_deterministic() -> None:

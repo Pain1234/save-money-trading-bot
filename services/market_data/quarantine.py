@@ -29,6 +29,19 @@ class QuarantineDecision:
 
 
 _BLOCKING_STATUSES = frozenset({DataQualityStatus.INVALID, DataQualityStatus.DISCONNECTED})
+_WARNING_STATUSES = frozenset({DataQualityStatus.INCOMPLETE, DataQualityStatus.STALE})
+
+
+def _quality_warnings(report: DatasetQualityReportRecord) -> tuple[str, ...]:
+    warnings: list[str] = [f"quality_status={report.report.status.value}"]
+    if report.gap_count:
+        warnings.append(f"gap_count={report.gap_count}")
+    if report.conflict_count:
+        warnings.append(f"conflict_count={report.conflict_count}")
+    if report.stale:
+        warnings.append("stale=true")
+    warnings.extend(report.report.messages)
+    return tuple(warnings)
 
 
 def assess_quarantine(
@@ -36,7 +49,7 @@ def assess_quarantine(
     report: DatasetQualityReportRecord,
 ) -> QuarantineDecision:
     status = report.report.status
-    warnings = tuple(manifest.known_issues)
+    warnings = _quality_warnings(report)
     if status in _BLOCKING_STATUSES:
         return QuarantineDecision(
             dataset_id=manifest.dataset_id or "",
@@ -44,12 +57,13 @@ def assess_quarantine(
             status=status,
             warnings=warnings,
         )
-    if status in {DataQualityStatus.INCOMPLETE, DataQualityStatus.STALE}:
+    if status in _WARNING_STATUSES:
+        allowed = manifest.allow_quality_warnings
         return QuarantineDecision(
             dataset_id=manifest.dataset_id or "",
-            allowed=True,
+            allowed=allowed,
             status=status,
-            warnings=warnings + (f"quality_status={status.value}",),
+            warnings=warnings,
         )
     return QuarantineDecision(
         dataset_id=manifest.dataset_id or "",
@@ -74,12 +88,24 @@ def require_research_dataset(
         symbol,
         timeframe,
         ensure_utc(evaluation_time),
+        persist=False,
     )
     decision = assess_quarantine(manifest, report)
+    issue_updates = decision.warnings if decision.warnings else None
     if not decision.allowed:
+        catalog.persist_quality_report(
+            dataset_id,
+            report,
+            known_issues=issue_updates,
+        )
         raise QuarantineError(
             f"dataset {dataset_id} quarantined: {decision.status.value}",
             dataset_id=dataset_id,
             status=decision.status,
         )
-    return manifest
+    catalog.persist_quality_report(
+        dataset_id,
+        report,
+        known_issues=issue_updates,
+    )
+    return catalog.get_manifest(dataset_id)
