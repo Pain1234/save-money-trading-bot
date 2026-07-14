@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `tests/scripts/test_reconcile_accounting.py` - exit code and cleanup tests.
 - P2 runbooks: deployment-verify, worker-safe-stop, kill-switch (Issue #15).
 - Tabletop incident docs/incidents/INC-20260714-001-tabletop-duplicate-fill.md.
+- `docs/runbooks/backup-restore.md` - backup/restore runbook; local restore drill with committed trade data (Issue #11).
+- `scripts/seed_restore_drill_data.py` - committed trade lifecycle seed for restore drill.
+- `scripts/restore_drill_snapshot.py` - row-count and wallet snapshot compare for restore drill.
+- `tests/scripts/test_restore_drill_snapshot.py` - snapshot compare unit tests.
 
 ### Changed
 
@@ -25,15 +29,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
   status.
 - `docs/runbooks/reconciliation-daily.md` - weekly reconciliation procedure (Issue #12).
-- docs/runbooks/README.md - runbook index; backup TODO until Issue #11 merges.
-- ROADMAP.md - P2 exit criteria honest (not complete).
+- docs/runbooks/README.md - runbook index; backup/restore linked (Issue #11).
+- ROADMAP.md - P2 local backup/restore drill exit criterion; Railway non-prod drill open.
 - docs/RISK_REGISTER.md - R-006/R-007 linked to P2 runbooks and audit.
+- docs/RISK_REGISTER.md - R-009 local drill with committed data; Railway restore open.
 
 ### Note
 
 Issue #15 bundles three runbooks; see docs/P2-PR-SPLIT.md.
-P2 not exit-complete until Issue #11 restore drill done.
-Rebase onto main after each prior P2 PR merge before opening this PR.
+P2 kill-switch runbook remains partial (production = Railway worker stop).
+Issue #11: local restore drill with snapshot compare passed; Railway non-prod restore remains open.
 
 ## [baseline-paper-v1.0.1] — 2026-07-14
 
