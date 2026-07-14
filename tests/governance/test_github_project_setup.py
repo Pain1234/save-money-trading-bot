@@ -176,6 +176,43 @@ class GitHubProjectSetupTests(unittest.TestCase):
 
         self.assertEqual(runner.call_count, 2)
 
+    def test_milestone_phase_key_supports_decimal_phases(self) -> None:
+        self.assertEqual(
+            setup.milestone_phase_key("P2.5 – Dashboard Performance & Responsiveness"),
+            "P2.5",
+        )
+        self.assertEqual(
+            setup.milestone_phase_key("P7 – Multi-Asset and Independent Strategy Candidates"),
+            "P7",
+        )
+
+    def test_milestones_include_p25_and_renamed_p7(self) -> None:
+        titles = [title for title, _ in setup.MILESTONES]
+        self.assertIn("P2.5 – Dashboard Performance & Responsiveness", titles)
+        self.assertIn("P7 – Multi-Asset and Independent Strategy Candidates", titles)
+        self.assertNotIn("P7 – Independent Strategy Candidates", titles)
+
+    def test_seed_issues_include_p25_and_p7_keys(self) -> None:
+        keys = {seed.key for seed in setup.SEED_ISSUES}
+        expected_p25 = {
+            "p25-perf-establish-dashboard-api-performance-baseline",
+            "p25-perf-add-request-timing-database-query-instrumentation",
+            "p25-perf-remove-redundant-status-readiness-database-reads",
+            "p25-feat-add-dashboard-summary-api-endpoint",
+            "p25-perf-define-implement-dashboard-cache-policy",
+            "p25-ux-add-loading-states-streaming-dashboard-routes",
+            "p25-perf-audit-dashboard-sql-queries-database-indexes",
+            "p25-test-add-dashboard-performance-regression-checks",
+            "p25-ops-complete-production-dashboard-acceptance",
+        }
+        expected_p7 = {
+            "p7-research-define-hyperliquid-multi-asset-market-metadata-contract",
+            "p7-research-define-hip3-equity-perpetual-validation-requirements",
+            "p7-risk-define-correlated-multi-asset-exposure-model",
+        }
+        self.assertTrue(expected_p25.issubset(keys))
+        self.assertTrue(expected_p7.issubset(keys))
+
     def test_local_milestone_state_prevents_duplicate_phase_create_in_same_run(self) -> None:
         milestones = [
             ("P0 – First governance milestone", "first"),
@@ -183,6 +220,7 @@ class GitHubProjectSetupTests(unittest.TestCase):
         ]
         runner = MagicMock(
             side_effect=[
+                gh_result(stdout="[]"),
                 gh_result(stdout="[]"),
                 gh_result(stdout=json.dumps({"number": 7})),
                 gh_result(stdout=json.dumps([{"title": milestones[0][0], "number": 7}])),

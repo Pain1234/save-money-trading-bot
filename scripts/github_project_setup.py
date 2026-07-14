@@ -34,7 +34,7 @@ GOVERNANCE_BUG_ISSUE = 51
 DUPLICATE_REPAIR_REPOSITORY = "Pain1234/save-money-trading-bot"
 SEED_ISSUE_MARKER = "<!-- governance-seed-issue -->"
 SEED_KEY_MARKER_PREFIX = "<!-- governance-seed-key:"
-PHASE_KEY_PATTERN = re.compile(r"^(P\d+)")
+PHASE_KEY_PATTERN = re.compile(r"^(P\d+(?:\.\d+)?)")
 
 
 @dataclass(frozen=True)
@@ -141,11 +141,12 @@ MILESTONES: list[tuple[str, str]] = [
     ("P0 – Governance and Scope Freeze", "Binding roadmap, issues, PR process, scope freeze"),
     ("P1 – Reproducible Baseline Release", "Reproducible paper baseline tag and docs"),
     ("P2 – Operational Reliability", "Backup, reconciliation, runbooks, restart safety"),
+    ("P2.5 – Dashboard Performance & Responsiveness", "Measurable dashboard/API performance and production acceptance"),
     ("P3 – Versioned Historical Market Data", "Dataset manifests and reproducible imports"),
     ("P4 – Research Engine", "Standardized experiment pipeline"),
     ("P5 – Honest Validation of Trend Strategy V1", "OOS, walk-forward, stress tests"),
     ("P6 – Paper Trading Soak", "90-day paper soak with reconciliation"),
-    ("P7 – Independent Strategy Candidates", "Uncorrelated strategy hypotheses"),
+    ("P7 – Multi-Asset and Independent Strategy Candidates", "Multi-asset planning and uncorrelated strategy hypotheses"),
     ("P8 – Separate Micro-Live System", "Micro-live — human approval required"),
     ("P9 – Controlled Scaling", "Evidence-based scaling — human approval required"),
 ]
@@ -381,6 +382,202 @@ README is stale; production paths are in deploy docs.
 - [ ] Dashboard or API fields mapped
 """,
     ),
+    SeedIssue(
+        "p25-perf-establish-dashboard-api-performance-baseline",
+        "perf: establish dashboard and API performance baseline",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:dashboard", "area:monitoring"),
+        """## Scope
+- Measure cold and warm requests on local or production-like Railway environment
+- Server render time, API latency, DB time, query count, response size
+- Document Railway region and resources
+- Store performance baseline as repository artifact
+
+## Non-scope
+- Optimization before baseline
+
+## Acceptance criteria
+- [ ] Overview, Status, Positions, Orders, Fills, Equity measured
+- [ ] `/api/v1/status`, `/api/v1/wallet`, `/api/v1/positions`, `/api/v1/fills`, `/api/v1/equity` measured
+- [ ] p50, p95, max documented for cold and warm
+- [ ] Measurement procedure reproducible
+""",
+    ),
+    SeedIssue(
+        "p25-perf-add-request-timing-database-query-instrumentation",
+        "perf: add request timing and database query instrumentation",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:monitoring", "area:dashboard"),
+        """## Scope
+- Structured runtime metrics: total_ms, db_ms, query_count, response_bytes, route, status, correlation ID
+- No secrets or sensitive payloads in logs
+
+## Acceptance criteria
+- [ ] Metrics available for key API endpoints
+- [ ] API vs DB time separable
+- [ ] Instrumentation overhead documented
+""",
+    ),
+    SeedIssue(
+        "p25-perf-remove-redundant-status-readiness-database-reads",
+        "perf: remove redundant status and readiness database reads",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:dashboard", "area:execution"),
+        """## Scope
+- Review `_status_payload`, `_readiness_body`, `_infer_market_data_ready`
+- Reduce duplicate `repo.get_runtime_state()` and `session.expire_all()` within one request
+
+## Acceptance criteria
+- [ ] Query count before/after documented
+- [ ] Status/readiness semantics unchanged
+- [ ] No stale or contradictory state display
+- [ ] Tests added; improvement measured
+""",
+    ),
+    SeedIssue(
+        "p25-feat-add-dashboard-summary-api-endpoint",
+        "feat: add dashboard summary API endpoint",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:dashboard"),
+        """## Scope
+- Read-only `/api/v1/dashboard-summary` for Overview page data
+- Status, readiness, heartbeat, wallet, position summary, last update, warnings
+- No mutations; no full histories
+
+## Acceptance criteria
+- [ ] Overview needs fewer separate server API calls
+- [ ] Response schema tested
+- [ ] Before/after measurement documented
+""",
+    ),
+    SeedIssue(
+        "p25-perf-define-implement-dashboard-cache-policy",
+        "perf: define and implement dashboard cache policy",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:dashboard"),
+        """## Scope
+- Documented TTLs per data type (status 1–2s, wallet/positions 3–5s, orders/fills 5s, equity 15–30s)
+- Controlled revalidation; `no-store` only where required
+
+## Acceptance criteria
+- [ ] Cache behavior documented per data type
+- [ ] Critical warnings not unduly delayed
+- [ ] Revalidation and error-case tests
+- [ ] Hit/miss behavior measurable
+""",
+    ),
+    SeedIssue(
+        "p25-ux-add-loading-states-streaming-dashboard-routes",
+        "ux: add loading states and streaming to dashboard routes",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:dashboard"),
+        """## Scope
+- `loading.tsx` or Suspense/skeleton on Overview, Status, Positions, Wallet, Orders, Fills, Stops, Scheduler, Equity, Incidents
+
+## Acceptance criteria
+- [ ] Immediate visible feedback on navigation
+- [ ] Slow API does not freeze entire UI
+- [ ] Error states clear; no fabricated values while loading
+- [ ] Desktop and mobile checked
+""",
+    ),
+    SeedIssue(
+        "p25-perf-audit-dashboard-sql-queries-database-indexes",
+        "perf: audit dashboard SQL queries and database indexes",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:operations", "area:dashboard", "area:infrastructure"),
+        """## Scope
+- `EXPLAIN ANALYZE` for dashboard queries
+- Review pagination, composite indexes for timestamp+id, status filters, history tables
+
+## Acceptance criteria
+- [ ] Each relevant query documented
+- [ ] Full table scans on growing tables assessed
+- [ ] New indexes only with demonstrated benefit; write overhead documented
+""",
+    ),
+    SeedIssue(
+        "p25-test-add-dashboard-performance-regression-checks",
+        "test: add dashboard performance regression checks",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:feature", "area:dashboard", "area:monitoring"),
+        """## Scope
+- Reproducible Playwright path: login, Overview, Positions, Fills, Equity
+- API latency checks for core endpoints; CI artifact
+
+## Acceptance criteria
+- [ ] Initially report-only (not flaky gate)
+- [ ] Clear regressions visible
+- [ ] Environment and allowed variance documented
+""",
+    ),
+    SeedIssue(
+        "p25-ops-complete-production-dashboard-acceptance",
+        "ops: complete production dashboard acceptance",
+        "P2.5 – Dashboard Performance & Responsiveness",
+        ("type:operations", "area:dashboard"),
+        """## Scope
+- Railway production acceptance with real data, login/logout, readiness, wallet, equity, positions, orders, fills
+- Desktop and mobile; external access test documented
+
+## Acceptance criteria
+- [ ] `PRIVATE_PAPER_API_URL` points to real read-only API
+- [ ] PostgreSQL data matches UI
+- [ ] API failure and stale heartbeat clearly shown
+- [ ] Reconciliation errors not shown as READY
+- [ ] No mutation/trading endpoints on dashboard
+- [ ] Known limitations documented
+""",
+    ),
+    SeedIssue(
+        "p7-research-define-hyperliquid-multi-asset-market-metadata-contract",
+        "research: define Hyperliquid multi-asset market metadata contract",
+        "P7 – Multi-Asset and Independent Strategy Candidates",
+        ("type:research", "area:data", "area:strategy"),
+        """## Scope
+- Planning only: crypto, equity, index, commodity profiles
+- DEX/venue metadata, funding, oracle, sessions, liquidity, history
+- ADR-014 asset profile types
+
+## Non-scope
+- Trading implementation
+
+## Acceptance criteria
+- [ ] CRYPTO_24_7, HIP3_EQUITY_PERP, HIP3_INDEX_PERP, HIP3_COMMODITY_PERP defined
+- [ ] Venue and metadata fields documented
+- [ ] No runtime trading changes in this issue
+""",
+    ),
+    SeedIssue(
+        "p7-research-define-hip3-equity-perpetual-validation-requirements",
+        "research: define HIP-3 equity perpetual validation requirements",
+        "P7 – Multi-Asset and Independent Strategy Candidates",
+        ("type:research", "area:strategy", "area:data"),
+        """## Scope
+- Planning: minimum history, liquidity, funding, spread, oracle, gaps, corporate actions
+- Shadow-mode exit criteria for HIP-3 equity perps
+
+## Acceptance criteria
+- [ ] Validation checklist documented
+- [ ] Synthetic perp vs real stock ownership clarified
+- [ ] No trading implementation
+""",
+    ),
+    SeedIssue(
+        "p7-risk-define-correlated-multi-asset-exposure-model",
+        "risk: define correlated multi-asset exposure model",
+        "P7 – Multi-Asset and Independent Strategy Candidates",
+        ("type:research", "area:risk"),
+        """## Scope
+- BTC/ETH/SOL not treated as independent
+- Equity/index clusters, sector correlation, cluster risk cap, portfolio drawdown budget
+
+## Acceptance criteria
+- [ ] Correlation clusters defined
+- [ ] Maximum cluster risk documented
+- [ ] No higher risk solely from more symbols
+""",
+    ),
 ]
 
 
@@ -403,15 +600,16 @@ class GhContext:
 
 def _repair_mojibake(text: str) -> str:
     """Repair common double-encoded UTF-8 strings from older gh/Windows runs."""
-    repaired = text
-    for _ in range(2):
-        try:
-            candidate = repaired.encode("latin1").decode("utf-8")
-        except (UnicodeDecodeError, UnicodeEncodeError):
-            break
-        if candidate == repaired:
-            break
-        repaired = candidate
+    repaired = text.replace("\u00e2\u20ac\u201c", "\u2013").replace("\u00e2\u20ac\u201d", "\u2014")
+    for encoding in ("latin1", "cp1252"):
+        for _ in range(2):
+            try:
+                candidate = repaired.encode(encoding).decode("utf-8")
+            except (UnicodeDecodeError, UnicodeEncodeError):
+                break
+            if candidate == repaired:
+                break
+            repaired = candidate
     return repaired
 
 
@@ -569,20 +767,70 @@ def list_milestones(ctx: GhContext) -> dict[str, dict[str, Any]]:
     return milestones
 
 
-def _milestone_maps(existing: dict[str, dict[str, Any]]) -> tuple[dict[str, int], dict[str, int]]:
-    """Return (title->number, phase_key->number) maps for milestone matching."""
+def _milestone_maps(
+    existing: dict[str, dict[str, Any]],
+) -> tuple[dict[str, int], dict[str, int], dict[int, str]]:
+    """Return (title->number, phase_key->number, number->title) maps for milestone matching."""
     title_to_number = {title: milestone["number"] for title, milestone in existing.items()}
     phase_to_number: dict[str, int] = {}
+    number_to_title: dict[int, str] = {}
     for title, milestone in existing.items():
+        number = milestone["number"]
+        number_to_title[number] = title
         phase_key = milestone_phase_key(title)
         if phase_key is not None:
-            phase_to_number.setdefault(phase_key, milestone["number"])
-    return title_to_number, phase_to_number
+            phase_to_number.setdefault(phase_key, number)
+    return title_to_number, phase_to_number, number_to_title
+
+
+def update_milestone_title(
+    ctx: GhContext,
+    number: int,
+    new_title: str,
+    new_description: str | None = None,
+) -> bool:
+    """Patch milestone title (and optional description) when canonical name changed."""
+    ctx.log(f"update milestone #{number} title -> {new_title}")
+    if ctx.dry_run or not ctx.authenticated:
+        return True
+    args = [
+        "api",
+        f"repos/{ctx.repo}/milestones/{number}",
+        "-X",
+        "PATCH",
+        "-f",
+        f"title={new_title}",
+    ]
+    if new_description is not None:
+        args.extend(["-f", f"description={new_description}"])
+    result = run_gh(args, check=False)
+    if result.returncode != 0:
+        ctx.warn(f"milestone title update failed for #{number}: {result.stderr.strip()}")
+        return False
+    return True
+
+
+def ensure_milestone_titles(ctx: GhContext, existing: dict[str, dict[str, Any]]) -> None:
+    """Rename milestones when phase key matches but canonical title differs."""
+    title_to_number, phase_to_number, number_to_title = _milestone_maps(existing)
+    for title, description in MILESTONES:
+        phase_key = milestone_phase_key(title)
+        if phase_key is None or title in title_to_number:
+            continue
+        if phase_key not in phase_to_number:
+            continue
+        number = phase_to_number[phase_key]
+        current_title = number_to_title.get(number, "")
+        if normalize_title(current_title) != normalize_title(title):
+            update_milestone_title(ctx, number, title, description)
 
 
 def ensure_milestones(ctx: GhContext) -> dict[str, int]:
     existing = list_milestones(ctx)
-    title_to_number, phase_to_number = _milestone_maps(existing)
+    ensure_milestone_titles(ctx, existing)
+    if not ctx.dry_run and ctx.authenticated:
+        existing = list_milestones(ctx)
+    title_to_number, phase_to_number, _ = _milestone_maps(existing)
     for title, description in MILESTONES:
         phase_key = milestone_phase_key(title)
         if title in title_to_number or (phase_key is not None and phase_key in phase_to_number):
@@ -619,7 +867,7 @@ def ensure_milestones(ctx: GhContext) -> dict[str, int]:
     # refresh if we created any
     if not ctx.dry_run and ctx.authenticated:
         refreshed = list_milestones(ctx)
-        title_to_number, phase_to_number = _milestone_maps(refreshed)
+        title_to_number, phase_to_number, _ = _milestone_maps(refreshed)
     return {title: phase_to_number[phase_key] for title, _ in MILESTONES if (phase_key := milestone_phase_key(title)) in phase_to_number}
 
 

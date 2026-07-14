@@ -253,6 +253,41 @@ P3 changes must not depend on untested Railway restore behavior.
 
 ---
 
+## ADR-014 – One Hyperliquid multi-asset platform with asset-specific profiles
+
+**Status:** Accepted
+**Date:** 2026-07-15
+
+**Context:** The roadmap expands beyond BTC/ETH/SOL crypto perpetuals to HIP-3 equity, index, and commodity perpetuals on the same Hyperliquid ecosystem. A governance decision is needed on repository boundaries, asset modeling, and phase gates before any implementation.
+
+**Decision:**
+
+1. Crypto, equity, index, and commodity **perpetuals** are supported within the **same** research and paper-trading platform (single repository unless future technical or regulatory limits prove otherwise).
+2. Asset-class differences are modeled via **asset metadata profiles**, provider/DEX configuration, cost/funding models, and risk profiles — not by treating all symbols identically.
+3. Planned profile types: `CRYPTO_24_7`, `HIP3_EQUITY_PERP`, `HIP3_INDEX_PERP`, `HIP3_COMMODITY_PERP`.
+4. Equity/index/commodity exposure is **synthetic perpetual exposure**; the system must not describe these as holding real shares or physical commodities.
+5. **P7** allows research, backtest, shadow, and paper only. **P8 live trading** still requires human approval.
+6. Multi-asset expansion must **not** bypass **P5** (validation) or **P6** (paper soak).
+7. Architectural split into separate repositories is required only if evidenced by technical or regulatory constraints.
+
+**Alternatives:**
+
+| Option | Rejected because |
+|--------|------------------|
+| Separate repo per asset class | Duplicates research, risk, and monitoring infrastructure |
+| Single undifferentiated asset model | Ignores funding, oracle, session, and corporate-action differences |
+
+**Consequences:**
+
+- Asset profiles become mandatory before new markets trade in paper or live paths.
+- Costs and risks must be validated per profile.
+- P7 milestone renamed to **Multi-Asset and Independent Strategy Candidates**.
+- Planning issues for metadata contract, HIP-3 equity validation, and correlated exposure model are tracked on P7; implementation is out of scope until those gates pass.
+
+**Related Issues / PRs:** `ROADMAP.md` § P7, `docs/ARCHITECTURE.md` § Multi-asset target architecture, P7 planning issues (governance setup).
+
+---
+
 ## Template for new entries
 
 ```text

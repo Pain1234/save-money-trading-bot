@@ -12,7 +12,7 @@ Cursor/Codex chats must not be the only record of decisions, bugs, or experiment
 
 ```text
 Roadmap (ROADMAP.md)
-  → GitHub Milestone (P0–P9)
+  → GitHub Milestone (P0–P2.5, P3–P9)
     → GitHub Issue (scope, acceptance criteria)
       → Branch (one issue)
         → Implementation
@@ -128,7 +128,8 @@ Automated creation is attempted by `scripts/github_project_setup.py` when `gh` i
 
 | Field | Type | Notes |
 |-------|------|-------|
-| Phase | Single select | P0–P9 |
+| Phase | Single select | P0, P1, P2, P2.5, P3–P9 |
+| Workstream | Single select | Platform, Operations, Research, Risk |
 | Type | Single select | bug, feature, research, operations, documentation, incident |
 | Area | Single select | data, research, strategy, risk, execution, accounting, monitoring, dashboard, infrastructure, security, governance |
 | Severity | Single select | S1–S4 (bugs/incidents) |

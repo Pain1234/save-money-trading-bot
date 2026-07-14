@@ -263,6 +263,57 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 
 **Deploy:** `deploy/Dockerfile.dashboard`, `deploy/railway/paper-trading-dashboard.toml`
 
+**Maturity:** Locally usable with real paper data; production performance acceptance is **P2.5** scope (`docs/railway-paper-trading-dashboard-v1.md` § Dashboard maturity levels). Not yet classified as production-accepted performant monitoring.
+
+---
+
+### Multi-asset target architecture
+
+**Target state (P7 planning — not implemented).** ADR-014: one research and paper-trading platform with asset-specific profiles; no automatic separate repository.
+
+```text
+One Trading and Research Platform
+├── Hyperliquid Core Provider
+├── Crypto Perpetual Markets
+├── HIP-3 Equity Perpetual Markets
+├── HIP-3 Index Perpetual Markets
+├── HIP-3 Commodity Perpetual Markets
+├── Shared Research Pipeline
+├── Asset-Specific Metadata Profiles
+├── Asset-Specific Cost and Funding Models
+└── Shared Portfolio Risk Layer
+```
+
+**Planned asset profile types:**
+
+```text
+CRYPTO_24_7
+HIP3_EQUITY_PERP
+HIP3_INDEX_PERP
+HIP3_COMMODITY_PERP
+```
+
+Each profile must eventually capture at minimum:
+
+| Dimension | Examples |
+|-----------|----------|
+| Venue / DEX | Hyperliquid core vs HIP-3 market |
+| Symbol metadata | Tick size, lot size, margin asset |
+| Oracle / mark price source | Per-market oracle rules |
+| Funding rules | Interval, caps, asset-specific behavior |
+| Available history | Minimum backtest depth |
+| Minimum liquidity | Volume/spread thresholds |
+| Spread and slippage | Cost model inputs |
+| Price gaps | Session open, halts, oracle gaps |
+| Reference market hours | 24/7 crypto vs equity session |
+| Trading interruptions | Halts, maintenance |
+| Corporate actions | Equity perp reference adjustments |
+| Dividend effects | Reference price impact |
+| Correlation clusters | BTC/ETH/SOL, sector/index clusters |
+| Position limits | Per-asset and per-cluster caps |
+
+**Boundaries today:** Paper worker trades crypto perpetuals only. HIP-3 equity/index/commodity perpetuals are roadmap items (P7A–P7C); live trading for any asset class remains **P8** with human approval.
+
 ---
 
 ### Deployment — `deploy/`
