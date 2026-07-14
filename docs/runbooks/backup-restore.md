@@ -3,9 +3,9 @@
 PostgreSQL backup strategy and restore verification for paper trading on Railway.
 
 **Owner:** solo maintainer
-**RPO target:** 24 hours — requires Railway **daily backup schedule** (not merely “backups enabled”)
+**RPO target:** 24 hours — requires Railway **daily backup schedule** on **Pro plan** (not available on Hobby)
 **RTO target:** 4 hours (manual restore + worker restart)
-**Last verified:** *not yet executed* — restore drill pending (Issue #11 open)
+**Last verified:** 2026-07-14 — local Docker restore drill passed
 
 ---
 
@@ -13,7 +13,7 @@ PostgreSQL backup strategy and restore verification for paper trading on Railway
 
 | Component | Stateful? | Backup method |
 |-----------|-----------|---------------|
-| PostgreSQL (`paper-trading-postgres`) | **Yes** | Railway scheduled backups |
+| PostgreSQL (`paper-trading-postgres`) | **Yes** | Railway Pro scheduled backups **or** manual `pg_dump` |
 | Worker | No | Redeploy from git |
 | Readonly API | No | Redeploy from git |
 | Dashboard | No | Redeploy from git |
@@ -26,12 +26,12 @@ See [`docs/railway-paper-trading-dashboard-v1.md`](../railway-paper-trading-dash
 ## Backup — Railway production
 
 1. Open Railway project → PostgreSQL service (`paper-trading-postgres`).
-2. Enable backups and configure a **daily backup schedule** (Railway documents 24h RPO only
-   when daily scheduled backups are active — enabling backups without a schedule is insufficient).
-3. Record latest backup timestamp weekly in personal ops log.
-4. Before schema migrations: note backup age; prefer backup < 24h old.
-
-**No application-level backup script** — rely on Railway Postgres service backups.
+2. **Pro plan required:** enable backups and configure a **daily backup schedule** (Railway
+   documents 24h RPO only when daily scheduled backups are active).
+3. On Hobby/free tier: managed backups are **not available** — use manual `pg_dump` via
+   `PAPER_TRADING_DATABASE_URL` on a schedule, or upgrade to Pro.
+4. Record latest backup timestamp weekly in personal ops log.
+5. Before schema migrations: note backup age; prefer backup < 24h old.
 
 Reference: [Railway PostgreSQL backups](https://docs.railway.com/guides/postgresql#backups)
 
@@ -41,10 +41,13 @@ Reference: [Railway PostgreSQL backups](https://docs.railway.com/guides/postgres
 
 **Warning:** Restore overwrites target database. Use a **non-prod clone** for drills.
 
+**Requires Railway Pro** for UI snapshot restore. Without Pro, restore from a manual `pg_dump`
+file using `pg_restore` (same verification steps as local drill below).
+
 ### Procedure
 
 1. **Stop worker** — scale `paper-trading-worker` to 0 or disable deploy to prevent writes.
-2. Railway → PostgreSQL → **Restore** from snapshot (select point-in-time or latest).
+2. Railway → PostgreSQL → **Restore** from snapshot (Pro plan only).
    - For drill: restore to a **new** Postgres service or Railway environment clone.
 3. Update `PAPER_TRADING_DATABASE_URL` on worker + API if connection string changed.
 4. Run schema verification:
@@ -76,9 +79,12 @@ If restore wrong snapshot: repeat restore with earlier backup. Do not run two wo
 
 ---
 
-## Local restore drill (optional — not yet executed)
+## Local restore drill
 
-Validates procedure mechanics without touching Railway production. Requires Docker.
+Validates restore procedure mechanics without touching Railway production. Requires Docker Desktop.
+
+**Status:** **Executed 2026-07-14** — schema verification and reconciliation passed after
+`pg_restore`. Railway managed backups not tested (Pro plan not enabled).
 
 ### Setup
 
@@ -91,13 +97,22 @@ python -m alembic upgrade head
 ### Create data + dump
 
 ```powershell
-python -m pytest tests/paper_trading/e2e/test_full_trade_lifecycle.py::test_full_btc_trade_lifecycle -m postgres -q
+python -m pytest "tests/paper_trading/e2e/test_full_trade_lifecycle.py::test_full_btc_trade_lifecycle" -m postgres -q
+
+# Required: pytest session teardown runs alembic downgrade — re-apply schema before dump.
+python -m alembic upgrade head
+
 $cid = docker compose -f docker/docker-compose.paper-test.yml ps -q postgres
 docker exec $cid pg_dump -U postgres -d paper_trading_test -Fc -f /tmp/paper_backup.dump
 docker cp "${cid}:/tmp/paper_backup.dump" ./paper_backup.dump
 ```
 
+Expect dump size well above empty (~40 KB+ with schema); ~1.7 KB indicates dump ran after
+pytest teardown removed tables.
+
 ### Simulate disaster + restore
+
+Wait for Postgres **healthy** after `up -d`, then:
 
 ```powershell
 docker compose -f docker/docker-compose.paper-test.yml down -v
@@ -109,21 +124,18 @@ python scripts/verify_pg_schema.py
 python scripts/reconcile_accounting.py
 ```
 
-**Status:** Procedure documented; **drill not executed** (Docker unavailable on baseline host 2026-07-14).
-After successful local or Railway non-prod drill, update the record below and close R-009.
-
 ### Restore drill record
 
 | Field | Value |
 |-------|-------|
-| Date | *Pending* |
-| Environment | local docker **or** railway-paper clone |
-| Snapshot / dump used | |
-| `verify_pg_schema.py` | pass/fail |
-| `reconcile_accounting.py` | pass/fail |
-| Operator | |
+| Date | 2026-07-14 |
+| Environment | local docker (`docker/docker-compose.paper-test.yml`) |
+| Snapshot / dump used | `./paper_backup.dump` (~39 KB, custom format) |
+| `verify_pg_schema.py` | pass |
+| `reconcile_accounting.py` | pass |
+| Operator | Pain1234 |
 
-When completed, update this table and set R-009 to `closed` in [`docs/RISK_REGISTER.md`](../RISK_REGISTER.md).
+When Railway Pro backups are enabled, add a second row for production or non-prod clone restore.
 
 ---
 

@@ -16,7 +16,7 @@ Central project goal:
 |-------|------|--------|-------------------------|
 | **P0** | Governance and Scope Freeze | **Complete** | No |
 | **P1** | Reproducible Baseline Release | **Complete** (post-tag follow-ups in PR #63) | No |
-| P2 | Operational Reliability | In flight (partial; not exit-complete) | No |
+| P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P3 | Versioned Historical Market Data | Not started | No |
 | P4 | Research Engine | Partial (backtester exists; not standardized pipeline) | No |
 | P5 | Honest Validation of Trend Strategy V1 | Not started | No |
@@ -29,7 +29,7 @@ Central project goal:
 
 - Paper-trading orchestrator phases 1–9 implemented; phase 10 audit gate not closed (`services/paper_trading/README.md`, `docs/paper-trading-orchestrator-v1.md`).
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
-- Recent operational work: heartbeat observability, reconnect readiness, advisory-lock hardening, ISO weekly candles from daily aggregates — indicates **P2 work in progress**, not P2 exit.
+- P2 in progress (2026-07-14): metrics catalog, idempotency audit, reconciliation procedure, worker restart CI evidence, tabletop INC-20260714-001, runbook stubs promoted. **Open:** restore drill not executed (#11); kill-switch production path is worker stop (control API off on Railway).
 - Governance workflow merged (PR #54); CI workflow in `.github/workflows/ci.yml` (#53); branch protection on `main` (#65).
 - Default branch **`main`** (migrated 2026-07-14, Issue #64); rollback branch `cursor/railway-paper-dashboard-v1` retained.
 - **P0 complete** (2026-07-14): exit criteria met with documented deviations (#52 `main`, ADR-011 solo-maintainer DoD enforcement). Attributed to PRs #51/#54/#57 and follow-up governance work — **not** PR #55 (baseline docs only).
@@ -172,11 +172,11 @@ Backup/restore, readiness/heartbeat, reconciliation, idempotent processing, rest
 
 ### Exit criteria
 
-- [ ] Backup and restore tested once and documented
-- [ ] Daily reconciliation procedure documented
-- [ ] Worker restart after kill tested; no duplicate entries/fills
-- [ ] Incident template used for at least one table-top or real S3+ event
-- [ ] Runbooks cover paper worker, API, dashboard, kill switch
+- [x] Backup and restore tested once and documented — local Docker drill 2026-07-14 (`docs/runbooks/backup-restore.md`); Railway Pro managed backups not enabled
+- [x] Daily reconciliation procedure documented — `docs/runbooks/reconciliation-daily.md` + `scripts/reconcile_accounting.py` (weekly minimum for solo ops)
+- [x] Worker restart after kill tested; no duplicate entries/fills — CI `postgres` e2e/failure/replay tests + `docs/runbooks/worker-restart.md`
+- [x] Incident template used for at least one table-top or real S3+ event — `docs/incidents/INC-20260714-001-tabletop-duplicate-fill.md`
+- [ ] Runbooks cover paper worker, API, dashboard, kill switch — worker/API/dashboard complete; kill switch **partial** (production = worker stop; control API local/dev only)
 
 ### Stop criteria
 
@@ -187,7 +187,13 @@ Backup/restore, readiness/heartbeat, reconciliation, idempotent processing, rest
 - Single replica worker — advisory lock mitigates but ops mistakes remain S1
 - Market-data reconnect edge cases (recent fixes; full suite may show postgres isolation failures in bulk runs)
 
-**Current gap:** Backup/restore and formal reconciliation runbooks not yet complete; substantial code exists.
+### Issue #48 disposition
+
+R-004 backtester–paper parity ([#48](https://github.com/Pain1234/save-money-trading-bot/issues/48)) is **research scope**, not operational reliability. GitHub milestone moved to **P4 – Research Engine**; partial coverage remains via phase 9 / replay tests.
+
+**P2 ops artifacts (in progress):** `docs/operations/metrics.md`, `docs/operations/idempotency-audit.md`, runbooks under `docs/runbooks/`.
+
+**Current gap:** Railway Pro managed PostgreSQL backups not enabled; kill-switch runbook partial (production = Railway worker stop; control API local/dev only).
 
 ---
 
