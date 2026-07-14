@@ -1,7 +1,7 @@
 # Default Branch Migration Plan (`main`)
 
-**Issue:** #52  
-**Status:** Plan complete — **default branch NOT changed** (requires explicit human approval)  
+**Issue:** #52
+**Status:** Plan complete — **default branch NOT changed** (requires explicit human approval)
 **Current default branch:** `cursor/railway-paper-dashboard-v1`
 
 This document satisfies the acceptance criteria for planning the migration from the
