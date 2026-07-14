@@ -20,3 +20,7 @@ test-results/
 .env
 .env.*
 !.env.example
+
+# Local restore drill artifacts (Issue #11)
+paper_backup.dump
+restore_drill_snapshot.json

@@ -245,9 +245,12 @@ exposed on the read-only API service.
 
 ## Backups
 
-Use Railway PostgreSQL backups/snapshots for `paper-trading-postgres`. Worker
-and API are stateless; recovery depends on PostgreSQL restore plus a single
-worker restart.
+Use Railway PostgreSQL volume backups/snapshots for `paper-trading-postgres` when enabled in
+the service Backups tab (manual and scheduled backups per
+[Railway backups reference](https://docs.railway.com/reference/backups)). Fallback: manual
+`pg_dump` — see [`docs/runbooks/backup-restore.md`](runbooks/backup-restore.md).
+
+Worker and API are stateless; recovery depends on PostgreSQL restore plus a single worker restart.
 
 ## Logs
 

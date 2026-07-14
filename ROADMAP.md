@@ -29,7 +29,7 @@ Central project goal:
 
 - Paper-trading orchestrator phases 1–9 implemented; phase 10 audit gate not closed (`services/paper_trading/README.md`, `docs/paper-trading-orchestrator-v1.md`).
 - Railway four-service deployment documented; production soak not yet at 90 days (`docs/railway-paper-trading-dashboard-v1.md`).
-- P2 in progress (2026-07-14): metrics catalog, idempotency audit, reconciliation procedure, worker restart CI evidence, tabletop INC-20260714-001, runbook stubs promoted. **Open:** restore drill not executed (#11); kill-switch production path is worker stop (control API off on Railway).
+- P2 in progress (2026-07-14): metrics catalog, idempotency audit, reconciliation procedure, worker restart CI evidence, tabletop INC-20260714-001, runbook index promoted. **Local** restore drill with committed trade data passed (#11); **Railway non-prod restore drill open** (#11). Kill-switch production path is worker stop (control API off on Railway).
 - Governance workflow merged (PR #54); CI workflow in `.github/workflows/ci.yml` (#53); branch protection on `main` (#65).
 - Default branch **`main`** (migrated 2026-07-14, Issue #64); rollback branch `cursor/railway-paper-dashboard-v1` retained.
 - **P0 complete** (2026-07-14): exit criteria met with documented deviations (#52 `main`, ADR-011 solo-maintainer DoD enforcement). Attributed to PRs #51/#54/#57 and follow-up governance work — **not** PR #55 (baseline docs only).
@@ -172,7 +172,8 @@ Backup/restore, readiness/heartbeat, reconciliation, idempotent processing, rest
 
 ### Exit criteria
 
-- [x] Backup and restore tested once and documented — local Docker drill 2026-07-14 (`docs/runbooks/backup-restore.md`); Railway Pro managed backups not enabled
+- [x] Backup and restore tested once and documented — **local** Docker drill with committed trade data and snapshot compare (2026-07-14, `docs/runbooks/backup-restore.md`)
+- [ ] Railway non-prod PostgreSQL restore drill (Issue #11 scope; account Backups tab showed no snapshots 2026-07-14)
 - [x] Daily reconciliation procedure documented — `docs/runbooks/reconciliation-daily.md` + `scripts/reconcile_accounting.py` (weekly minimum for solo ops)
 - [x] Worker restart after kill tested; no duplicate entries/fills — CI `postgres` e2e/failure/replay tests + `docs/runbooks/worker-restart.md`
 - [x] Incident template used for at least one table-top or real S3+ event — `docs/incidents/INC-20260714-001-tabletop-duplicate-fill.md`
@@ -193,7 +194,7 @@ R-004 backtester–paper parity ([#48](https://github.com/Pain1234/save-money-tr
 
 **P2 ops artifacts (in progress):** `docs/operations/metrics.md`, `docs/operations/idempotency-audit.md`, runbooks under `docs/runbooks/`.
 
-**Current gap:** Railway Pro managed PostgreSQL backups not enabled; kill-switch runbook partial (production = Railway worker stop; control API local/dev only).
+**Current gap:** Railway non-prod restore drill not executed (Issue #11); account Backups UI showed no snapshots 2026-07-14. Kill-switch runbook partial (production = Railway worker stop; control API local/dev only).
 
 ---
 
