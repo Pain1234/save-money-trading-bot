@@ -337,6 +337,12 @@ class HyperliquidWebSocketFeed:
             try:
                 await self.connect_and_subscribe()
             except asyncio.CancelledError:
+                if not self._shutdown:
+                    # asyncio.timeout() cancels the in-flight handshake before
+                    # translating cancellation into TimeoutError for the runtime.
+                    # Keep the transport retryable for the next scheduler poll.
+                    self._status = ConnectionStatus.RECONNECTING
+                    self._background_error = "WebSocket reconnect cancelled"
                 raise
             except Exception as exc:
                 # connect_and_subscribe marks the feed CONNECTING before opening
