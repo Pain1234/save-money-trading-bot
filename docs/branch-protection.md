@@ -1,7 +1,7 @@
 # Branch Protection on `main`
 
-**Issue:** #65  
-**Branch:** `main` (GitHub default since Issue #64, 2026-07-14)  
+**Issue:** #65
+**Branch:** `main` (GitHub default since Issue #64, 2026-07-14)
 **Workflow:** `.github/workflows/ci.yml`
 
 ## Required status checks
