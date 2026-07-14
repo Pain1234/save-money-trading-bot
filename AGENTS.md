@@ -188,3 +188,43 @@ Before mutation, repository, issue numbers and expected titles are verified.
 Repair fails closed when identity cannot be proven.
 
 See `README.md` and service READMEs for environment variables. Never commit secrets.
+
+---
+
+## Cursor Cloud specific instructions
+
+Setup and standard commands live in `README.md`, `pyproject.toml`, and
+`services/paper_trading/README.md`. The dependency-refresh update script
+(nvm Node 24, Python `.venv` + `pip install -e ".[dev,api]"`, `npm ci`) runs
+automatically on VM startup — do not re-run it by hand. Python is the system
+Python 3.12 in `.venv`; the dashboard uses Node 24 via nvm.
+
+Non-obvious caveats:
+
+- Node shadowing: a `/exec-daemon/node` (v22) may win in non-interactive shells.
+  If `node --version` is not 24, run `nvm use 24.15.0` or prefix
+  `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"`.
+- PostgreSQL is required for `-m postgres` tests and the paper API. It is installed
+  locally (not Docker) and must be started each boot:
+  `sudo pg_ctlcluster 16 main start`. Test role/db (local only, no prod creds):
+  role `paper_trading_test` / password `paper_trading_test`, db `paper_trading_test`;
+  the superuser `postgres` password is `postgres` (one safety test connects as
+  `postgres:postgres@localhost/postgres`). If the cluster/role/db is missing after a
+  cold start, recreate the role+db and run `python -m alembic upgrade head`.
+  Connection URL:
+  `export PAPER_TRADING_DATABASE_URL="postgresql+psycopg://paper_trading_test:paper_trading_test@localhost:5432/paper_trading_test"`
+- Tests: `ruff check .`, `python -m pytest tests/ -m "not live and not soak"` (needs
+  Postgres up + Node on PATH — one deploy test runs `next build`). `live` tests hit
+  the Hyperliquid network and are skipped by default.
+- Populate demo data (deterministic, no network):
+  `python scripts/run_paper_soak.py --database-url-env PAPER_TRADING_DATABASE_URL --days 365 --seed 1 --reset-db`.
+- Run services (dev): read-only API —
+  `PAPER_API_ENABLED=1 PAPER_API_PORT=8080 python -m paper_trading.api_runner` (`:8080`);
+  dashboard — `npm run dev` (Next.js, `:3000`, may fall back to `:3001` if `3000`
+  is taken). The dashboard needs `.env.local` (gitignored) with `SESSION_SECRET`
+  (32+ chars), `PRIVATE_PAPER_API_URL=http://127.0.0.1:8080`, `AUTH_USERNAME`, and
+  `AUTH_PASSWORD_HASH` (bcrypt, generate with `bcryptjs`).
+- **Dashboard `.env.local` gotcha:** Next.js expands `$` in `.env` values, which
+  corrupts bcrypt hashes (they are full of `$`). Escape every `$` as `\$` in
+  `AUTH_PASSWORD_HASH`, otherwise login fails with "invalid credentials".
+- Do NOT enable live trading / wallet signing / real orders (not implemented in V1).
