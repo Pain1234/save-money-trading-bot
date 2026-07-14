@@ -10,18 +10,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - P2 runbooks: deployment-verify, worker-safe-stop, kill-switch (Issue #15).
 - Tabletop incident docs/incidents/INC-20260714-001-tabletop-duplicate-fill.md.
-- docs/P2-PR-SPLIT.md and scripts/split-p2-prs.ps1 for issue-scoped PR workflow.
-
-### Changed
-
-- docs/runbooks/README.md - runbook index; partial kill-switch and backup-restore.
-- ROADMAP.md - P2 exit criteria honest (not complete).
-- docs/RISK_REGISTER.md - R-006/R-007 linked to P2 artifacts.
-
-### Note
-
-- Issue #15 bundles three runbooks; see docs/P2-PR-SPLIT.md for deviation rationale.
-- P2 not exit-complete until Issue #11 restore drill done.
 
 ### Changed
 
@@ -31,7 +19,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.github/workflows/ci.yml` — CI push trigger includes `main`.
 - `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
   status.
+- docs/runbooks/README.md - runbook index; backup TODO until Issue #11 merges.
+- ROADMAP.md - P2 exit criteria honest (not complete).
+- docs/RISK_REGISTER.md - R-006/R-007 linked to P2 runbooks and audit.
 
+### Note
+
+Issue #15 bundles three runbooks; see docs/P2-PR-SPLIT.md.
+P2 not exit-complete until Issue #11 restore drill done.
+Rebase onto main after each prior P2 PR merge before opening this PR.
 ## [baseline-paper-v1.0.1] — 2026-07-14
 
 Post-tag baseline after `baseline-paper-v1.0.0` (merge of PR #63). Documentation and

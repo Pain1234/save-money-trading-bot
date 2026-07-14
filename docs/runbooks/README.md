@@ -18,7 +18,7 @@ Only commands evidenced in repository docs are listed verbatim. Do not invent pr
 | Dashboard start | Complete | [Below](#dashboard-start) |
 | Pre-deploy migrations | Complete | [Below](#migrations-local-dev) |
 | Deployment verify | Complete | [deployment-verify.md](deployment-verify.md) |
-| Backup and restore | Partial (drill pending) | [backup-restore.md](backup-restore.md) |
+| Backup and restore | TODO - Issue #11 (draft PR; do not merge until drill) | Issue #11 |
 | Reconciliation check | Complete | [reconciliation-daily.md](reconciliation-daily.md) |
 | Worker safe stop | Complete | [worker-safe-stop.md](worker-safe-stop.md) |
 | Worker restart | Complete | [worker-restart.md](worker-restart.md) |
