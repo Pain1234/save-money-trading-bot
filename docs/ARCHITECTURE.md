@@ -93,7 +93,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Backfill | `initial_backfill.py`, repository upserts |
 | Persistence | **In-process only** — `InMemoryCandleRepository` (`repository.py`); lost on worker restart |
 
-**Persistent state:** No durable candle rows today. Subscription cursors and advisory locks for refresh live in the paper worker process. **P3 gap:** versioned PostgreSQL or artifact storage per storage ADR.
+**Persistent state:** No durable candle rows or market-data catalog today. HTTP pagination cursors in `providers/hyperliquid_historical.py` exist only for the duration of a single backfill request (in-process). The PostgreSQL advisory lock (`paper_trading/lock.py`) serializes the **entire paper worker** via `PaperTradingApplication`; it is not a market-data refresh lock and does not live under `services/market_data/`. **P3 gap:** versioned raw artifact storage and normalized catalog per storage ADR.
 
 **Entrypoints:** No standalone production process. Started inside the paper worker via `PaperTradingApplication._build_market_data_runtime()` (`services/paper_trading/application.py`).
 

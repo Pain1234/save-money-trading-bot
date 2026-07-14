@@ -1,6 +1,6 @@
-# P3 – Versioned Historical Market Data Plan
+# P3 ? Versioned Historical Market Data Plan
 
-**GitHub Issue:** [#74](https://github.com/Pain1234/save-money-trading-bot/issues/74) � Plan and decompose P3 historical data pipeline
+**GitHub Issue:** [#74](https://github.com/Pain1234/save-money-trading-bot/issues/74) ? Plan and decompose P3 historical data pipeline
 
 **Verified against main commit:** `b0ded96ea3b2813fc4acacebae02b5bc6882104c` (includes merge of PR #71)
 
@@ -18,7 +18,7 @@
 - `docs/DECISION_LOG.md` (ADR-006)
 - `tests/market_data/` (27+ test modules)
 
-**Workflow:** Phase A (this document + Draft PR) → independent read-only review → Phase B (create GitHub sub-issues and update #45).
+**Workflow:** Phase A (this document + Draft PR) ? independent read-only review ? Phase B (create GitHub sub-issues and update #45).
 
 ---
 
@@ -28,9 +28,9 @@ Ein historischer Datenbestand, bei dem jedes Research-Ergebnis eindeutig beantwo
 
 - mit welchem Code,
 - mit welcher Konfiguration,
-- mit welchem unveränderlichen Datensatz,
+- mit welchem unver?nderlichen Datensatz,
 - aus welcher Quelle,
-- für welchen Zeitraum,
+- f?r welchen Zeitraum,
 - mit welchen bekannten Datenproblemen.
 
 ---
@@ -55,9 +55,9 @@ Ein historischer Datenbestand, bei dem jedes Research-Ergebnis eindeutig beantwo
 | Stale transport/candle checks | **Existing** | `stale.py`, `live.py` |
 | Fail-closed invalid ingest | **Existing** | `ingest.py`, `validation.py` |
 | Dataset manifest / catalog | **Missing** | Only `MARKET_DATA_VERSION = "1.0"` constant |
-| Research dataset binding | **Missing** | No experiment→dataset_id enforcement (P4) |
+| Research dataset binding | **Missing** | No experiment?dataset_id enforcement (P4) |
 | Automated market_data tests | **Existing** | `tests/market_data/` |
-| PostgreSQL candle tables | **Missing** | Alembic `001`–`009` have no candle tables |
+| PostgreSQL candle tables | **Missing** | Alembic `001`?`009` have no candle tables |
 | ARCHITECTURE.md accuracy (candle persistence) | **Partial** | Was incorrect; corrected in Phase A PR |
 
 **Summary:** Ingestion, validation, gap/dup/stale **logic** is strong in-process; **durable, versioned, reproducible datasets** are the P3 gap.
@@ -84,18 +84,18 @@ Aligned with existing `NormalizedCandle` / `CandleKey` (`services/market_data/mo
 
 **Layers:**
 
-1. **Raw source capture** — durable provider payload or normalized export (TBD in storage ADR)
-2. **Normalized candles** — canonical trading/research unit
-3. **Derived aggregates** — ISO weekly/monthly from daily; parent dataset reference required
-4. **Research datasets** — immutable manifest + catalog entry
+1. **Raw source capture** ? immutable durable **provider payload** captured at import time (e.g. Hyperliquid `candleSnapshot` response bodies). Not a normalized re-export; normalized candles are a separate layer derived from a fixed raw artifact.
+2. **Normalized candles** ? canonical trading/research unit; deterministic given a fixed raw artifact + import config + code commit
+3. **Derived aggregates** ? ISO weekly/monthly from daily; parent dataset reference required
+4. **Research datasets** ? immutable manifest + catalog entry linking raw and normalized identities
 
 ---
 
-## 4. Dataset-Identität
+## 4. Dataset-Identit?t
 
 ### Manifest fields (minimum)
 
-`dataset_id`, `schema_version`, `source`, `symbols`, `timeframes`, `start_timestamp`, `end_timestamp`, `timezone`, `row_count`, `content_hash`, `import_configuration`, `code_commit`, `created_at`, `parent_dataset_id`, `quality_status`, `known_issues`
+`dataset_id`, `schema_version`, `source`, `symbols`, `timeframes`, `start_timestamp`, `end_timestamp`, `timezone`, `row_count`, `content_hash`, `raw_dataset_id`, `raw_content_hash`, `import_configuration`, `code_commit`, `created_at`, `parent_dataset_id`, `quality_status`, `known_issues`
 
 ### Content hash rules (required before implementation)
 
@@ -119,18 +119,35 @@ Manifest issue must define:
 
 ## 5. Importvertrag
 
-- Deterministic: same source + config + code commit → same normalized output
-- Idempotent: repeated import of same version produces no duplicate keys
-- Resumable or safely restartable with auditable checkpoints
-- Import parameters persisted in manifest
+### Determinism contract
+
+Reproducibility is defined on **frozen inputs**, not on live re-fetch from an external API:
+
+```text
+immutable raw_dataset_id (or raw artifact content hash)
+  + import configuration
+  + code commit
+  ? normalized content hash
+```
+
+- **Not guaranteed:** `same live source + config + code commit ? same raw bytes`. Hyperliquid may correct history, paginate differently, or rate-limit; a new HTTP fetch is a new observation.
+- **Guaranteed:** given a fixed raw artifact, normalization is deterministic; re-normalizing the same raw artifact with the same config and code yields the same normalized content hash.
+- Each import that persists a new raw artifact receives a new `raw_dataset_id`; superseding corrections link via `parent_dataset_id`.
+- A divergent re-fetch against the live API creates a **new raw version**; it does not overwrite an existing raw artifact.
+
+### Operational requirements
+
+- Idempotent: repeated normalization of the **same** raw artifact produces no duplicate normalized keys
+- Resumable or safely restartable with auditable checkpoints (checkpoint references raw artifact, not live API cursor alone)
+- Import parameters persisted in manifest; `raw_dataset_id` and provenance required
 - Errors produce explicit dataset status (no silent correction)
 - Reuses existing validation path (`ingest.py`) where possible; extends with persistence
 
-**No standalone import CLI today** — P3 adds batch tooling atop `HyperliquidMarketDataRuntime` / backfill paths.
+**No standalone import CLI today** ? P3 adds batch tooling atop `HyperliquidMarketDataRuntime` / backfill paths; raw capture is mandatory before normalization (Issue drafts 4 and 5).
 
 ---
 
-## 6. Qualitätsregeln
+## 6. Qualit?tsregeln
 
 Reuse existing detectors; P3 adds **dataset-scoped reports** and manifest integration:
 
@@ -140,15 +157,15 @@ Reuse existing detectors; P3 adds **dataset-scoped reports** and manifest integr
 | Duplicate detection | `validation.py`, `repository.py` | Persisted dup/conflict report |
 | Stale data | `stale.py`, `live.py` | Stale thresholds in manifest quality |
 | OHLC plausibility | `validation.py` | Blockers vs warnings in quality status |
-| Extreme moves | — | Warning only; never auto-delete |
+| Extreme moves | ? | Warning only; never auto-delete |
 
 ---
 
-## 7. Quarantäne
+## 7. Quarant?ne
 
 - **Blockers:** fail closed; dataset not available to research
 - **Warnings:** recorded in manifest `known_issues`; research may proceed with explicit flag
-- Quarantine reason stored; correction → new dataset version
+- Quarantine reason stored; correction ? new dataset version
 - Prior invalid version remains auditable
 
 ---
@@ -188,63 +205,63 @@ Options to evaluate (no final choice in Phase A):
 
 ---
 
-## 11. Issue-Zerlegung (Entwürfe — Phase B)
+## 11. Issue-Zerlegung (Entw?rfe ? Phase B)
 
 **Do not create these GitHub issues until Phase A plan PR is approved.**
 
-### Issue draft 1 — Define canonical historical market data contract
+### Issue draft 1 ? Define canonical historical market data contract
 
 - **Labels:** `type:documentation`, `area:data`, `area:research`
 - **Migrationen:** none
 - **Depends on:** Plan issue (Phase A)
-- **Acceptance:** symbol/timezone/candle fields; raw vs normalized vs derived; compatibility with `models.py`; ADR candidates listed
+- **Acceptance:** symbol/timezone/candle fields; raw layer = immutable provider payload only (not normalized re-export); raw vs normalized vs derived; compatibility with `models.py`; ADR candidates listed
 
-### Issue draft 2 — Implement dataset manifest and version identifier
+### Issue draft 2 ? Implement dataset manifest and version identifier
 
 - **Labels:** `type:feature`, `area:data`, `status:needs-evidence`
 - **Migrationen:** none (schema/spec only)
 - **Depends on:** draft 1
-- **Acceptance:** manifest schema; deterministic `dataset_id`; **full hash canonicalization checklist** (section 4); validation tests; example manifest
+- **Acceptance:** manifest schema; deterministic `dataset_id`; `raw_dataset_id` / `raw_content_hash` fields; **full hash canonicalization checklist** (section 4); validation tests; example manifest
 
-### Issue draft 3 — Decide immutable dataset storage architecture
+### Issue draft 3 ? Decide immutable dataset storage architecture
 
 - **Labels:** `type:documentation`, `area:data`, `area:infrastructure`, `status:needs-decision`
 - **Migrationen:** none (ADR/decision only)
 - **Depends on:** draft 2
 - **Acceptance:** ADR with options analysis; recommendation; backup/restore impact; no implementation
 
-### Issue draft 4 — Implement immutable dataset storage and catalog
+### Issue draft 4 ? Implement immutable dataset storage and catalog
 
 - **Labels:** `type:feature`, `area:data`, `area:infrastructure`
-- **Migrationen:** allowed **only if** storage ADR selects PostgreSQL or hybrid — see migration policy below
+- **Migrationen:** allowed **only if** storage ADR selects PostgreSQL or hybrid ? see migration policy below
 - **Depends on:** draft 3
-- **Acceptance:** append-only catalog; no overwrite; invalid versions auditable; research lookup by `dataset_id`
+- **Acceptance:** append-only catalog; immutable **raw artifact store** with versioned or content-addressed identity; catalog links raw artifacts to normalized dataset manifests; no overwrite; invalid versions auditable; research lookup by `dataset_id`
 
-### Issue draft 5 — Implement deterministic historical import and backfill
+### Issue draft 5 ? Implement deterministic historical import and backfill
 
 - **Labels:** `type:feature`, `area:data`
 - **Depends on:** draft 4
-- **Acceptance:** repeatable import; idempotent keys; resumable; parameters in manifest; tests
+- **Acceptance:** historical import **captures and persists raw provider payloads** before normalization; manifest records `raw_dataset_id`, fetch timestamp, source endpoint, and pagination metadata; repeatable normalization from fixed raw artifact; idempotent normalized keys; resumable checkpoints; live re-fetch creates new raw version (section 5); tests
 
-### Issue draft 6 — Implement dataset quality validation and reports
+### Issue draft 6 ? Implement dataset quality validation and reports
 
 - **Labels:** `type:feature`, `area:data`, `area:risk`
 - **Depends on:** draft 5
 - **Acceptance:** wraps `gaps.py`, `validation.py`, `stale.py`; gap/dup/stale/plausibility reports; manifest `quality_status`
 
-### Issue draft 7 — Implement invalid dataset quarantine
+### Issue draft 7 ? Implement invalid dataset quarantine
 
 - **Labels:** `type:feature`, `area:risk`, `area:research`
 - **Depends on:** draft 6
 - **Acceptance:** blockers prevent research use; warnings recorded; new version on fix
 
-### Issue draft 8 — Verify deterministic timeframe aggregation
+### Issue draft 8 ? Verify deterministic timeframe aggregation
 
 - **Labels:** `type:feature`, `area:data`, `area:research`
 - **Depends on:** draft 5
 - **Acceptance:** ADR-006 regression; ISO week boundaries; parent manifest link; no look-ahead
 
-### Issue draft 9 — Complete P3 dataset reproducibility audit
+### Issue draft 9 ? Complete P3 dataset reproducibility audit
 
 - **Labels:** `type:operations`, `area:research`, `status:needs-evidence`
 - **Depends on:** drafts 7, 8
@@ -270,7 +287,7 @@ A database migration is permitted only when:
 | ROADMAP exit criterion | Responsible issue draft |
 |------------------------|-------------------------|
 | Each research dataset has manifest (hash, range, symbols, source) | 2 + 4 |
-| Re-import produces identical aggregates for fixed version | 5 + 8 + 9 |
+| Re-import produces identical aggregates for fixed version | 5 + 8 + 9 (re-normalize from same `raw_dataset_id`, not live re-fetch) |
 | Gap/duplicate audit documented | 6 + 9 |
 
 | R-001 acceptance (#45) | Issue draft |
@@ -289,11 +306,11 @@ A database migration is permitted only when:
 
 See **ADR-012** in `docs/DECISION_LOG.md`.
 
-- P2 operational train (#67–#72) and local backup/restore drill (#71 merged) provide the operational minimum for P3 work.
+- P2 operational train (#67?#72) and local backup/restore drill (#71 merged) provide the operational minimum for P3 work.
 - **Issue #11** (Railway non-prod restore) remains open for full P2 completion but **does not block** P3 historical-data planning or implementation.
 - P3 must not depend on untested Railway restore behavior.
 
-**Phase A (this PR):** planning only — no P3 implementation.
+**Phase A (this PR):** planning only ? no P3 implementation.
 
 **Phase B (after plan approval):** create sub-issues; update #45 child list with real issue numbers.
 

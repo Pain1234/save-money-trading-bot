@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- `docs/ARCHITECTURE.md` - candle persistence described accurately (in-memory today; P3 planned).
+- `docs/ARCHITECTURE.md` - candle persistence and market-data state described accurately (in-memory today; advisory lock is paper-worker scope).
+- `docs/P3_HISTORICAL_DATA_PLAN.md` - determinism contract requires immutable raw artifact; raw capture assigned to issue drafts 4/5.
 - `ROADMAP.md` - cross-link to P3 planning document.
 
 ### Added (P2)
