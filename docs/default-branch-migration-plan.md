@@ -78,6 +78,8 @@ Then change the GitHub default branch to `main` (Settings → Branches → Defau
    - `validate`
    - `lint`
    - `test`
+   - `test-market-data`
+   - `test-deploy`
    - `postgres`
 7. **Update local clones:** `git remote set-head origin main`
 8. **Document** migration date and commit SHA in `CHANGELOG.md`.
@@ -119,8 +121,14 @@ CI workflow: `.github/workflows/ci.yml` (Issue #53).
 |----------------|-----|---------|
 | `validate` | `validate` | Python compile, issue templates, governance tests, `git diff --check` |
 | `lint` | `lint` | `ruff check .` |
-| `test` | `test` | Unit tests (excludes PostgreSQL, live network, dashboard build) |
+| `test` | `test` | Unit tests (excludes deploy, postgres, live, soak) |
+| `test-market-data` | `test-market-data` | `tests/market_data -m "not live"` |
+| `test-deploy` | `test-deploy` | Dashboard build + bundle checks (Node 22) |
 | `postgres` | `postgres` | PostgreSQL integration tests (`-m "postgres and not soak"`) |
+
+**Status (2026-07-14):** CI workflow runs on PRs; branch protection with required
+checks is **not enabled** on the current default branch. Track execution in a
+dedicated open issue (see PR #63 issue hygiene).
 
 **Solo-maintainer review process (ADR-011):** self-review on PR is acceptable when
 CI is green and scope matches a linked issue; merge blocked when any required check

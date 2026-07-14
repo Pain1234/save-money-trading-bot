@@ -2,16 +2,17 @@
 """Export pinned Python dependencies for the P1 baseline lock file.
 
 Creates a clean virtual environment, installs the project with dev extras
-(non-editable, matching production ``pip install -e ".[api]"`` shape but
-including test tools), and writes ``requirements-baseline.txt`` at repo root.
+(editable, matching local dev ``pip install -e ".[dev]"``), and writes
+``requirements-baseline.txt`` at repo root containing **PyPI pins only** —
+local project references (``-e``, ``file://``, absolute paths) are stripped.
 
-Preferred runtime: Python 3.12 (matches ``deploy/Dockerfile.paper-python``).
-The script works on any Python >=3.11; regenerate on 3.12 before tagging when
-possible.
+**Regeneration requires Python 3.12** (matches ``deploy/Dockerfile.paper-python``).
+CI and baseline lock files must be produced on 3.12; the script warns on other
+versions.
 
 Usage::
 
-    python scripts/export_requirements_baseline.py
+    py -3.12 scripts/export_requirements_baseline.py
 """
 from __future__ import annotations
 
@@ -23,9 +24,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = REPO_ROOT / "requirements-baseline.txt"
 HEADER = """\
-# P1 baseline Python lock (transitive pins from pip freeze).
-# Regenerate: python scripts/export_requirements_baseline.py
-# Preferred runtime: Python 3.12 (deploy/Dockerfile.paper-python).
+# P1 baseline Python lock (transitive PyPI pins from pip freeze).
+# Regenerate (Python 3.12 required): py -3.12 scripts/export_requirements_baseline.py
+# Matches deploy/Dockerfile.paper-python (Python 3.12).
 # Install from repo root: pip install -r requirements-baseline.txt
 # Then install this package: pip install -e ".[dev]"  OR  pip install .
 """
@@ -40,9 +41,35 @@ def _run(cmd: list[str], *, cwd: Path) -> None:
         )
 
 
+def _is_local_project_ref(line: str) -> bool:
+    """Return True if *line* is an editable or path install of this repo."""
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped.startswith("-e "):
+        return True
+    lower = stripped.lower()
+    if "file://" in lower:
+        return True
+    repo_posix = REPO_ROOT.as_posix().lower()
+    repo_win = str(REPO_ROOT).lower().replace("\\", "/")
+    normalized = stripped.lower().replace("\\", "/")
+    if repo_posix in normalized or repo_win in normalized:
+        return True
+    # pip freeze may emit: save-money-bot @ file:///...
+    if stripped.startswith("save-money-bot") and "@" in stripped:
+        return True
+    return False
+
+
 def main() -> int:
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     print(f"Using Python {py_version} ({sys.executable})")
+    if sys.version_info[:2] != (3, 12):
+        print(
+            "WARNING: regenerate on Python 3.12 to match deploy/Dockerfile.paper-python.",
+            file=sys.stderr,
+        )
 
     with tempfile.TemporaryDirectory(prefix="baseline-export-") as tmp:
         venv_dir = Path(tmp) / ".venv"
@@ -54,7 +81,7 @@ def main() -> int:
             python = venv_dir / "bin" / "python"
 
         _run([str(python), "-m", "pip", "install", "--upgrade", "pip"], cwd=REPO_ROOT)
-        _run([str(python), "-m", "pip", "install", ".[dev]"], cwd=REPO_ROOT)
+        _run([str(python), "-m", "pip", "install", "-e", ".[dev]"], cwd=REPO_ROOT)
 
         freeze = subprocess.run(
             [str(python), "-m", "pip", "freeze"],
@@ -66,7 +93,7 @@ def main() -> int:
         lines = [
             line
             for line in freeze.stdout.splitlines()
-            if line and not line.startswith("-e ")
+            if line and not _is_local_project_ref(line)
         ]
 
         body = HEADER + f"# Generated with Python {py_version}\n" + "\n".join(lines) + "\n"

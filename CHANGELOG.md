@@ -6,30 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Post-tag improvements after `baseline-paper-v1.0.0` (PR #63). A patch tag
+`baseline-paper-v1.0.1` may follow this PR merge for documentation and lock-file
+fixes only — do not retag or move `baseline-paper-v1.0.0`.
+
 ### Added
 
-- `requirements-baseline.txt` — pinned Python transitive dependencies for P1 baseline (Issue #8).
-- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv.
+- `requirements-baseline.txt` — pinned Python transitive PyPI dependencies (Issue #8); regenerated on Python 3.12.
+- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv; strips local project refs.
+- CI jobs `test-market-data` and `test-deploy` in `.github/workflows/ci.yml`.
 
 ### Changed
 
-- `docs/baseline-paper-v1.md` — dashboard local vs production guidance; honest test inventory; tag gate remains **open**; PostgreSQL local blocker documented; Issue #58 resolution.
-- `README.md` — dashboard requires `npm ci`; separate local dev vs production build paths.
-- `ROADMAP.md` — P0 attribution corrected (not PR #55); P1 tag gate open.
-- Removed premature `[baseline-paper-v1.0.0]` changelog section — tag not created; gate open (Issue #10).
+- `docs/baseline-paper-v1.md` — tag status **released** at `baseline-paper-v1.0.0`; honest CI vs full-suite test counts; dashboard env vars documented.
+- `README.md` — dashboard local dev requires `PRIVATE_PAPER_API_URL` for server routes; Railway uses `node server.js` standalone.
+- `ROADMAP.md` — P1 tag released; post-tag follow-ups documented separately.
+- `.github/workflows/ci.yml` — unit job includes `paper_trading` and `market_data` (excludes `postgres`, `live`, `soak`).
 
 ### Fixed
 
-- Issue #58 — dashboard build test failure traced to missing `npm ci` (not source defect).
+- Issue #58 — dashboard build test failure traced to missing `npm ci` (not source defect); documentation corrected (not mock-by-default for `/dashboard`).
 
-### Planned — `baseline-paper-v1.0.0` (Issue #10, tag not created)
+## [baseline-paper-v1.0.0] — 2026-07-14
 
-Criteria and notes for the future tag release (do not tag until checklist in
-`docs/baseline-paper-v1.md` is complete):
+Tagged at commit `daacb627` (merge of PR #62). P1 reproducible paper-trading baseline.
 
-- `.github/workflows/ci.yml` — mandatory CI gate (validate, lint, unit test, PostgreSQL integration).
+### Added
+
+- `.github/workflows/ci.yml` — CI gate (validate, lint, unit test, PostgreSQL integration).
 - `docs/default-branch-migration-plan.md` — plan for `main` default branch (#52; migration not executed).
-- Remaining gaps before tag: documented PostgreSQL run evidence, Python lock on 3.12, branch protection (#52).
+
+### Changed
+
+- `docs/baseline-paper-v1.md` — P1 reproducible baseline reference (start paths, versions, test inventory).
+- `README.md` — aligned with PostgreSQL/Railway architecture.
+
+### Notes
+
+- Branch protection and mandatory required checks remain pending human approval (#52 execution issue).
+- Full 782-test suite is not entirely CI-gated; see `docs/baseline-paper-v1.md` for counts.
 
 ## [Unreleased — prior entries]
 
