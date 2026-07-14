@@ -48,7 +48,7 @@ def test_reset_postgres_trading_state_refuses_wrong_database(monkeypatch) -> Non
         )
 
     monkeypatch.setattr(
-        "tests.paper_trading.conftest.assert_postgres_test_database_safe",
+        "tests.postgres_fixtures.assert_postgres_test_database_safe",
         _reject,
     )
     with pytest.raises(RuntimeError, match="No tables were modified"):
@@ -115,7 +115,7 @@ def test_failed_safety_check_leaves_scheduler_runs_unmodified(migrated_engine, m
         raise RuntimeError("Refusing destructive postgres reset")
 
     monkeypatch.setattr(
-        "tests.paper_trading.conftest.assert_postgres_test_database_safe",
+        "tests.postgres_fixtures.assert_postgres_test_database_safe",
         _reject,
     )
     with pytest.raises(RuntimeError, match="Refusing destructive postgres reset"):
