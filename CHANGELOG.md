@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `docs/P3_HISTORICAL_DATA_PLAN.md` - P3 historical data planning document with nine issue drafts (Phase A; sub-issues after plan review).
+- `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).
 - ADR-012 in `docs/DECISION_LOG.md` - P2 dependency decision for P3 (#11 waiver).
 
 ### Changed
