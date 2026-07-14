@@ -26,14 +26,32 @@ Full baseline: **`docs/baseline-paper-v1.md`** (env vars, versions, tests, tag c
 
 ### Dashboard (UI)
 
+**Local development** (`next dev`) — server routes under `/dashboard` require env vars
+(including `PRIVATE_PAPER_API_URL`; see `src/lib/paper-api/client.ts`):
+
 ```bash
 npm ci
+# .env.local — SESSION_SECRET, PRIVATE_PAPER_API_URL, AUTH_USERNAME, AUTH_PASSWORD_HASH
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Local `npm run dev` uses mock
-data for UI work. Production dashboard reads the private paper API via Railway
-(see `docs/railway-paper-trading-dashboard-v1.md`).
+Open [http://localhost:3000](http://localhost:3000). Start the read-only paper API
+locally or point `PRIVATE_PAPER_API_URL` at a running instance.
+
+**Local production build** (`next start`):
+
+```bash
+npm ci
+# SESSION_SECRET, PRIVATE_PAPER_API_URL, AUTH_USERNAME, AUTH_PASSWORD_HASH — see .env.example
+npm run build
+npm start
+```
+
+**Railway / Docker** uses standalone output (`node server.js` per
+`deploy/Dockerfile.dashboard`), not `npm start`.
+
+`npm ci` is required before `npm run build` or `npm run dev` on a fresh clone.
+Issue #58: build test failure was missing `npm ci`, not a dashboard source defect.
 
 ### Tests
 

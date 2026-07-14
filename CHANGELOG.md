@@ -4,29 +4,49 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [baseline-paper-v1.0.0] - 2026-07-14
+## [Unreleased]
 
-P1 reproducible paper-trading baseline release. No trading-logic, strategy-parameter,
-risk-limit, migration, or production start-command changes.
+Post-tag improvements after `baseline-paper-v1.0.0` (PR #63). A patch tag
+`baseline-paper-v1.0.1` may follow this PR merge for documentation and lock-file
+fixes only — do not retag or move `baseline-paper-v1.0.0`.
 
 ### Added
 
-- `.github/workflows/ci.yml` — mandatory CI gate (validate, lint, unit test, PostgreSQL integration).
+- `requirements-baseline.txt` — pinned Python transitive PyPI dependencies (Issue #8); regenerated on Python 3.12.
+- `scripts/export_requirements_baseline.py` — regenerate lock file from clean venv; strips local project refs.
+- CI jobs `test-market-data` and `test-deploy` in `.github/workflows/ci.yml`.
+
+### Changed
+
+- `docs/baseline-paper-v1.md` — tag status **released** at `baseline-paper-v1.0.0`; honest CI vs full-suite test counts; dashboard env vars documented.
+- `README.md` — dashboard local dev requires `PRIVATE_PAPER_API_URL` for server routes; Railway uses `node server.js` standalone.
+- `ROADMAP.md` — P1 tag released; post-tag follow-ups documented separately.
+- `.github/workflows/ci.yml` — unit job includes `paper_trading` and `market_data` (excludes `postgres`, `live`, `soak`).
+
+### Fixed
+
+- Issue #58 — dashboard build test failure traced to missing `npm ci` (not source defect); documentation corrected (not mock-by-default for `/dashboard`).
+
+## [baseline-paper-v1.0.0] — 2026-07-14
+
+Tagged at commit `daacb627` (merge of PR #62). P1 reproducible paper-trading baseline.
+
+### Added
+
+- `.github/workflows/ci.yml` — CI gate (validate, lint, unit test, PostgreSQL integration).
 - `docs/default-branch-migration-plan.md` — plan for `main` default branch (#52; migration not executed).
 
 ### Changed
 
-- `docs/baseline-paper-v1.md` — tag criteria marked met; CI inventory updated.
-- `docs/ARCHITECTURE.md` — CI section reflects `ci.yml`.
-- `pyproject.toml` — ruff per-file ignores for governance scripts/tests.
+- `docs/baseline-paper-v1.md` — P1 reproducible baseline reference (start paths, versions, test inventory).
+- `README.md` — aligned with PostgreSQL/Railway architecture.
 
-### Known gaps (unchanged)
+### Notes
 
-- Dashboard build test (`tests/deploy/test_dashboard_bundle.py`) — local/CI Node setup (#58).
-- Branch protection on default branch — deferred until #52 human approval.
-- Railway production PostgreSQL version — pending external verification.
+- Branch protection and mandatory required checks remain pending human approval (#52 execution issue).
+- Full 782-test suite is not entirely CI-gated; see `docs/baseline-paper-v1.md` for counts.
 
-## [Unreleased]
+## [Unreleased — prior entries]
 
 ### Changed
 

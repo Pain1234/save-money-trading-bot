@@ -6,7 +6,9 @@ inventory, and baseline-release criteria. It does **not** change start commands,
 strategy parameters, or deployment configuration.
 
 **Related issues:** #7 (start documentation), #8 (runtime versions), #9 (test/CI
-inventory), #10 (baseline tag — criteria defined here; tag creation is separate).
+inventory), #10 (baseline tag — **released** as `baseline-paper-v1.0.0` at
+`daacb627`). Changes in PR #63 are **post-tag artifacts** (not part of v1.0.0);
+`baseline-paper-v1.0.1` may follow for doc/lock fixes only.
 
 **Production deployment detail:** `docs/railway-paper-trading-dashboard-v1.md`
 
@@ -18,12 +20,20 @@ inventory), #10 (baseline tag — criteria defined here; tag creation is separat
 |-----------|------------------|---------------|
 | Worker | `deploy/scripts/start-worker.sh` | PostgreSQL + `PAPER_TRADING_DATABASE_URL` |
 | Read-only API | `deploy/scripts/start-api.sh` | Same database URL |
-| Dashboard | `npm run build` / `npm start` (Node) | UI dev uses mock data unless API URL configured |
+| Dashboard | `npm ci` → `npm run build` → `node server.js` (Node **22+**, standalone) | `npm ci` → `npm run dev` (requires env vars for `/dashboard`) |
 | Database | Railway PostgreSQL (production version externally verified/pending verification) | Local PostgreSQL **16** or `docker/docker-compose.paper-test.yml` |
 
-The dashboard UI (`npm run dev`) uses mock data for local UI work. The
-paper-trading worker/API path is PostgreSQL-backed and matches Railway production
-shape.
+**Dashboard modes (do not conflate):**
+
+| Mode | Command | Runtime | Data source |
+|------|---------|---------|-------------|
+| Local Next dev | `npm ci` then `npm run dev` | `next dev` | Server routes under `/dashboard` call the paper API and **require** `PRIVATE_PAPER_API_URL` (see `src/lib/paper-api/client.ts` — throws if unset). Marketing/landing components may still use static mock data; monitoring pages do not. |
+| Local production build | `npm ci` then `npm run build` then `npm start` | `next start` | Same server-side env as Railway (`PRIVATE_PAPER_API_URL`, auth vars) |
+| Railway / Docker | `deploy/Dockerfile.dashboard` | `node server.js` (standalone output) | Read-only paper API via `PRIVATE_PAPER_API_URL` |
+
+The paper-trading worker/API path is PostgreSQL-backed and matches Railway
+production shape. Dashboard pages under `src/app/dashboard/` fetch live API data
+via server components; they do not use `@/lib/mock-data`.
 
 ---
 
@@ -94,19 +104,47 @@ Runs `python -m paper_trading.api_runner` on `PAPER_API_HOST`/`PAPER_API_PORT`
 
 ### Dashboard
 
+**Required env vars (local dev and production builds):**
+
+| Variable | Purpose |
+|----------|---------|
+| `PRIVATE_PAPER_API_URL` | Read-only paper API base URL (server-side only) |
+| `SESSION_SECRET` | Session encryption (min 32 chars) — required for `npm run build` |
+| `AUTH_USERNAME` | Dashboard login username |
+| `AUTH_PASSWORD_HASH` | bcrypt hash for dashboard login |
+
+**Production-shaped build (matches Railway / CI):**
+
 ```bash
 npm ci
+export SESSION_SECRET="…"                          # min 32 chars
+export PRIVATE_PAPER_API_URL="http://127.0.0.1:8080"
+export AUTH_USERNAME="monitor"
+export AUTH_PASSWORD_HASH="…"                      # bcrypt hash
 npm run build
-npm start
+npm start                                        # next start locally
 ```
 
 Railway dashboard service uses `deploy/Dockerfile.dashboard` (Node 22, standalone
-Next.js output). Local UI development:
+Next.js output, **`CMD ["node", "server.js"]`** — not `npm start`). `npm ci` is
+**required** before `npm run build` — a fresh clone without `node_modules` fails
+with `next: command not found`.
+
+**Local Next.js development:**
 
 ```bash
-npm install
+npm ci
+# .env.local — copy from .env.example
+export PRIVATE_PAPER_API_URL="http://127.0.0.1:8080"
+export SESSION_SECRET="…"
+export AUTH_USERNAME="monitor"
+export AUTH_PASSWORD_HASH="…"
 npm run dev
 ```
+
+Open [http://localhost:3000](http://localhost:3000). Without `PRIVATE_PAPER_API_URL`,
+server-side dashboard routes error at runtime (`client.ts` throws). Start the
+read-only paper API (`deploy/scripts/start-api.sh`) or point at a remote instance.
 
 ---
 
@@ -126,10 +164,14 @@ Recorded baseline (from repository artifacts, 2026-07):
 
 - **Declared:** `pyproject.toml` with lower-bound pins (`>=`).
 - **Install (dev/tests):** `pip install -e ".[dev]"` or `pip install -e ".[api]"`.
-- **Production image:** `pip install -e ".[api]"` in Dockerfile (no separate lock file).
-- **Reproducibility note:** exact transitive versions depend on install time unless
-  captured in a built Docker image or a future lock export. P1 records the runtime
-  and direct dependency bounds; a full pip freeze is optional for tag notes.
+- **Production image:** `pip install -e ".[api]"` in Dockerfile.
+- **Baseline lock:** `requirements-baseline.txt` — transitive **PyPI** pins from a clean
+  venv after `pip install -e ".[dev]"`. Regenerate with
+  `py -3.12 scripts/export_requirements_baseline.py` (**Python 3.12 required**,
+  matches `deploy/Dockerfile.paper-python`). Local project refs are stripped.
+  Issue #8.
+- **Reproducibility:** use the lock file for audit/reinstall; production Docker
+  images remain the authoritative runtime artifact until tag gate closes.
 
 ### Node dependency strategy
 
@@ -176,61 +218,100 @@ Collected tests (2026-07-13, `python -m pytest tests/ --collect-only -q`): **782
 
 ### Recorded baseline run (without PostgreSQL)
 
-Environment: Windows, Python 3.14 (local), no `PAPER_TRADING_DATABASE_URL`.
+Environment: Windows, Python 3.14 (local), no `PAPER_TRADING_DATABASE_URL`, no
+Docker (PostgreSQL container unavailable).
+
+**PR #55 documented run (2026-07-13):**
 
 ```bash
 python -m pytest tests/ --ignore=tests/paper_trading --ignore=tests/market_data -q
-# Result: 262 passed, 1 failed (2026-07-13)
+# Collected subset; result: 262 passed, 1 failed
 ```
 
-Failure:
+| Test | Outcome | Notes |
+|------|---------|-------|
+| `tests/deploy/test_dashboard_bundle.py::test_dashboard_build_succeeds` | Failed in PR #55 run | Root cause: **`npm ci` not run`** — `next` missing from PATH. Resolved in Issue #58 (2026-07-14): after `npm ci`, build passes on Node 24 with test env vars. Baseline requires Node **22+** and `npm ci` before any build. |
 
-| Test | Reason |
-|------|--------|
-| `tests/deploy/test_dashboard_bundle.py::test_dashboard_build_succeeds` | `npm run build` exit code 1 in local environment — **pre-existing** on default branch; unaffected by this docs-only PR; tracked in Issue #58 |
+**Follow-up run (2026-07-14, same machine after `npm ci`):**
 
-PostgreSQL-marked tests were **not executed** in this run (require database setup).
+```bash
+python -m pytest tests/deploy/test_dashboard_bundle.py::test_dashboard_build_succeeds -v
+# 1 passed
 
-### CI coverage
+python -m pytest tests/ --ignore=tests/paper_trading --ignore=tests/market_data -q
+# 288 passed
+```
 
-| Workflow | Scope |
-|----------|-------|
-| `.github/workflows/github-governance-setup.yml` | Governance script validation (path-filtered PRs) |
-| `.github/workflows/ci.yml` | Mandatory CI: compile, governance tests, ruff, unit pytest, PostgreSQL integration (#53) |
+### PostgreSQL integration run
 
-Required status checks (for branch protection after #52): `validate`, `lint`, `test`, `postgres`.
-See `docs/default-branch-migration-plan.md` § Branch protection plan.
+**Not executed locally (2026-07-14):** Docker CLI unavailable on baseline Windows
+host — `docker compose -f docker/docker-compose.paper-test.yml up -d` could not
+run. Required steps when Docker is available:
 
-Dashboard build test (`tests/deploy/test_dashboard_bundle.py`) is excluded from CI until
-Node 22 is added to the workflow; known local failure tracked in Issue #58.
+```bash
+docker compose -f docker/docker-compose.paper-test.yml up -d
+export PAPER_TRADING_DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5433/paper_trading_test"
+python -m alembic upgrade head
+python -m pytest tests/paper_trading -m postgres -v
+```
+
+**CI:** `.github/workflows/ci.yml` job `postgres` runs this gate on GitHub Actions
+(Ubuntu + service container). Local or CI evidence required before tag; this
+follow-up records the local blocker honestly.
+
+### CI coverage (782 collected total — not all run in CI)
+
+| Workflow job | Approx. scope | Notes |
+|--------------|---------------|-------|
+| `validate` | compileall, governance unit tests, PR whitespace | Always |
+| `lint` | `ruff check .` | Always |
+| `test` | ~609 tests: all except `tests/deploy`, excluding `-m postgres`, `-m live`, `-m soak` | Includes `paper_trading` unit tests and non-live `market_data` |
+| `test-market-data` | `tests/market_data -m "not live"` | Websocket/regression coverage |
+| `test-deploy` | `tests/deploy` (Node 22 + `npm ci`) | Dashboard build + bundle checks |
+| `postgres` | `tests/paper_trading -m "postgres and not soak"` | PostgreSQL service container |
+
+**Not in CI:** `-m live` (network smoke), `-m soak` (long-running), and any tests
+outside the above jobs. Reconcile counts with `pytest --collect-only` when the
+suite changes.
+
+Branch protection with **required** status checks is **not enabled** on the
+default branch (human approval pending — see execution issue for #52). CI runs on
+PRs but is not yet mandatory for merge.
 
 ---
 
 ## Baseline release tag (Issue #10)
+
+### Status: **released**
+
+Tag `baseline-paper-v1.0.0` points to `daacb627` (merge of PR #62, 2026-07-14).
+Do **not** move or retag this release.
+
+PR #63 and later commits are **post-tag artifacts** (Python 3.12 lock, CI
+coverage, dashboard documentation). Optional patch tag `baseline-paper-v1.0.1`
+may follow PR #63 merge for documentation/lock fixes only.
 
 ### Naming
 
 `baseline-paper-v1.0.0` (initial baseline), then `baseline-paper-v1.x` for
 documentation-only or test-inventory updates without trading-logic changes.
 
-### Tag criteria (all required)
+### Tag criteria at v1.0.0 (met)
 
 - [x] This document merged and linked from `README.md`
 - [x] P1 issues #7–#9 closed with evidence in PR #55
 - [x] Start commands unchanged from `deploy/scripts/` (verified by review)
-- [x] At least one documented test run with PostgreSQL (`-m postgres`) — CI job `postgres` in `.github/workflows/ci.yml` (local run blocked without Docker; see Issue #10 PR)
-- [x] Known failures/flakes recorded (see table above; dashboard build #58)
+- [x] PostgreSQL test run — CI `postgres` job (`.github/workflows/ci.yml`)
+- [x] Known failures/flakes recorded and resolved where applicable (dashboard build #58 — missing `npm ci`)
 - [x] `CHANGELOG.md` section for the tag
 - [x] No strategy-parameter or risk-limit changes in tagged commit range
+- [x] Dashboard start/build prerequisites documented
 
-### Tag creation (manual, after criteria met)
+### Post-tag follow-ups (PR #63, not in v1.0.0)
 
-```bash
-git tag -a baseline-paper-v1.0.0 <commit-sha> -m "P1 reproducible paper baseline"
-git push origin baseline-paper-v1.0.0
-```
-
-Do not create the tag until exit criteria are agreed and recorded.
+- [ ] `requirements-baseline.txt` regenerated on Python 3.12 (portable PyPI pins)
+- [ ] Extended CI jobs (`test-market-data`, `test-deploy`)
+- [ ] Dashboard env-var documentation corrected
 
 ---
 
@@ -242,5 +323,5 @@ Do not create the tag until exit criteria are agreed and recorded.
 | Versions recorded | Python 3.12 / Node 22 / Postgres 16 (local baseline); Railway Postgres version pending verification |
 | Test commands documented | See table above |
 | Known failures recorded | Dashboard build test (local) |
-| Baseline tag exists | **Ready** — tag `baseline-paper-v1.0.0` after CI PR merge |
-| Full CI for tests | `.github/workflows/ci.yml` (#53) |
+| Baseline tag exists | **Released** — `baseline-paper-v1.0.0` at `daacb627` (PR #62) |
+| Full CI for tests | `.github/workflows/ci.yml` (#53); ~609 unit + market_data + deploy + postgres; not all 782 tests; branch protection pending |
