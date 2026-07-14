@@ -1,20 +1,21 @@
 # Default Branch Migration Plan (`main`)
 
-**Issue:** #52
-**Status:** Plan complete — **default branch NOT changed** (requires explicit human approval)
-**Current default branch:** `cursor/railway-paper-dashboard-v1`
+**Issues:** #52 (plan), #64 (execution)
+**Status:** **Executed** (2026-07-14) — GitHub default branch is `main`
+**Previous default branch:** `cursor/railway-paper-dashboard-v1` (retained for rollback)
+**Migration commit:** `10000d3bb052d6a04e680f2466e8ab97274c4163` (`baseline-paper-v1.0.1`)
 
-This document satisfies the acceptance criteria for planning the migration from the
-Cursor/feature-named default branch to a stable `main` branch. It does **not** perform
-the migration.
+This document records the migration from the Cursor/feature-named default branch to a
+stable `main` branch.
 
 ---
 
-## Current state (2026-07-14)
+## Current state (2026-07-14, post-migration)
 
 | Item | Value | Source |
 |------|-------|--------|
-| GitHub default branch | `cursor/railway-paper-dashboard-v1` | `gh repo view` |
+| GitHub default branch | `main` | `gh repo view` |
+| Rollback branch | `cursor/railway-paper-dashboard-v1` (same SHA as `main` at cutover) | `git branch -a` |
 | Open pull requests | None | `gh pr list --state open` |
 | Production deploy platform | Railway (four services) | `docs/railway-paper-trading-dashboard-v1.md` |
 | Public dashboard URL | `https://bot.save-money.xyz` | Railway custom domain |
@@ -126,27 +127,31 @@ CI workflow: `.github/workflows/ci.yml` (Issue #53).
 | `test-deploy` | `test-deploy` | Dashboard build + bundle checks (Node 22) |
 | `postgres` | `postgres` | PostgreSQL integration tests (`-m "postgres and not soak"`) |
 
-**Status (2026-07-14):** CI workflow runs on PRs; branch protection with required
-checks is **not enabled** on the current default branch. Track execution in a
-dedicated open issue (see PR #63 issue hygiene).
+**Status (2026-07-14):** Branch protection on `main` tracked in Issue #65. See
+`docs/branch-protection.md` for required checks after #65 execution.
 
 **Solo-maintainer review process (ADR-011):** self-review on PR is acceptable when
 CI is green and scope matches a linked issue; merge blocked when any required check
 fails.
 
-Branch protection is **intentionally not enabled** on the current default branch until
-this migration is approved and `main` exists.
+Branch protection is configured on `main` per Issue #65 after migration.
 
 ---
 
-## Human approval gate
+## Migration execution record (#64)
 
-The following require explicit maintainer sign-off **before** executing migration steps:
+| Step | Status |
+|------|--------|
+| Create `main` at same SHA as old default | Done (`10000d3`) |
+| Change GitHub default branch to `main` | Done |
+| Retain `cursor/railway-paper-dashboard-v1` for rollback | Done |
+| Railway source branch → `main` | **Manual verification pending** (see checklist below) |
+| Cloudflare DNS unchanged | **Manual verification pending** |
+| Branch protection (#65) | See `docs/branch-protection.md` |
 
-- [ ] Railway deployment branches verified and recorded
-- [ ] Cloudflare DNS verified (no unintended Workers/Page Rules on dashboard hostname)
-- [ ] Target commit SHA agreed
-- [ ] Rollback plan reviewed
-- [ ] Window chosen (low-traffic; maintainer available for Railway smoke test)
+### Human approval gate (completed for GitHub cutover)
 
-**Do not change the default branch in automation or via this issue alone.**
+- [x] Target commit SHA agreed (`10000d3` = `baseline-paper-v1.0.1`)
+- [x] Rollback plan reviewed
+- [ ] Railway deployment branches verified and recorded (manual)
+- [ ] Cloudflare DNS verified (manual)

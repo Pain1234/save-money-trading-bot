@@ -1,6 +1,5 @@
 # Mandatory CI gate for Python tests, lint, and governance checks (Issue #53).
-# Branch protection is NOT enabled until default-branch migration (#52) is approved.
-# Required checks exist but are not yet mandatory on the default branch.
+# Branch protection on `main` with required checks: Issue #65.
 
 name: CI
 
@@ -8,6 +7,7 @@ on:
   pull_request:
   push:
     branches:
+      - main
       - cursor/railway-paper-dashboard-v1
 
 concurrency:

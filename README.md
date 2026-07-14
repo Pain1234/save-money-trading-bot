@@ -101,7 +101,8 @@ deploy/                # Railway/Docker production paths
 | Document | Purpose |
 |----------|---------|
 | `docs/baseline-paper-v1.md` | P1 reproducible baseline (start, versions, tests) |
-| `docs/default-branch-migration-plan.md` | Plan for `main` default branch (#52; not executed) |
+| `docs/default-branch-migration-plan.md` | Default branch migration record (`main`, #64) |
+| `docs/branch-protection.md` | Required CI checks on `main` (#65) |
 | `docs/strategy-specification.md` | Strategy V1 behavior (frozen) |
 | `docs/risk-specification.md` | Risk limits (frozen) |
 | `docs/strategy-v1-parameter-inventory.md` | Published parameter defaults |

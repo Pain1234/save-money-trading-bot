@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub default branch migrated from `cursor/railway-paper-dashboard-v1` to `main`
+  (Issue #64, commit `10000d3`). Rollback branch retained.
+- Branch protection with required CI checks enabled on `main` (Issue #65).
+- `.github/workflows/ci.yml` — CI push trigger includes `main`.
+- `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
+  status.
+
 ## [baseline-paper-v1.0.1] — 2026-07-14
 
 Post-tag baseline after `baseline-paper-v1.0.0` (merge of PR #63). Documentation and

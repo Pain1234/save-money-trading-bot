@@ -274,9 +274,9 @@ follow-up records the local blocker honestly.
 outside the above jobs. Reconcile counts with `pytest --collect-only` when the
 suite changes.
 
-Branch protection with **required** status checks is **not enabled** on the
-default branch (human approval pending — see execution issue for #52). CI runs on
-PRs but is not yet mandatory for merge.
+Branch protection with **required** status checks is enabled on `main` (Issue #65).
+See `docs/branch-protection.md` for the check list. CI runs on all PRs targeting
+`main`.
 
 ---
 

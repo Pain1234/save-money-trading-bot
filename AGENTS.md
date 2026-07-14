@@ -6,6 +6,8 @@ Binding rules for Cursor, Codex, and other coding agents working in this reposit
 
 **Source of truth:** GitHub (issues, milestones, pull requests, `docs/DECISION_LOG.md`). Chat is the workbench; GitHub is the project memory.
 
+**Default branch:** `main` (see `docs/default-branch-migration-plan.md`, Issue #64). Open PRs target `main`; required CI checks on merge are documented in `docs/branch-protection.md`.
+
 ---
 
 ## 1. Before every task
