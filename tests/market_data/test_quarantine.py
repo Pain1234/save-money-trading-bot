@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-
 from market_data.content_hash import hash_normalized_candles
 from market_data.dataset_catalog import InMemoryDatasetCatalog
 from market_data.manifest import DatasetManifest
