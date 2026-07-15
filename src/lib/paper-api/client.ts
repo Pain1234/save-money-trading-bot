@@ -186,7 +186,7 @@ export async function fetchPaperApi<T>(
 
 export async function fetchStatus(): Promise<StatusResponse> {
   return fetchPaperApi<StatusResponse>("/api/v1/status", {
-    revalidate: REVALIDATE.STATUS,
+    noStore: true,
   });
 }
 
@@ -246,6 +246,6 @@ export async function fetchEquity(): Promise<Paginated<EquityPoint>> {
 
 export async function fetchMarketData(): Promise<Record<string, unknown>> {
   return fetchPaperApi<Record<string, unknown>>("/api/v1/market-data", {
-    revalidate: REVALIDATE.STATUS,
+    noStore: true,
   });
 }
