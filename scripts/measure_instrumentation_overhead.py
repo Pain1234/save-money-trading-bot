@@ -21,13 +21,12 @@ import sys
 import time
 from typing import Any
 
-from sqlalchemy import create_engine, text
-
 from paper_trading.perf_observability import (
     RequestPerfMetrics,
     attach_engine_query_metrics,
     detach_engine_query_metrics,
 )
+from sqlalchemy import create_engine, text
 
 
 def _pct(values: list[float], pct: float) -> float:
