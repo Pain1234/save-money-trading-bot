@@ -58,15 +58,23 @@ Raw after report: [`instrumentation-overhead-after.json`](instrumentation-overhe
 ## How to reproduce
 
 ```bash
+# Authoritative microbenchmark (this PR)
+export PAPER_TRADING_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/paper_trading_test
+export PYTHONPATH=services
+python scripts/measure_instrumentation_overhead.py --loops 1000
+
 # Unit + postgres (Issue #96 tests)
 python -m pytest tests/paper_trading/test_perf_instrumentation.py -q
 
-# API warm smoke (instrumented branch)
+# API warm smoke (instrumented branch; prefer same Python as the #95 baseline host)
 export PAPER_API_BASE_URL=http://127.0.0.1:8091
 python scripts/measure_dashboard_api_baseline.py --warm-runs 20 \
   --output docs/operations/instrumentation-overhead-after.json
 ```
 
+Host wall-clock before/after can differ by Python version / OS noise; treat the
+microbenchmark as authoritative for listener cost.
+
 Gate before merge: if status/wallet warm p95 rises by more than ~5% **and**
-stays above budget under repeated runs on the same host, investigate
+stays above budget under repeated runs on the same host/Python, investigate
 listener leakage (missing detach).
