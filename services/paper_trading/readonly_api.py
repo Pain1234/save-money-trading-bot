@@ -196,7 +196,11 @@ def api_dashboard_summary(
     wallet = repo.get_wallet()
     open_positions = repo.get_open_positions()
     warnings: list[str] = list(readiness.reasons)
-    if heartbeat_age_seconds is not None and heartbeat_age_seconds > config.stale_runtime_threshold_seconds:
+    if (
+        heartbeat_age_seconds is not None
+        and heartbeat_age_seconds > config.stale_runtime_threshold_seconds
+        and "stale_heartbeat" not in readiness.reasons
+    ):
         warnings.append("stale_heartbeat")
     hyperliquid_network = __import__("os").environ.get("HYPERLIQUID_NETWORK", "testnet")
     return {
