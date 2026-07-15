@@ -92,3 +92,9 @@ def test_readonly_ready_worker_reports_full_readiness(readonly_client: TestClien
     assert readiness["runtime_readiness"] is True
     assert readiness["entry_readiness"] is True
     assert readiness["last_error"] is None
+
+
+
+def test_readonly_correlation_header(readonly_client: TestClient) -> None:
+    response = readonly_client.get("/api/v1/status")
+    assert response.headers.get("X-Correlation-Id")

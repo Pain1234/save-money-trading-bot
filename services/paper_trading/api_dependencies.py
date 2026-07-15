@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.session import create_db_engine, create_session_factory
+from paper_trading.perf_observability import attach_session_query_metrics, get_request_metrics
 from paper_trading.repository import PaperTradingRepository
 
 
@@ -37,6 +38,7 @@ def get_config() -> PaperTradingConfig:
 
 
 def get_db_session(
+    request: Request,
     config: Annotated[PaperTradingConfig, Depends(get_config)],
 ) -> Generator[Session, None, None]:
     engine = create_db_engine(
@@ -45,6 +47,8 @@ def get_db_session(
     )
     factory = create_session_factory(engine)
     session = factory()
+    metrics = get_request_metrics(request)
+    attach_session_query_metrics(session, metrics)
     try:
         yield session
     finally:
