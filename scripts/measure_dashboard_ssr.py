@@ -20,8 +20,9 @@ import json
 import os
 import sys
 import time
+import urllib.parse
 import urllib.request
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -36,6 +37,8 @@ DASHBOARD_ROUTES: tuple[tuple[str, str], ...] = (
     ("incidents", "/dashboard/incidents"),
 )
 
+DASHBOARD_AUTH_MARKER = "Paper Trading Monitor"
+
 
 @dataclass(frozen=True)
 class SsrSample:
@@ -44,6 +47,8 @@ class SsrSample:
     total_ms: float
     html_bytes: int
     cache_header: str | None
+    final_url: str
+    authenticated: bool
 
 
 def _percentile(values: list[float], pct: float) -> float:
@@ -52,6 +57,24 @@ def _percentile(values: list[float], pct: float) -> float:
     ordered = sorted(values)
     index = max(0, min(len(ordered) - 1, int(round((pct / 100.0) * (len(ordered) - 1)))))
     return ordered[index]
+
+
+def is_authenticated_dashboard(
+    requested_path: str,
+    final_url: str,
+    body: bytes,
+    *,
+    marker: str = DASHBOARD_AUTH_MARKER,
+) -> bool:
+    """Reject login redirects and unauthenticated HTML masquerading as SSR hits."""
+    path = urllib.parse.urlparse(final_url).path.rstrip("/") or "/"
+    requested = requested_path.rstrip("/") or "/"
+    if path == "/login" or path.endswith("/login"):
+        return False
+    if path != requested:
+        return False
+    text = body.decode("utf-8", errors="replace")
+    return marker in text
 
 
 def _login(opener: urllib.request.OpenerDirector, base_url: str, user: str, password: str) -> None:
@@ -89,12 +112,16 @@ def fetch_html(
         total_ms = (time.perf_counter() - started) * 1000.0
         status_code = response.status
         cache_header = response.headers.get("Cache-Control")
+        final_url = response.geturl()
+    authenticated = is_authenticated_dashboard(path, final_url, body)
     return SsrSample(
         status_code=status_code,
         ttfb_ms=ttfb_ms,
         total_ms=total_ms,
         html_bytes=len(body),
         cache_header=cache_header,
+        final_url=final_url,
+        authenticated=authenticated,
     )
 
 
@@ -124,8 +151,31 @@ def measure(
     for name, path in DASHBOARD_ROUTES:
         try:
             for _ in range(cold_runs):
-                fetch_html(opener, base_url, path, cold=True)
+                probe = fetch_html(opener, base_url, path, cold=True)
+                if not probe.authenticated:
+                    raise RuntimeError(
+                        f"unauthenticated response during warmup: {probe.final_url}"
+                    )
             samples = [fetch_html(opener, base_url, path, cold=False) for _ in range(warm_runs)]
+            if not samples or any(not s.authenticated for s in samples):
+                bad = next((s for s in samples if not s.authenticated), None)
+                routes.append(
+                    {
+                        "name": name,
+                        "path": path,
+                        "status": "NOT_MEASURED",
+                        "warm_ttfb_p95_ms": None,
+                        "warm_total_p95_ms": None,
+                        "html_bytes_p50": None,
+                        "html_bytes_max": None,
+                        "final_url": bad.final_url if bad else None,
+                        "note": (
+                            "Login redirect or missing dashboard auth marker "
+                            f"({DASHBOARD_AUTH_MARKER!r}); sample discarded."
+                        ),
+                    }
+                )
+                continue
             ttfbs = [s.ttfb_ms for s in samples]
             totals = [s.total_ms for s in samples]
             sizes = [s.html_bytes for s in samples]
@@ -138,13 +188,15 @@ def measure(
                     "warm_total_p95_ms": _percentile(totals, 95),
                     "html_bytes_p50": int(sorted(sizes)[len(sizes) // 2]),
                     "html_bytes_max": max(sizes),
+                    "final_url": samples[0].final_url,
+                    "authenticated": True,
                     "note": (
                         "TTFB approximates headers-ready; full HTML includes "
                         "SSR + server-side FastAPI fetches for this route."
                     ),
                 }
             )
-        except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        except (HTTPError, URLError, TimeoutError, OSError, RuntimeError) as exc:
             routes.append(
                 {
                     "name": name,
@@ -165,6 +217,7 @@ def measure(
         "base_url_host_only": base_url.split("://", 1)[-1].split("/", 1)[0],
         "warm_runs": warm_runs,
         "cold_runs": cold_runs,
+        "auth_marker": DASHBOARD_AUTH_MARKER,
         "routes": routes,
         "layers": [
             "Browser → Next.js (this script)",
@@ -197,9 +250,8 @@ def main(argv: list[str] | None = None) -> int:
             "status": "NOT_MEASURED",
             "measured_at": datetime.now(UTC).isoformat(),
             "note": "Set PAPER_DASHBOARD_USER and PAPER_DASHBOARD_PASSWORD",
-            "routes": [asdict(SsrSample(0, 0.0, 0.0, 0, None))],  # placeholder removed below
+            "routes": [],
         }
-        report["routes"] = []
         with open(args.output, "w", encoding="utf-8") as handle:
             json.dump(report, handle, indent=2)
             handle.write("\n")

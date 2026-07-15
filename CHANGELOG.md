@@ -54,6 +54,13 @@ No runtime performance optimizations, multi-asset trading, HIP-3 implementation,
 - `X-Perf-Total-Ms` / `X-Perf-Db-Ms` / `X-Perf-Query-Count` / `X-Perf-Response-Bytes` response headers for audit scripts.
 - Skeleton `data-testid="dashboard-skeleton"` for Layer A observation.
 
+### Fixed (P2.5 — Issue #101 harness review)
+
+- Layer A: heading timing no longer waits on skeleton timeout; LCP via `PerformanceObserver`; true cold contexts; Overview soft-nav starts from Status.
+- Layer C: fail-closed `PARTIAL` when `X-Perf-*` headers missing; warm-up probes renamed (not cold).
+- Layer D: cursor anchor = last row of first page; `pg_class.reltuples` before EXPLAIN; exact `COUNT(*)` only after.
+- Layer B: reject login-redirect HTML without dashboard auth marker.
+
 ### Added (P3 — historical market data)
 
 - `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).

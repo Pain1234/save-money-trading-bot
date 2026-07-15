@@ -44,7 +44,10 @@ def test_layer_a_spec_covers_required_routes_and_skeleton() -> None:
     ):
         assert route in source
     assert 'data-testid="dashboard-skeleton"' in source
-    assert "largest-contentful-paint" in source
+    assert "PerformanceObserver" in source
+    assert "browser.newContext()" in source
+    assert "Promise.race" in source
+    assert "await skeletonWatch" not in source
     skeleton = SKELETON.read_text(encoding="utf-8")
     assert 'data-testid="dashboard-skeleton"' in skeleton
 

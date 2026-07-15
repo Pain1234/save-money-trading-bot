@@ -24,11 +24,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 # Statements mirror ``PaperTradingRepository.list_*`` ORDER BY / keyset filters.
-# Cursor page uses a representative OR-predicate; bind values come from a first-page sample.
+# Cursor page uses the OR-predicate; bind values come from the *last* row of
+# the first page (keyset for page 2), matching repository pagination.
 HISTORY_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "route": "/api/v1/fills",
         "table": "paper_fills",
+        "page_limit": 50,
         "first_page_sql": (
             "SELECT * FROM paper_fills "
             "ORDER BY fill_time DESC, fill_id DESC "
@@ -47,6 +49,7 @@ HISTORY_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "route": "/api/v1/orders",
         "table": "paper_orders",
+        "page_limit": 50,
         "first_page_sql": (
             "SELECT * FROM paper_orders "
             "ORDER BY created_at DESC, paper_order_id DESC "
@@ -68,6 +71,7 @@ HISTORY_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "route": "/api/v1/equity",
         "table": "portfolio_snapshots",
+        "page_limit": 100,
         "first_page_sql": (
             "SELECT * FROM portfolio_snapshots "
             "ORDER BY evaluation_time DESC, snapshot_id DESC "
@@ -87,6 +91,7 @@ HISTORY_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "route": "/api/v1/events",
         "table": "audit_events",
+        "page_limit": 50,
         "first_page_sql": (
             "SELECT * FROM audit_events "
             "ORDER BY created_at DESC, event_id DESC "
@@ -110,6 +115,7 @@ HISTORY_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "route": "/api/v1/scheduler-runs",
         "table": "scheduler_runs",
+        "page_limit": 50,
         "first_page_sql": (
             "SELECT * FROM scheduler_runs "
             "ORDER BY scheduled_for DESC, run_id DESC "
@@ -133,6 +139,7 @@ HISTORY_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "route": "/api/v1/positions",
         "table": "paper_positions",
+        "page_limit": 50,
         "first_page_sql": (
             "SELECT * FROM paper_positions "
             "ORDER BY opened_at DESC, position_id DESC "
@@ -213,18 +220,45 @@ def _parse_explain(text: str) -> PlanMetrics:
     )
 
 
-def _row_count(conn: Any, table: str) -> int:
+def _estimate_row_count(conn: Any, table: str) -> float | None:
+    """Cheap planner estimate from pg_class — avoids full-table COUNT(*) before EXPLAIN."""
     from sqlalchemy import text
 
+    # Only plain public tables; never interpolate untrusted names.
+    allowed = {spec["table"] for spec in HISTORY_QUERIES}
+    if table not in allowed:
+        raise ValueError(f"unexpected table name: {table}")
+    value = conn.execute(
+        text(
+            "SELECT reltuples::double precision "
+            "FROM pg_class "
+            "WHERE relname = :table_name AND relkind = 'r'"
+        ),
+        {"table_name": table},
+    ).scalar_one_or_none()
+    if value is None:
+        return None
+    return float(value)
+
+
+def _exact_row_count_after(conn: Any, table: str) -> int:
+    """Exact COUNT(*) only after EXPLAIN so it cannot warm buffers first."""
+    from sqlalchemy import text
+
+    allowed = {spec["table"] for spec in HISTORY_QUERIES}
+    if table not in allowed:
+        raise ValueError(f"unexpected table name: {table}")
     return int(conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar_one())
 
 
-def _fetch_cursor_anchor(conn: Any, sql: str, keys: tuple[str, str]) -> dict[str, str] | None:
-    from sqlalchemy import text
-
-    row = conn.execute(text(sql)).mappings().first()
-    if row is None:
+def _anchor_from_rows(
+    rows: list[Any],
+    keys: tuple[str, str],
+) -> dict[str, str] | None:
+    """Build keyset cursor from the *last* row of the first page (not the first)."""
+    if not rows:
         return None
+    row = rows[-1]
     ts_key, id_key = keys
     ts_val = row[ts_key]
     id_val = row[id_key]
@@ -235,12 +269,35 @@ def _fetch_cursor_anchor(conn: Any, sql: str, keys: tuple[str, str]) -> dict[str
     return {"ts": ts_str, "id": str(id_val)}
 
 
+def _fetch_first_page_rows(conn: Any, sql: str) -> list[Any]:
+    from sqlalchemy import text
+
+    return list(conn.execute(text(sql)).mappings())
+
+
+def _fetch_cursor_anchor_from_first_page(
+    conn: Any,
+    sql: str,
+    keys: tuple[str, str],
+) -> dict[str, str] | None:
+    """Return keyset for page 2 using the last row returned by the first-page query."""
+    rows = _fetch_first_page_rows(conn, sql)
+    return _anchor_from_rows(rows, keys)
+
+
 def _explain(conn: Any, sql: str) -> PlanMetrics:
     from sqlalchemy import text
 
     result = conn.execute(text(f"EXPLAIN (ANALYZE, BUFFERS) {sql}"))
     lines = [str(r[0]) for r in result]
     return _parse_explain("\n".join(lines))
+
+
+def _prepare_session(conn: Any) -> None:
+    from sqlalchemy import text
+
+    conn.execute(text("SET statement_timeout = '30000'"))
+    conn.execute(text("SET default_transaction_read_only = on"))
 
 
 def run_audit(database_url: str) -> dict[str, Any]:
@@ -253,13 +310,26 @@ def run_audit(database_url: str) -> dict[str, Any]:
             # Fresh connection per route so one SQL error cannot abort siblings.
             with engine.connect() as conn:
                 try:
-                    total_rows = _row_count(conn, spec["table"])
+                    _prepare_session(conn)
+                    # Estimate *before* EXPLAIN without scanning the table.
+                    rows_estimate = _estimate_row_count(conn, spec["table"])
                     first = _explain(conn, spec["first_page_sql"])
-                    anchor = _fetch_cursor_anchor(conn, spec["first_page_sql"], spec["cursor_keys"])
+                    first_rows = _fetch_first_page_rows(conn, spec["first_page_sql"])
+                    page_limit = int(spec["page_limit"])
+                    anchor = _anchor_from_rows(first_rows, spec["cursor_keys"])
                     if anchor is None:
                         cursor = PlanMetrics(
                             status="NOT_MEASURED",
                             note="empty table — no cursor page",
+                        )
+                        cursor_sql = None
+                    elif len(first_rows) < page_limit:
+                        cursor = PlanMetrics(
+                            status="NOT_MEASURED",
+                            note=(
+                                f"first page returned {len(first_rows)} < "
+                                f"{page_limit} — no second page"
+                            ),
                         )
                         cursor_sql = None
                     else:
@@ -268,11 +338,19 @@ def run_audit(database_url: str) -> dict[str, Any]:
                             id=anchor["id"],
                         )
                         cursor = _explain(conn, cursor_sql)
+                    # Exact count *after* EXPLAIN so it cannot warm the buffer cache first.
+                    rows_exact = _exact_row_count_after(conn, spec["table"])
                     routes.append(
                         {
                             "route": spec["route"],
                             "table": spec["table"],
-                            "rows_total": total_rows,
+                            "rows_total_estimate": rows_estimate,
+                            "rows_total_exact": rows_exact,
+                            "rows_total": rows_exact,
+                            "first_page_row_count": len(first_rows),
+                            "cursor_anchor_position": (
+                                "last_row_of_first_page" if anchor else None
+                            ),
                             "existing_indexes": spec["existing_indexes"],
                             "candidate_index": spec["candidate_index"],
                             "index_gate": (
@@ -319,6 +397,12 @@ def run_audit(database_url: str) -> dict[str, Any]:
             if any(r.get("first_page", {}).get("status") == "MEASURED" for r in routes)
             else "NOT_MEASURED"
         ),
+        "methodology_notes": [
+            "Row estimate from pg_class.reltuples before EXPLAIN (no COUNT(*))",
+            "Exact COUNT(*) only after EXPLAIN to avoid buffer warm-up bias",
+            "Cursor anchor is last row of first page (keyset for page 2)",
+            "statement_timeout=30s; default_transaction_read_only=on",
+        ],
         "postgres_sort_notes": [
             "DESC is not required for a fully backward-scannable B-tree.",
             "Column order matching keyset pagination matters more than DESC markers.",

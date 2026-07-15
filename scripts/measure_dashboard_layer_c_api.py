@@ -4,6 +4,11 @@
 Reads machine-readable X-Perf-* response headers produced by
 ``PerformanceLoggingMiddleware`` (Issue #96 / #101).
 
+Status vocabulary per route:
+- MEASURED: successful samples with total_ms, db_ms, and query_count headers
+- PARTIAL: successful HTTP samples but missing required X-Perf-* headers
+- NOT_MEASURED: no successful samples
+
 Usage:
     export PAPER_API_BASE_URL=http://127.0.0.1:8080
     python scripts/measure_dashboard_layer_c_api.py --warm-runs 20 \\
@@ -41,7 +46,7 @@ AUDIT_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 DEFAULT_WARM_RUNS = 20
-DEFAULT_COLD_RUNS = 3
+DEFAULT_WARMUP_RUNS = 3
 
 
 @dataclass(frozen=True)
@@ -101,6 +106,15 @@ def _optional_int(headers: Any, key: str) -> int | None:
         return None
 
 
+def sample_has_required_perf_headers(sample: RouteSample) -> bool:
+    """Layer C MEASURED requires total_ms, db_ms, and query_count headers."""
+    return (
+        sample.header_total_ms is not None
+        and sample.header_db_ms is not None
+        and sample.header_query_count is not None
+    )
+
+
 def analyze_events_payload(body: bytes) -> tuple[int | None, float | None]:
     """Return (payload_json_bytes, share_of_total) for /events responses."""
     try:
@@ -123,12 +137,9 @@ def analyze_events_payload(body: bytes) -> tuple[int | None, float | None]:
     return payload_bytes, share
 
 
-def fetch_sample(base_url: str, path: str, *, cold: bool) -> RouteSample:
+def fetch_sample(base_url: str, path: str) -> RouteSample:
     url = f"{base_url.rstrip('/')}{path}"
-    headers = {"Accept": "application/json"}
-    if cold:
-        headers["Cache-Control"] = "no-cache"
-        headers["Pragma"] = "no-cache"
+    headers = {"Accept": "application/json", "Cache-Control": "no-cache"}
     request = Request(url, headers=headers, method="GET")
     started = time.perf_counter()
     with urlopen(request, timeout=60) as response:
@@ -167,6 +178,7 @@ def summarize_route(name: str, path: str, samples: list[RouteSample]) -> RouteSu
             warm_response_bytes_max=None,
             note="no samples",
         )
+
     client = [s.client_total_ms for s in samples]
     header_total = [s.header_total_ms for s in samples if s.header_total_ms is not None]
     header_db = [s.header_db_ms for s in samples if s.header_db_ms is not None]
@@ -176,10 +188,22 @@ def summarize_route(name: str, path: str, samples: list[RouteSample]) -> RouteSu
     sizes = [s.response_bytes for s in samples]
     payload_sizes = [s.payload_json_bytes for s in samples if s.payload_json_bytes is not None]
     payload_shares = [s.payload_json_share for s in samples if s.payload_json_share is not None]
+
+    complete = [s for s in samples if sample_has_required_perf_headers(s)]
+    if len(complete) == len(samples):
+        status = "MEASURED"
+        note = ""
+    else:
+        status = "PARTIAL"
+        note = (
+            "One or more samples missing required X-Perf-Total-Ms / "
+            "X-Perf-Db-Ms / X-Perf-Query-Count; client timings only."
+        )
+
     return RouteSummary(
         name=name,
         path=path,
-        status="MEASURED",
+        status=status,
         warm_client_p95_ms=_percentile(client, 95),
         warm_header_total_p95_ms=_percentile(header_total, 95) if header_total else None,
         warm_header_db_p95_ms=_percentile(header_db, 95) if header_db else None,
@@ -192,6 +216,7 @@ def summarize_route(name: str, path: str, samples: list[RouteSample]) -> RouteSu
         events_payload_json_share_p50=(
             float(statistics.median(payload_shares)) if payload_shares else None
         ),
+        note=note,
     )
 
 
@@ -199,14 +224,15 @@ def measure(
     base_url: str,
     *,
     warm_runs: int,
-    cold_runs: int,
+    warmup_runs: int,
 ) -> dict[str, Any]:
     routes: list[dict[str, Any]] = []
     for name, path in AUDIT_ROUTES:
         try:
-            for _ in range(cold_runs):
-                fetch_sample(base_url, path, cold=True)
-            warm_samples = [fetch_sample(base_url, path, cold=False) for _ in range(warm_runs)]
+            # Discarded warm-up probes (direct FastAPI has no browser HTTP cache).
+            for _ in range(warmup_runs):
+                fetch_sample(base_url, path)
+            warm_samples = [fetch_sample(base_url, path) for _ in range(warm_runs)]
             summary = summarize_route(name, path, warm_samples)
         except (HTTPError, URLError, TimeoutError, OSError) as exc:
             summary = RouteSummary(
@@ -228,7 +254,11 @@ def measure(
         "measured_at": datetime.now(UTC).isoformat(),
         "base_url_host_only": base_url.split("://", 1)[-1].split("/", 1)[0],
         "warm_runs": warm_runs,
-        "cold_runs": cold_runs,
+        "warmup_runs": warmup_runs,
+        "warmup_note": (
+            "warmup_runs are discarded probes to stabilize the process; "
+            "they are not reported as cold-cache measurements."
+        ),
         "routes": routes,
         "railway_private_dns_note": (
             "*.railway.internal is only reachable inside the same Railway "
@@ -244,19 +274,31 @@ def main(argv: list[str] | None = None) -> int:
         default=os.environ.get("PAPER_API_BASE_URL", "http://127.0.0.1:8080"),
     )
     parser.add_argument("--warm-runs", type=int, default=DEFAULT_WARM_RUNS)
-    parser.add_argument("--cold-runs", type=int, default=DEFAULT_COLD_RUNS)
+    parser.add_argument(
+        "--warmup-runs",
+        type=int,
+        default=DEFAULT_WARMUP_RUNS,
+        help="Discarded warm-up probes before measured warm runs (not cold cache).",
+    )
+    # Backward-compatible alias for earlier --cold-runs flag.
+    parser.add_argument("--cold-runs", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument(
         "--output",
         default="docs/operations/dashboard-layer-c-api.json",
     )
     args = parser.parse_args(argv)
-    report = measure(args.base_url, warm_runs=args.warm_runs, cold_runs=args.cold_runs)
+    warmup = args.warmup_runs if args.cold_runs is None else args.cold_runs
+    report = measure(args.base_url, warm_runs=args.warm_runs, warmup_runs=warmup)
     output_path = args.output
     with open(output_path, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2)
         handle.write("\n")
     measured = sum(1 for r in report["routes"] if r["status"] == "MEASURED")
-    print(f"Wrote {output_path} ({measured}/{len(report['routes'])} routes MEASURED)")
+    partial = sum(1 for r in report["routes"] if r["status"] == "PARTIAL")
+    print(
+        f"Wrote {output_path} "
+        f"(MEASURED={measured} PARTIAL={partial} / {len(report['routes'])})"
+    )
     return 0 if measured else 1
 
 

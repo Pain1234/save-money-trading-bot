@@ -50,7 +50,8 @@ def test_explain_parser_extracts_execution_and_buffers() -> None:
     sample = """
 Limit  (cost=0.00..1.50 rows=50 width=100) (actual time=0.020..0.050 rows=10 loops=1)
   Buffers: shared hit=12 read=3
-  ->  Seq Scan on paper_fills  (cost=0.00..10.00 rows=1000 width=100) (actual time=0.010..0.040 rows=10 loops=1)
+  ->  Seq Scan on paper_fills  (cost=0.00..10.00 rows=1000 width=100)
+      (actual time=0.010..0.040 rows=10 loops=1)
         Filter: (symbol IS NOT NULL)
         Rows Removed by Filter: 2
 Planning Time: 0.123 ms
@@ -66,10 +67,92 @@ Execution Time: 0.456 ms
     assert metrics.plan_node is not None
 
 
+def test_cursor_anchor_uses_last_row_of_first_page() -> None:
+    explain = _load("explain_anchor", "scripts/audit_dashboard_sql_explain.py")
+    rows = [
+        {"fill_time": "2026-07-15T10:00:00+00:00", "fill_id": "aaa"},
+        {"fill_time": "2026-07-15T09:00:00+00:00", "fill_id": "bbb"},
+        {"fill_time": "2026-07-15T08:00:00+00:00", "fill_id": "ccc"},
+    ]
+    anchor = explain._anchor_from_rows(rows, ("fill_time", "fill_id"))
+    assert anchor is not None
+    assert anchor["ts"] == "2026-07-15T08:00:00+00:00"
+    assert anchor["id"] == "ccc"
+
+
+def test_cursor_anchor_empty_page_returns_none() -> None:
+    explain = _load("explain_anchor2", "scripts/audit_dashboard_sql_explain.py")
+    assert explain._anchor_from_rows([], ("fill_time", "fill_id")) is None
+
+
 def test_layer_c_summarize_marks_empty_as_not_measured() -> None:
     layer_c = _load("layer_c2", "scripts/measure_dashboard_layer_c_api.py")
     summary = layer_c.summarize_route("events", "/api/v1/events", [])
     assert summary.status == "NOT_MEASURED"
+
+
+def test_layer_c_summarize_partial_without_perf_headers() -> None:
+    layer_c = _load("layer_c3", "scripts/measure_dashboard_layer_c_api.py")
+    sample = layer_c.RouteSample(
+        status_code=200,
+        client_total_ms=12.0,
+        header_total_ms=None,
+        header_db_ms=None,
+        header_query_count=None,
+        response_bytes=100,
+        correlation_id=None,
+    )
+    summary = layer_c.summarize_route("status", "/api/v1/status", [sample])
+    assert summary.status == "PARTIAL"
+    assert summary.warm_client_p95_ms == 12.0
+    assert summary.warm_header_total_p95_ms is None
+
+
+def test_layer_c_summarize_measured_with_all_perf_headers() -> None:
+    layer_c = _load("layer_c4", "scripts/measure_dashboard_layer_c_api.py")
+    sample = layer_c.RouteSample(
+        status_code=200,
+        client_total_ms=20.0,
+        header_total_ms=18.0,
+        header_db_ms=5.0,
+        header_query_count=2,
+        response_bytes=200,
+        correlation_id="cid",
+    )
+    summary = layer_c.summarize_route("wallet", "/api/v1/wallet", [sample])
+    assert summary.status == "MEASURED"
+    assert summary.warm_header_db_p95_ms == 5.0
+    assert summary.warm_query_count_p95 == 2.0
+
+
+def test_ssr_rejects_login_redirect_html() -> None:
+    ssr = _load("layer_b", "scripts/measure_dashboard_ssr.py")
+    login_html = b"<html><body>Sign in</body></html>"
+    assert not ssr.is_authenticated_dashboard(
+        "/dashboard",
+        "https://bot.example/login",
+        login_html,
+    )
+
+
+def test_ssr_accepts_authenticated_dashboard_marker() -> None:
+    ssr = _load("layer_b2", "scripts/measure_dashboard_ssr.py")
+    body = b"<html><body>Paper Trading Monitor</body></html>"
+    assert ssr.is_authenticated_dashboard(
+        "/dashboard/status",
+        "https://bot.example/dashboard/status",
+        body,
+    )
+
+
+def test_ssr_rejects_wrong_final_path() -> None:
+    ssr = _load("layer_b3", "scripts/measure_dashboard_ssr.py")
+    body = b"<html><body>Paper Trading Monitor</body></html>"
+    assert not ssr.is_authenticated_dashboard(
+        "/dashboard",
+        "https://bot.example/dashboard/status",
+        body,
+    )
 
 
 def test_sql_audit_doc_has_required_sections() -> None:
@@ -106,6 +189,23 @@ def test_index_gate_rejects_seq_scan_only_rule() -> None:
     doc = (REPO_ROOT / "docs" / "operations" / "dashboard-sql-audit.md").read_text(
         encoding="utf-8"
     )
-    assert "nicht automatisch schlecht" in doc.lower() or "not automatically bad" in doc.lower()
+    assert (
+        "nicht automatisch schlecht" in doc.lower()
+        or "not automatically bad" in doc.lower()
+    )
     assert "Vorher-/Nachher" in doc or "before/after" in doc.lower()
     assert "10.000" in doc or "10k" in doc.lower()
+
+
+def test_layer_a_source_avoids_skeleton_timeout_before_heading() -> None:
+    source = (
+        REPO_ROOT / "tests" / "e2e" / "dashboard-layer-a-perf.spec.ts"
+    ).read_text(encoding="utf-8")
+    assert "Promise.race" in source
+    assert "installLcpObserver" in source
+    assert "PerformanceObserver" in source
+    assert "browser.newContext()" in source
+    assert "/dashboard/status" in source
+    # Must not await skeleton before recording heading.
+    assert "await skeletonWatch" not in source
+    assert "Same document" in source or "same document" in source.lower()
