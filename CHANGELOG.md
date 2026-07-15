@@ -29,6 +29,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 No runtime performance optimizations, multi-asset trading, HIP-3 implementation, or live-trading changes in this governance batch. Issue numbers for new seed issues assigned on first `github_project_setup.py --apply`.
 
+### Added (P2.5 — dashboard performance)
+
+- `scripts/measure_dashboard_api_baseline.py` and `docs/operations/dashboard-performance-baseline.md` — reproducible API latency baseline (Issue #95).
+- `services/paper_trading/perf_observability.py` — request timing middleware with `total_ms`, `db_ms`, `query_count`, correlation IDs (Issue #96).
+- `GET /api/v1/dashboard-summary` — overview aggregate endpoint; shared `_runtime_readiness_snapshot()` reduces redundant DB reads (Issues #97, #98).
+- Cache-Control TTLs on read-only API routes and Next.js `REVALIDATE` fetch policy (Issue #99).
+- `docs/operations/dashboard-sql-audit.md` — SQL/index audit checklist (Issue #101).
+- `tests/perf/` — reporting-only latency regression checks (Issue #102).
+- `docs/operations/dashboard-production-acceptance.md` — Railway acceptance checklist (Issue #103).
+
+### Changed (P2.5)
+
+- Dashboard overview uses `fetchDashboardSummary()` instead of parallel status/wallet fetches.
+- `services/paper_trading/api_dependencies.py` — per-request SQLAlchemy query metrics for read-only API sessions.
+
 ### Added (P3 — historical market data)
 
 - `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).
