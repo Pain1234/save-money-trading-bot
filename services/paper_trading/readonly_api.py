@@ -36,6 +36,7 @@ from paper_trading.api_models import (
 from paper_trading.clock import SystemClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.enums import RuntimeStatus
+from paper_trading.perf_observability import PerformanceLoggingMiddleware
 from paper_trading.readiness import ReadinessService
 from paper_trading.repository import PaperTradingRepository
 
@@ -50,6 +51,7 @@ class ReadonlyMethodMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(ReadonlyMethodMiddleware)
+app.add_middleware(PerformanceLoggingMiddleware)
 
 
 def _infer_market_data_ready(

@@ -1,0 +1,174 @@
+{
+  "generated_at": "2026-07-15T19:17:36.880741+00:00",
+  "base_url": "http://127.0.0.1:8091",
+  "environment_notes": {
+    "railway_region": "local/unset",
+    "railway_resources": "unset",
+    "python": "3.13.13"
+  },
+  "methodology": {
+    "cold_runs": 3,
+    "warm_runs": 20,
+    "optimization_applied": false,
+    "include_dashboard_summary": false,
+    "include_parallel_overview": true,
+    "measured_against": "perf/96-api-db-instrumentation",
+    "p95_interpretation": "With warm_runs=20, p95 is an order-statistic estimate (index round(0.95*(n-1))). Prefer n>=20.",
+    "overview_metric": "overview_parallel_status_wallet = wall-clock of concurrent GET /status + GET /wallet per iteration (not max of separate p95s)",
+    "out_of_scope": [
+      "Next.js SSR / dashboard page timing",
+      "Playwright login\u00d4\u00e5\u00c6route flows (Issue #102)",
+      "DB query_count / db_ms (Issue #96 instrumentation)",
+      "EXPLAIN ANALYZE / index audit (Issue #101)",
+      "Railway CPU/RAM resource counters (record in environment_notes)"
+    ]
+  },
+  "p25_budgets_ms": {
+    "overview_warm_p95": 1500,
+    "status_p95": 250,
+    "wallet_p95": 250,
+    "table_endpoints_p95": 500
+  },
+  "endpoints": [
+    {
+      "name": "overview_parallel_status_wallet",
+      "path": "/api/v1/status+/api/v1/wallet",
+      "cold": {
+        "p50_ms": 46.49049999716226,
+        "p95_ms": 81.36549999471754,
+        "max_ms": 81.36549999471754,
+        "samples": 3,
+        "response_bytes_p50": 924,
+        "response_bytes_max": 924
+      },
+      "warm": {
+        "p50_ms": 41.9398000012734,
+        "p95_ms": 104.53409999900032,
+        "max_ms": 231.19210000731982,
+        "samples": 20,
+        "response_bytes_p50": 924,
+        "response_bytes_max": 924
+      }
+    },
+    {
+      "name": "status",
+      "path": "/api/v1/status",
+      "cold": {
+        "p50_ms": 45.36030000599567,
+        "p95_ms": 67.78859999030828,
+        "max_ms": 67.78859999030828,
+        "samples": 3,
+        "response_bytes_p50": 686,
+        "response_bytes_max": 686
+      },
+      "warm": {
+        "p50_ms": 50.438650003343355,
+        "p95_ms": 118.42579999938607,
+        "max_ms": 131.9909000012558,
+        "samples": 20,
+        "response_bytes_p50": 686,
+        "response_bytes_max": 686
+      }
+    },
+    {
+      "name": "wallet",
+      "path": "/api/v1/wallet",
+      "cold": {
+        "p50_ms": 43.232399999396876,
+        "p95_ms": 43.69560000486672,
+        "max_ms": 43.69560000486672,
+        "samples": 3,
+        "response_bytes_p50": 238,
+        "response_bytes_max": 238
+      },
+      "warm": {
+        "p50_ms": 43.233550000877585,
+        "p95_ms": 130.47820000792854,
+        "max_ms": 146.89910000015516,
+        "samples": 20,
+        "response_bytes_p50": 238,
+        "response_bytes_max": 238
+      }
+    },
+    {
+      "name": "positions",
+      "path": "/api/v1/positions?limit=50",
+      "cold": {
+        "p50_ms": 44.56860000209417,
+        "p95_ms": 44.8443000059342,
+        "max_ms": 44.8443000059342,
+        "samples": 3,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
+      },
+      "warm": {
+        "p50_ms": 42.48340000049211,
+        "p95_ms": 130.73370000347495,
+        "max_ms": 133.5973999957787,
+        "samples": 20,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
+      }
+    },
+    {
+      "name": "orders",
+      "path": "/api/v1/orders?limit=50",
+      "cold": {
+        "p50_ms": 37.14600000239443,
+        "p95_ms": 63.93830000888556,
+        "max_ms": 63.93830000888556,
+        "samples": 3,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
+      },
+      "warm": {
+        "p50_ms": 50.35379999753786,
+        "p95_ms": 122.14180000592023,
+        "max_ms": 131.41450000694022,
+        "samples": 20,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
+      }
+    },
+    {
+      "name": "fills",
+      "path": "/api/v1/fills?limit=50",
+      "cold": {
+        "p50_ms": 52.57780000101775,
+        "p95_ms": 129.96219999331515,
+        "max_ms": 129.96219999331515,
+        "samples": 3,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
+      },
+      "warm": {
+        "p50_ms": 41.07289999956265,
+        "p95_ms": 66.03729999915231,
+        "max_ms": 66.16779998876154,
+        "samples": 20,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
+      }
+    },
+    {
+      "name": "equity",
+      "path": "/api/v1/equity?limit=100",
+      "cold": {
+        "p50_ms": 37.885500001721084,
+        "p95_ms": 64.30659999023192,
+        "max_ms": 64.30659999023192,
+        "samples": 3,
+        "response_bytes_p50": 43,
+        "response_bytes_max": 43
+      },
+      "warm": {
+        "p50_ms": 42.2783999965759,
+        "p95_ms": 93.99239999765996,
+        "max_ms": 96.01009999460075,
+        "samples": 20,
+        "response_bytes_p50": 43,
+        "response_bytes_max": 43
+      }
+    }
+  ]
+}
