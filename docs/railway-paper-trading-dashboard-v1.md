@@ -218,6 +218,7 @@ All routes are GET-only. Non-GET requests return `405`.
 | `/health` | Liveness |
 | `/readiness` | DB-backed readiness |
 | `/api/v1/status` | READY / DEGRADED / STOPPED summary |
+| `/api/v1/dashboard-summary` | Overview aggregate (status + wallet + open positions) |
 | `/api/v1/market-data` | Worker/market-data status |
 | `/api/v1/wallet` | Paper wallet |
 | `/api/v1/positions` | Paginated positions |

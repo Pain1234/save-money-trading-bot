@@ -180,6 +180,61 @@ def api_status(
     return _status_payload(repo, config)
 
 
+@app.get("/api/v1/dashboard-summary")
+def api_dashboard_summary(
+    repo: Annotated[PaperTradingRepository, Depends(get_repository)],
+    config: Annotated[PaperTradingConfig, Depends(get_config)],
+) -> dict[str, Any]:
+    """Overview-only aggregated read snapshot (read-only, no mutations)."""
+    runtime, readiness = _runtime_readiness_snapshot(repo, config)
+    heartbeat_age_seconds: float | None = None
+    if runtime is not None:
+        heartbeat_age_seconds = (
+            SystemClock().now() - runtime.heartbeat_at
+        ).total_seconds()
+    display_status = _display_status(runtime, readiness)
+    wallet = repo.get_wallet()
+    open_positions = repo.get_open_positions()
+    warnings: list[str] = list(readiness.reasons)
+    if heartbeat_age_seconds is not None and heartbeat_age_seconds > config.stale_runtime_threshold_seconds:
+        warnings.append("stale_heartbeat")
+    hyperliquid_network = __import__("os").environ.get("HYPERLIQUID_NETWORK", "testnet")
+    return {
+        "display_status": display_status,
+        "status": {
+            "display_status": display_status,
+            "runtime": _runtime_dict(runtime) if runtime else None,
+            "readiness": readiness.model_dump(),
+            "heartbeat_age_seconds": heartbeat_age_seconds,
+            "stale_heartbeat_threshold_seconds": config.stale_runtime_threshold_seconds,
+            "hyperliquid_network": hyperliquid_network,
+        },
+        "readiness": readiness.model_dump(),
+        "heartbeat_at": format_utc(runtime.heartbeat_at) if runtime else None,
+        "wallet": (
+            {
+                "cash": format_decimal(wallet.cash),
+                "total_realized_pnl": format_decimal(wallet.total_realized_pnl),
+                "updated_at": format_utc(wallet.updated_at),
+            }
+            if wallet is not None
+            else None
+        ),
+        "open_position_count": len(open_positions),
+        "position_summary": [
+            {
+                "symbol": p.symbol,
+                "status": p.status.value,
+                "quantity": format_decimal(p.quantity),
+                "unrealized_pnl": format_decimal(p.unrealized_pnl),
+            }
+            for p in open_positions[:10]
+        ],
+        "warnings": warnings,
+        "hyperliquid_network": hyperliquid_network,
+    }
+
+
 @app.get("/api/v1/market-data")
 def api_market_data(
     repo: Annotated[PaperTradingRepository, Depends(get_repository)],

@@ -1,9 +1,9 @@
 import { StatusBadge } from "@/components/monitor/StatusBadge";
 import {
-  fetchStatus,
-  fetchWallet,
+  fetchDashboardSummary,
   getMonitoringErrorMessage,
 } from "@/lib/paper-api/client";
+
 function formatAge(seconds: number | null): string {
   if (seconds == null) return "unknown";
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -12,16 +12,27 @@ function formatAge(seconds: number | null): string {
 
 export default async function DashboardOverviewPage() {
   try {
-    const [status, wallet] = await Promise.all([fetchStatus(), fetchWallet()]);
+    const summary = await fetchDashboardSummary();
+    const status = summary.status;
+    const wallet = summary.wallet;
     const stale =
       status.heartbeat_age_seconds != null &&
       status.heartbeat_age_seconds > status.stale_heartbeat_threshold_seconds;
+
+    if (!wallet) {
+      return (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-6">
+          <h1 className="text-xl font-semibold text-red-300">API Error</h1>
+          <p className="mt-2 text-sm">Wallet data unavailable.</p>
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Overview</h1>
-          <StatusBadge status={status.display_status} />
+          <StatusBadge status={summary.display_status} />
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
@@ -42,11 +53,11 @@ export default async function DashboardOverviewPage() {
             ) : null}
           </div>
         </div>
-        {status.readiness.reasons.length > 0 ? (
+        {summary.warnings.length > 0 ? (
           <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
             <p className="font-medium">Readiness notes</p>
             <ul className="mt-2 list-disc pl-5">
-              {status.readiness.reasons.map((reason) => (
+              {summary.warnings.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>
@@ -61,4 +72,5 @@ export default async function DashboardOverviewPage() {
         <p className="mt-2 text-sm">{getMonitoringErrorMessage(error)}</p>
       </div>
     );
-  }}
+  }
+}

@@ -32,6 +32,24 @@ export interface StatusResponse {
   };
 }
 
+
+export interface DashboardSummaryResponse {
+  display_status: DisplayStatus;
+  status: StatusResponse;
+  readiness: StatusResponse["readiness"];
+  heartbeat_at: string | null;
+  wallet: Pick<WalletResponse, "cash" | "total_realized_pnl" | "updated_at"> | null;
+  open_position_count: number;
+  position_summary: Array<{
+    symbol: string;
+    status: string;
+    quantity: string;
+    unrealized_pnl: string;
+  }>;
+  warnings: string[];
+  hyperliquid_network: string;
+}
+
 export interface WalletResponse {
   cash: string;
   total_realized_pnl: string;
@@ -164,6 +182,14 @@ export async function fetchPaperApi<T>(
 
 export async function fetchStatus(): Promise<StatusResponse> {
   return fetchPaperApi<StatusResponse>("/api/v1/status", {
+    noStore: true,
+  });
+}
+
+
+
+export async function fetchDashboardSummary(): Promise<DashboardSummaryResponse> {
+  return fetchPaperApi<DashboardSummaryResponse>("/api/v1/dashboard-summary", {
     noStore: true,
   });
 }
