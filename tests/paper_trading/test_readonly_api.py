@@ -107,6 +107,10 @@ def test_readonly_dashboard_summary_schema(readonly_client: TestClient) -> None:
 def test_readonly_perf_and_cache_headers(readonly_client: TestClient) -> None:
     response = readonly_client.get("/api/v1/status")
     assert response.headers.get("X-Correlation-Id")
+    assert response.headers.get("X-Perf-Total-Ms")
+    assert response.headers.get("X-Perf-Db-Ms") is not None
+    assert response.headers.get("X-Perf-Query-Count") is not None
+    assert response.headers.get("X-Perf-Response-Bytes") is not None
     assert "max-age=2" in response.headers.get("Cache-Control", "")
 
 

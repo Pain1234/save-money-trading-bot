@@ -92,6 +92,13 @@ class PerformanceLoggingMiddleware(BaseHTTPMiddleware):
                 response_bytes = int(response.headers["content-length"])
             except ValueError:
                 response_bytes = 0
+        # Prefer measured body length when Content-Length is absent (common for
+        # JSONResponse). Streaming responses keep response_bytes at 0.
+        if response_bytes == 0 and hasattr(response, "body") and response.body is not None:
+            try:
+                response_bytes = len(response.body)
+            except TypeError:
+                response_bytes = 0
         logger.info(
             "route=%s total_ms=%.1f db_ms=%.1f query_count=%d response_bytes=%d "
             "status_code=%d correlation_id=%s",
@@ -104,6 +111,11 @@ class PerformanceLoggingMiddleware(BaseHTTPMiddleware):
             correlation_id,
         )
         response.headers[CORRELATION_HEADER] = correlation_id
+        # Machine-readable Layer-C fields for Issue #101 audit scripts.
+        response.headers["X-Perf-Total-Ms"] = f"{total_ms:.1f}"
+        response.headers["X-Perf-Db-Ms"] = f"{metrics.db_ms:.1f}"
+        response.headers["X-Perf-Query-Count"] = str(metrics.query_count)
+        response.headers["X-Perf-Response-Bytes"] = str(response_bytes)
         # Skip Cache-Control on health/readiness probes (Issue #99).
         if request.url.path not in {"/health", "/readiness"}:
             max_age = _cache_max_age(request.url.path)

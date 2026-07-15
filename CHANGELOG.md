@@ -43,6 +43,16 @@ No runtime performance optimizations, multi-asset trading, HIP-3 implementation,
 
 - Dashboard overview uses `fetchDashboardSummary()` instead of parallel status/wallet fetches.
 - `services/paper_trading/api_dependencies.py` — per-request SQLAlchemy query metrics for read-only API sessions.
+- Issue #101 audit protocol expanded beyond the #117 checklist: layered A–D measurement harnesses, evidence-based index gate, Railway private-DNS measurement path, events `payload_json` analysis, and honest `NOT_MEASURED` placeholders (no invented p50/p95).
+
+### Added (P2.5 — Issue #101 measurable audit)
+
+- `scripts/measure_dashboard_layer_c_api.py` — FastAPI Layer C harness (`X-Perf-*` headers, events payload share).
+- `scripts/measure_dashboard_ssr.py` — Next.js Layer B TTFB / HTML size harness.
+- `scripts/audit_dashboard_sql_explain.py` — PostgreSQL Layer D `EXPLAIN (ANALYZE, BUFFERS)` first + cursor page.
+- `tests/e2e/dashboard-layer-a-perf.spec.ts` — Browser Layer A cold/warm/soft timings to visible content.
+- `X-Perf-Total-Ms` / `X-Perf-Db-Ms` / `X-Perf-Query-Count` / `X-Perf-Response-Bytes` response headers for audit scripts.
+- Skeleton `data-testid="dashboard-skeleton"` for Layer A observation.
 
 ### Added (P3 — historical market data)
 
