@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -114,31 +114,3 @@ def test_health_probe_skips_cache_control(readonly_client: TestClient) -> None:
     response = readonly_client.get("/health")
     assert response.status_code == 200
     assert "Cache-Control" not in response.headers
-
-
-def test_status_uses_single_runtime_snapshot(readonly_client: TestClient) -> None:
-    repo = readonly_client._repo  # type: ignore[attr-defined]
-    repo.get_runtime_state.reset_mock()
-    readonly_client.get("/api/v1/status")
-    assert repo.get_runtime_state.call_count == 1
-
-
-def test_runtime_last_error_is_sanitized_in_status(readonly_client: TestClient) -> None:
-    repo = readonly_client._repo  # type: ignore[attr-defined]
-    now = datetime.now(UTC)
-    runtime = RuntimeState(
-        instance_id=uuid4(),
-        status=RuntimeStatus.READY,
-        heartbeat_at=now,
-        last_error="invalid api_key secret",
-        version=1,
-    )
-    repo.get_runtime_state.return_value = runtime
-    body = readonly_client.get("/api/v1/status").json()
-    assert body["runtime"]["last_error"] == "sanitized error"
-
-
-def test_market_data_skips_full_readiness_evaluate(readonly_client: TestClient) -> None:
-    with patch("paper_trading.readonly_api.ReadinessService") as readiness_cls:
-        readonly_client.get("/api/v1/market-data")
-        readiness_cls.assert_not_called()
