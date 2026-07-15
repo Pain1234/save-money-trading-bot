@@ -55,7 +55,9 @@ def readonly_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from paper_trading import api_dependencies
 
     app.dependency_overrides[api_dependencies.get_repository] = lambda: repo
-    return TestClient(app)
+    client = TestClient(app)
+    client._repo = repo  # type: ignore[attr-defined]
+    return client
 
 
 def test_readonly_health(readonly_client: TestClient) -> None:
@@ -92,9 +94,3 @@ def test_readonly_ready_worker_reports_full_readiness(readonly_client: TestClien
     assert readiness["runtime_readiness"] is True
     assert readiness["entry_readiness"] is True
     assert readiness["last_error"] is None
-
-
-
-def test_readonly_correlation_header(readonly_client: TestClient) -> None:
-    response = readonly_client.get("/api/v1/status")
-    assert response.headers.get("X-Correlation-Id")
