@@ -10,7 +10,8 @@
     "warm_runs": 5,
     "optimization_applied": false,
     "include_dashboard_summary": false,
-    "measured_against": "main"
+    "measured_against": "main",
+    "caveat": "warm_runs=5 makes reported p95 nearly equal to max; overview must use parallel wall-clock metric, not max of separate p95s. Re-run with --warm-runs 20 before citing improvement percentages."
   },
   "p25_budgets_ms": {
     "overview_warm_p95": 1500,

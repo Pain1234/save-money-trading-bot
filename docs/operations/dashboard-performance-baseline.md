@@ -1,20 +1,32 @@
 # Dashboard and API performance baseline (P2.5 / Issue #95)
 
-**Status:** Measured against `main` before P2.5 optimizations (2026-07-15).
+**Status:** Procedure + local main measurement. Prior “−41% overview” claims based on
+`max(p95(status), p95(wallet))` with `warm_runs=5` are **withdrawn** as methodologically invalid.
 
 ## Purpose
 
-Establish reproducible p50/p95/max latency for dashboard-critical read-only API routes **before** any P2.5 optimization (Issues #96–#103).
+Establish reproducible p50/p95/max latency for dashboard-critical **read-only API** routes
+**before** P2.5 optimizations (Issues #96–#103).
+
+## Methodology (corrected)
+
+| Rule | Detail |
+|------|--------|
+| Warm runs | Default **20** (p95 is an order statistic; with n=5 it collapses to ~max) |
+| Overview | `overview_parallel_status_wallet`: per iteration, **concurrent** GET status+wallet; record **wall-clock** until both complete |
+| Response size | Recorded as `response_bytes_p50` / `response_bytes_max` per endpoint |
+| `optimization_applied` | `false` for #95 baseline; set `--optimization-applied` only on after-runs |
+| Summary endpoint | Optional via `--include-summary` (Issue #98) |
+
+### Out of scope for #95 (tracked elsewhere)
+
+- Next.js SSR / dashboard page timing
+- Playwright login → Overview/Positions/Fills/Equity (Issue #102)
+- DB `query_count` / `db_ms` (Issue #96)
+- `EXPLAIN ANALYZE` / indexes (Issue #101)
+- Railway CPU/RAM counters (append in JSON `environment_notes.railway_resources`)
 
 ## How to measure
-
-### Prerequisites
-
-- Read-only API running (`python -m paper_trading.api_runner` or Railway `paper-trading-api`)
-- PostgreSQL with paper state (local soak seed or Railway paper stack)
-- Measure **main branch** code: `git checkout main` or set `P2_BASELINE_GIT_REF=main`
-
-### Command
 
 ```bash
 export PAPER_TRADING_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/paper_trading_test
@@ -22,53 +34,41 @@ export PAPER_API_BASE_URL=http://127.0.0.1:8080
 export P2_BASELINE_GIT_REF=main
 python scripts/measure_dashboard_api_baseline.py \
   --cold-runs 3 \
-  --warm-runs 5 \
+  --warm-runs 20 \
   --output docs/operations/dashboard-performance-baseline.json
 ```
 
-`/api/v1/dashboard-summary` is **optional** until Issue #98 merges:
+After #98 (optional summary + mark after-run):
 
 ```bash
-python scripts/measure_dashboard_api_baseline.py --include-summary ...
+python scripts/measure_dashboard_api_baseline.py \
+  --include-summary \
+  --optimization-applied \
+  --warm-runs 20 \
+  --output docs/operations/dashboard-summary-after-98.json
 ```
-
-Document Railway region and service resources in the JSON `environment_notes` when measuring production-like targets.
-
-## Endpoints measured (default)
-
-| Name | Path |
-|------|------|
-| status | `/api/v1/status` |
-| wallet | `/api/v1/wallet` |
-| positions | `/api/v1/positions?limit=50` |
-| orders | `/api/v1/orders?limit=50` |
-| fills | `/api/v1/fills?limit=50` |
-| equity | `/api/v1/equity?limit=100` |
-
-Optional (Issue #98): `dashboard_summary` → `/api/v1/dashboard-summary`
 
 ## Measured results
 
-### Local main (`main` @ pre-P2.5), PostgreSQL `paper_trading_test`
+### Local main (`main`), PostgreSQL `paper_trading_test`
 
-Measured **2026-07-15** against `main` read-only API (`http://127.0.0.1:8088`), empty paper tables, Windows dev host.
+Earlier warm_runs=5 table (status 96 ms / wallet 70 ms) remains archived in git history as a
+**low-confidence** sample. Re-run with `--warm-runs 20` and parallel overview before claiming
+budgets or improvement percentages. Update the JSON artifact and this table after that run.
 
-| Endpoint | Warm p50 (ms) | Warm p95 (ms) | Warm max (ms) |
-|----------|---------------|---------------|---------------|
-| status | 56.7 | 96.0 | 96.0 |
-| wallet | 45.2 | 70.2 | 70.2 |
-| positions | 43.7 | 70.8 | 70.8 |
-| orders | 41.5 | 91.9 | 91.9 |
-| fills | 40.5 | 101.8 | 101.8 |
-| equity | 42.6 | 88.9 | 88.9 |
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Parallel overview warm p95 | _pending re-measure_ | Required before any % improvement claim |
+| status / wallet / tables | see JSON when refreshed | — |
 
 Full report: [`dashboard-performance-baseline.json`](dashboard-performance-baseline.json)
 
-### Production-like (Railway paper-trading-api)
+### Production-like (Railway)
 
-Append after measuring against private Railway URL (`PRIVATE_PAPER_API_URL` or internal service URL). **Do not commit credentials.** Record region, replica count, and date in JSON `environment_notes`.
+Append after measuring against private Railway URL. Record region, resources, replica count,
+and date in JSON `environment_notes`. Do not commit credentials.
 
-## Initial P2.5 budgets (from ROADMAP)
+## P2.5 budgets (ROADMAP)
 
 | Target | Budget |
 |--------|--------|
@@ -76,12 +76,10 @@ Append after measuring against private Railway URL (`PRIVATE_PAPER_API_URL` or i
 | `/api/v1/status`, `/api/v1/wallet` p95 | < 250 ms |
 | Table endpoints p95 | < 500 ms |
 
-Compare measured warm p95 from the JSON report against these budgets. Document accepted deviations in `docs/DECISION_LOG.md`.
-
 ## Artifacts
 
 - Machine-readable: [`dashboard-performance-baseline.json`](dashboard-performance-baseline.json)
-- Sample structure for CI: `tests/fixtures/perf/baseline-sample.json`
+- CI sample: `tests/fixtures/perf/baseline-sample.json`
 
 ## Non-scope
 
