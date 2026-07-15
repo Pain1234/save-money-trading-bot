@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
-
 from paper_trading.db.session import create_db_engine
 from paper_trading.perf_observability import (
     RequestPerfMetrics,
     attach_engine_query_metrics,
     detach_engine_query_metrics,
 )
+from sqlalchemy import text
+
 from tests.postgres_fixtures import DEFAULT_PG_URL, requires_postgres
 
 pytestmark = [requires_postgres, pytest.mark.postgres]
@@ -40,10 +40,10 @@ def test_engine_listeners_record_query_count_and_db_ms() -> None:
 def test_db_session_dependency_records_query_metrics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from starlette.requests import Request
-
     from paper_trading.api_dependencies import get_config, get_db_session
     from paper_trading.perf_observability import get_request_metrics
+    from starlette.requests import Request
+
     from tests.postgres_fixtures import _postgres_url
 
     monkeypatch.setenv("PAPER_TRADING_DATABASE_URL", _postgres_url())
