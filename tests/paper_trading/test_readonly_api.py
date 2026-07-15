@@ -110,6 +110,12 @@ def test_readonly_perf_and_cache_headers(readonly_client: TestClient) -> None:
     assert "max-age=2" in response.headers.get("Cache-Control", "")
 
 
+def test_health_probe_skips_cache_control(readonly_client: TestClient) -> None:
+    response = readonly_client.get("/health")
+    assert response.status_code == 200
+    assert "Cache-Control" not in response.headers
+
+
 def test_status_uses_single_runtime_snapshot(readonly_client: TestClient) -> None:
     repo = readonly_client._repo  # type: ignore[attr-defined]
     repo.get_runtime_state.reset_mock()

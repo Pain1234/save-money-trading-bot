@@ -104,4 +104,24 @@ class PerformanceLoggingMiddleware(BaseHTTPMiddleware):
             correlation_id,
         )
         response.headers[CORRELATION_HEADER] = correlation_id
+        # Skip Cache-Control on health/readiness probes (Issue #99).
+        if request.url.path not in {"/health", "/readiness"}:
+            max_age = _cache_max_age(request.url.path)
+            if max_age is not None:
+                response.headers["Cache-Control"] = f"private, max-age={max_age}"
         return response
+
+
+def _cache_max_age(path: str) -> int | None:
+    """P2.5 initial cache TTLs (seconds) for read-only monitoring routes."""
+    if path in {"/api/v1/status", "/api/v1/market-data", "/api/v1/dashboard-summary"}:
+        return 2
+    if path in {"/api/v1/wallet", "/api/v1/positions"}:
+        return 5
+    if path.startswith("/api/v1/orders") or path.startswith("/api/v1/fills"):
+        return 5
+    if path.startswith("/api/v1/equity") or path.startswith("/api/v1/events"):
+        return 30
+    if path.startswith("/api/v1/scheduler-runs"):
+        return 30
+    return None
