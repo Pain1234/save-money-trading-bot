@@ -1,0 +1,264 @@
+{
+  "measurement": "layer_c_fastapi",
+  "issue": 101,
+  "environment": "railway-production",
+  "network_path": "paper-trading-dashboard -> PRIVATE_PAPER_API_URL -> paper-trading-api",
+  "base_url_host_only": "paper-trading-api.railway.internal:8080",
+  "region_probe_service": "paper-trading-dashboard",
+  "regions": {
+    "paper-trading-dashboard": "EU West",
+    "paper-trading-api": "sfo",
+    "paper-trading-postgres": "EU West"
+  },
+  "public_dashboard_url": "https://bot.save-money.xyz",
+  "evidence_doc": "docs/operations/dashboard-railway-performance-evidence.md",
+  "warm_runs": 20,
+  "warmup_runs": 3,
+  "warmup_note": "warmup_runs are discarded probes to stabilize the process; p95 uses warm_runs only (default 20/3 matches measure_dashboard_layer_c_api.py).",
+  "measured_at": "2026-07-15T22:08:39.803Z",
+  "routes": [
+    {
+      "name": "status",
+      "path": "/api/v1/status",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 3051.8782629999987,
+      "warm_header_total_p95_ms": 2902.9,
+      "warm_header_db_p95_ms": 701.4,
+      "warm_unattributed_api_ms": 2205.4,
+      "warm_private_hop_p95_ms": 157.00035200000002,
+      "warm_query_count_p95": 4,
+      "warm_response_bytes_p50": 639,
+      "warm_response_bytes_max": 639,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "b62d9ea3-eba6-48bf-99d5-6cb3de051e9f",
+        "1ddb959a-03e0-4ec7-8bbf-aa73627708a9",
+        "f5b1ec6c-945f-4d78-98e5-0e7ca93f2626",
+        "899f1720-ef35-406e-a1b7-cce05ec937b1",
+        "3d9227a2-9f90-42a0-bfc2-5b1944b52989"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "dashboard_summary",
+      "path": "/api/v1/dashboard-summary",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 3268.965166000009,
+      "warm_header_total_p95_ms": 3121.4,
+      "warm_header_db_p95_ms": 984.2,
+      "warm_unattributed_api_ms": 2142.3,
+      "warm_private_hop_p95_ms": 150.4714309999954,
+      "warm_query_count_p95": 6,
+      "warm_response_bytes_p50": 1175,
+      "warm_response_bytes_max": 1175,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "1dfa1020-6f94-492f-ad06-96c4f2254ac5",
+        "1f49362d-c007-4221-bece-e3fa0e56a463",
+        "a23ec85b-18a6-4edd-b16b-fbb8185344e5",
+        "1af1c6e7-6516-46b4-8f3f-4f5b7c5f0bc1",
+        "0cf8201a-fea2-4bbc-88c2-66883bb28d5a"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "wallet",
+      "path": "/api/v1/wallet",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2559.3804050000035,
+      "warm_header_total_p95_ms": 2408.6,
+      "warm_header_db_p95_ms": 279.1,
+      "warm_unattributed_api_ms": 2130.2000000000003,
+      "warm_private_hop_p95_ms": 151.476406999986,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 238,
+      "warm_response_bytes_max": 238,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "ee6e1d1b-0bf5-4568-9add-6398b45ff333",
+        "932f8bd0-5710-4164-9c16-3a0c64d6035a",
+        "ce902e6b-c08d-4501-a50c-6af6192acf78",
+        "7f2bcaa2-55a2-477d-83b5-124bc510bd7d",
+        "e2634ed2-bc2d-4646-af70-c12e90296671"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "positions",
+      "path": "/api/v1/positions?limit=50",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2562.1441789999953,
+      "warm_header_total_p95_ms": 2407.7,
+      "warm_header_db_p95_ms": 280.6,
+      "warm_unattributed_api_ms": 2128.7999999999997,
+      "warm_private_hop_p95_ms": 152.33181899999636,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 42,
+      "warm_response_bytes_max": 42,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "2e626a62-831f-467d-bcc9-49cef8728e67",
+        "cc641060-a121-4170-bd22-eec72f4288c9",
+        "9c7e4f8e-7a40-4b6a-a335-21153f6053ff",
+        "cb3e12e8-2ac0-4e54-ad36-40d4fe870145",
+        "6302391d-717b-4939-9440-042e4ec4c7da"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "orders",
+      "path": "/api/v1/orders?limit=50",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2565.1714860000066,
+      "warm_header_total_p95_ms": 2413.3,
+      "warm_header_db_p95_ms": 280.9,
+      "warm_unattributed_api_ms": 2133.9,
+      "warm_private_hop_p95_ms": 155.26721600000747,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 42,
+      "warm_response_bytes_max": 42,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "22fabb65-2957-4266-8248-b9d39a29e373",
+        "57a2b9c6-4a14-41af-a4c8-f5a5a76ad6ee",
+        "2f05f9d3-bef2-42b0-be9e-558107412077",
+        "d5f42e4a-5e21-458f-aa6a-70f073ddd260",
+        "09f2a105-cd86-4944-8fff-598011aa06b6"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "fills",
+      "path": "/api/v1/fills?limit=50",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2559.7866979999817,
+      "warm_header_total_p95_ms": 2411,
+      "warm_header_db_p95_ms": 282.6,
+      "warm_unattributed_api_ms": 2127.7999999999997,
+      "warm_private_hop_p95_ms": 156.78764499999807,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 42,
+      "warm_response_bytes_max": 42,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "43a559c2-0649-47da-a565-310010d0da46",
+        "4ecbaeb9-e88e-45a7-9298-b31a3a8ab88e",
+        "7865a600-e917-471f-99ad-7f26b80917c5",
+        "04f71931-c4da-4aab-a71f-679d69782004",
+        "2c445094-c5d7-49ae-b78a-5f84111cb00f"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "equity",
+      "path": "/api/v1/equity?limit=100",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2562.039435999992,
+      "warm_header_total_p95_ms": 2409.2,
+      "warm_header_db_p95_ms": 280.5,
+      "warm_unattributed_api_ms": 2129.7999999999997,
+      "warm_private_hop_p95_ms": 155.83943599999202,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 1210,
+      "warm_response_bytes_max": 1210,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "7e13550a-e311-44fe-8807-fc3172b5afb5",
+        "7938a53d-b493-481b-80be-752bb1fe6b54",
+        "8b75741d-707f-4d85-826d-091826eb17eb",
+        "e7fbe254-ad9d-42bf-843b-b1cd5e8b0717",
+        "7165198e-54cc-4f27-8b97-e0629ac1cc57"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "events",
+      "path": "/api/v1/events?limit=50",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2701.260863000003,
+      "warm_header_total_p95_ms": 2410,
+      "warm_header_db_p95_ms": 280.7,
+      "warm_unattributed_api_ms": 2129.6,
+      "warm_private_hop_p95_ms": 295.7647850000185,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 15191,
+      "warm_response_bytes_max": 15191,
+      "events_payload_json_bytes_p50": 2606,
+      "events_payload_json_share_p50": 0.17154894345336055,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "d7e7afb3-e9fa-4faa-8f4c-2518b519a333",
+        "7a4b58cf-7699-4f5f-b1a7-9de7588e7868",
+        "a83c7c60-353d-473b-94ac-6a60ff9b958d",
+        "7bef34cb-c4ad-4230-8955-f043cf8f0418",
+        "28e9da54-dd28-4e8e-a0be-d4117bd89a8f"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "scheduler_runs",
+      "path": "/api/v1/scheduler-runs?limit=50",
+      "status": "MEASURED",
+      "warm_client_p95_ms": 2845.129200000083,
+      "warm_header_total_p95_ms": 2552.2,
+      "warm_header_db_p95_ms": 422.7,
+      "warm_unattributed_api_ms": 2132.2,
+      "warm_private_hop_p95_ms": 296.55168299998604,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 17119,
+      "warm_response_bytes_max": 17119,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "a4a71f67-e11b-4847-8bab-99fad4f7a4e7",
+        "1ae1dab5-3305-4197-aab9-d0d7895f8573",
+        "9d9616ce-918a-4d42-8c55-e6d6661fae3d",
+        "30fa48e6-9af8-4042-8548-2bf7f8efaa4c",
+        "b15095bf-9185-455b-89d6-02ce2aa64e3f"
+      ],
+      "sample_count": 20,
+      "note": ""
+    }
+  ]
+}

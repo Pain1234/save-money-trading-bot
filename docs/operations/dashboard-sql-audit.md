@@ -1,8 +1,8 @@
 # Dashboard Performance Audit Protocol (P2.5 / Issue #101)
 
-**Status:** Measurable audit protocol + harnesses. Real Railway end-to-end values
-remain `NOT_MEASURED` until executed via the documented network path.
-**PR lineage:** Checklist landed in #117; duplicate lane #110 closed. This document
+**Status:** Harnesses landed (#119). Railway Layer C (warm 20/3, HTTP-validated) + D (`NO_ACTION`) + public `/login` SSR are recorded (2026-07-15). Authenticated Layers A + B remain `NOT_MEASURED`. Top-1 is the measured ~2.13 s unattributed FastAPI residual (region split = leading hypothesis, not proven). Full pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
+
+**PR lineage:** Checklist #117; harnesses #119; duplicate #110 closed. This document
 is the continuation of Issue #101 (not a new issue).
 
 **Non-goals for this audit delivery**
@@ -106,23 +106,25 @@ Record for every measurement run:
 
 | Field | Value |
 |-------|-------|
-| Date | `NOT_MEASURED` (Railway) / fill when run |
-| Git SHA | fill when run |
-| Environment | local PostgreSQL / Railway production |
-| Region | fill for Railway |
-| API resources | fill Railway service size |
-| Dashboard resources | fill Railway service size |
-| Dataset note | row counts per history table (Layer D) |
-| Network path | public dashboard URL vs private API probe |
+| Date | **2026-07-15** (Railway C/D + login B) |
+| Git SHA | `32a94384504fd35ee19ac077799a5c135b4b4aaf` (main after #119) |
+| Environment | Railway production (`graceful-compassion`) |
+| Region | Dashboard + Postgres **EU West**; API **sfo** |
+| API resources | `paper-trading-api` (sfo) |
+| Dashboard resources | `paper-trading-dashboard` (EU West) |
+| Dataset note | events 437 / scheduler 310 / equity 4 / fills·orders·positions **0** |
+| Network path | public `https://bot.save-money.xyz`; Layer C via SSH dashboard → private API |
 
 Artifacts (written by harnesses; do not invent values):
 
 | Artifact | Layer |
 |----------|-------|
-| `docs/operations/dashboard-layer-a-browser.json` | A |
-| `docs/operations/dashboard-layer-b-ssr.json` | B |
-| `docs/operations/dashboard-layer-c-api.json` | C |
-| `docs/operations/dashboard-layer-d-explain.json` | D |
+| `docs/operations/dashboard-layer-a-browser.json` | A (still pending) |
+| `docs/operations/dashboard-layer-b-ssr-railway-login-partial.json` | B partial (public `/login`) |
+| `docs/operations/dashboard-layer-c-api-railway.json` | C Railway |
+| `docs/operations/dashboard-layer-d-explain-railway.json` | D Railway |
+| `docs/operations/dashboard-layer-d-explain.json` | D local empty |
+| `docs/operations/dashboard-railway-performance-evidence.md` | Summary pack |
 
 ---
 
@@ -215,8 +217,13 @@ Separate server-timings headers are not required for the first pass; if Next.js
 
 ### Results
 
+Authenticated dashboard routes: `NOT_MEASURED` (credentials required).
+
+Public `/login` only (`dashboard-layer-b-ssr-railway-login-partial.json`, warm n=8):
+
 | Route | TTFB p95 | HTML total p95 | HTML bytes p50 | Status |
 |-------|---------:|---------------:|---------------:|--------|
+| /login (public) | **187.4 ms** | — | **6222** | `PARTIAL` |
 | Overview | — | — | — | `NOT_MEASURED` |
 | Status | — | — | — | `NOT_MEASURED` |
 | Positions | — | — | — | `NOT_MEASURED` |
@@ -260,17 +267,23 @@ python scripts/measure_dashboard_layer_c_api.py --warm-runs 20 \
 
 ### Results
 
-| Route | Browser p95 | TTFB | Skeleton→Daten | API p95 | DB p95 | Queries | Bytes | Hauptursache |
-| ----- | ----------: | ---: | -------------: | ------: | -----: | ------: | ----: | ------------ |
-| /api/v1/status | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending layers A–D |
-| /api/v1/dashboard-summary | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| /api/v1/wallet | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| /api/v1/positions | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| /api/v1/orders | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| /api/v1/fills | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| /api/v1/equity | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| /api/v1/events | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending payload analysis |
-| /api/v1/scheduler-runs | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
+**Railway production** (2026-07-15 remodeled), private hop dashboard(EU) -> API(sfo),
+warm **20** / warmup **3**. Artifact: `dashboard-layer-c-api-railway.json`.
+All routes HTTP **200** with finite `X-Perf-*` and retained correlation IDs.
+Unattr./hop are **p95 of per-sample deltas** (not p95(a)-p95(b)).
+Browser/TTFB/skeleton columns stay `NOT_MEASURED` until Layer A/B authenticated runs.
+
+| Route | Client hop p95 | API total p95 | DB p95 | Unattr. p95 | Hop p95 | Queries | Bytes p50 | Hauptursache |
+| ----- | -------------: | ------------: | -----: | ----------: | ------: | ------: | --------: | ------------ |
+| /api/v1/status | 3052 | **2903** | 701.4 | **2205** | **157** | 4 | 639 | multi-query + residual |
+| /api/v1/dashboard-summary | 3269 | **3121** | 984.2 | **2142** | **150** | 6 | 1175 | highest total/db/q |
+| /api/v1/wallet | 2559 | 2409 | 279.1 | **2130** | **151** | 1 | 238 | ~2.13 s residual |
+| /api/v1/positions | 2562 | 2408 | 280.6 | **2129** | **152** | 1 | 42 | ~2.13 s residual |
+| /api/v1/orders | 2565 | 2413 | 280.9 | **2134** | **155** | 1 | 42 | ~2.13 s residual |
+| /api/v1/fills | 2560 | 2411 | 282.6 | **2128** | **157** | 1 | 42 | ~2.13 s residual |
+| /api/v1/equity | 2562 | 2409 | 280.5 | **2130** | **156** | 1 | 1210 | ~2.13 s residual |
+| /api/v1/events | 2701 | 2410 | 280.7 | **2130** | **296** | 1 | **15191** | residual (size != extra API ms) |
+| /api/v1/scheduler-runs | 2845 | 2552 | 422.7 | **2132** | **297** | 1 | **17119** | residual + higher db |
 
 Local API-only samples from Issue #95 remain in
 `dashboard-performance-baseline.md` / `.json` and must not be relabeled as
@@ -354,7 +367,25 @@ representative volumes remain `FOLLOW_UP_REQUIRED` on Railway / soak-seeded data
 | /positions | first | 0 | 0 | Limit (+ sort) | 0.010 | hit=3 | quicksort | `NO_ACTION` on empty set |
 | /positions | cursor | 0 | — | — | — | — | — | `NOT_MEASURED` (empty) |
 
-Railway / production-like EXPLAIN: `NOT_MEASURED` (private DB hop required).
+**Railway production** (2026-07-15), EXPLAIN via SSH `paper-trading-api` → Postgres(EU).
+Artifact: `dashboard-layer-d-explain-railway.json`.
+
+| Route | Seite | Rows gesamt | Rows zurück | Plan | Exec ms | Buffers | Sort | Empfehlung |
+| ----- | ----- | ----------: | ----------: | ---- | ------: | ------- | ---- | ---------- |
+| /fills | first | 0 | 0 | Limit+Sort+Seq | 0.043 | — | — | `NO_ACTION` |
+| /fills | cursor | 0 | — | — | — | — | — | `NOT_MEASURED` (empty) |
+| /orders | first | 0 | 0 | Limit+Sort+Seq | 0.031 | — | — | `NO_ACTION` |
+| /orders | cursor | 0 | — | — | — | — | — | `NOT_MEASURED` (empty) |
+| /positions | first | 0 | 0 | Limit+Sort+Seq | 0.027 | — | — | `NO_ACTION` |
+| /positions | cursor | 0 | — | — | — | — | — | `NOT_MEASURED` (empty) |
+| /equity | first | 4 | 4 | Limit+Sort | 0.042 | hit=1 | — | `NO_ACTION` |
+| /equity | cursor | 4 | — | — | — | — | — | `NOT_MEASURED` (<limit) |
+| /events | first | **437** | 50 | Limit+Sort | 0.074 | hit=7 | quicksort | `NO_ACTION` (≪ route latency) |
+| /events | cursor | 437 | 50 | Limit+Sort | 0.087 | hit=7 | quicksort | `NO_ACTION` |
+| /scheduler-runs | first | **310** | 50 | Limit+Sort top-N | 0.124 | hit=7 | — | `NO_ACTION` |
+| /scheduler-runs | cursor | 310 | 50 | Limit+Sort | 0.186 | hit=7 | — | `NO_ACTION` |
+
+SQL exec is sub-ms; **not** the 2.4–3.3 s API wall clock. Per-route `recommendation_status` is **`NO_ACTION`** (max first/cursor exec vs Layer C route total; 5% share gate).
 
 ---
 
@@ -458,9 +489,9 @@ is reachable.
 
 | Metric | Value | Status |
 |--------|------:|--------|
-| response_bytes p50 | — | `NOT_MEASURED` |
-| payload_json bytes p50 | — | `NOT_MEASURED` |
-| payload_json share p50 | — | `NOT_MEASURED` |
+| response_bytes p50 | **15191** | `MEASURED` (Railway Layer C) |
+| payload_json bytes p50 | ~2613 (share x bytes) | `MEASURED` |
+| payload_json share p50 | **0.172** | `MEASURED` |
 | Incidents uses payload? | No (code review) | `MEASURED` (static) |
 
 ### Recommendation status
@@ -486,17 +517,22 @@ Prioritize with a scored blend of:
 - Call frequency (overview/status > rare history drills)
 - Table growth potential
 
-**Current Top-3:** `FOLLOW_UP_REQUIRED` — do not invent ranks without real samples.
-
-Working hypothesis to validate (not a claim):
+**Current Top-3 (from Railway Layer C/D; Layer A still pending for UX confirmation):**
 
 ```text
-1. /dashboard/incidents — response size via payload_json (static evidence only)
-2. /dashboard/equity — SSR + history response
-3. /dashboard/status — multiple runtime reads / large JSON dump in UI
+1. ~2.13 s unattributed FastAPI residual (p95 of per-sample total_ms − db_ms);
+   region split (API sfo vs Postgres/Dashboard EU West) = leading hypothesis —
+   not confirmed without instrumentation or co-location before/after
+2. GET /api/v1/dashboard-summary — worst API total/db/query_count
+   (p95 total 3121 ms, db 984 ms, 6 queries)
+3. GET /api/v1/status — next multi-query cost
+   (p95 total 2903 ms, db 701 ms, 4 queries)
 ```
 
-Promote to confirmed Top-3 only after Layers A–D on one environment.
+Large history JSON (`/events`, `/scheduler-runs`) is **`OPTIMIZATION_CANDIDATE` only**:
+API totals match thin routes despite 15–17 KB bodies. Not a data-backed Top-3 item.
+Hypothesis “Incidents slow mainly due to payload_json” is **not supported** by Layer C.
+Layer A authentication still required before treating Top-3 as UX-final.
 
 ---
 
@@ -504,11 +540,12 @@ Promote to confirmed Top-3 only after Layers A–D on one environment.
 
 | Candidate | Evidence required | Status |
 |-----------|-------------------|--------|
-| `(fill_time, fill_id)` on `paper_fills` | before/after EXPLAIN + route p95 | `FOLLOW_UP_REQUIRED` |
-| `(created_at, paper_order_id)` on `paper_orders` | before/after | `FOLLOW_UP_REQUIRED` |
-| `(evaluation_time, snapshot_id)` on snapshots | before/after; may be low value | `FOLLOW_UP_REQUIRED` |
-| `(created_at, event_id)` on `audit_events` | before/after | `FOLLOW_UP_REQUIRED` |
-| Events list projection (no payload) | Layer C bytes + Layer A/B | `OPTIMIZATION_CANDIDATE` |
+| `(fill_time, fill_id)` on `paper_fills` | before/after EXPLAIN + route p95 | `NO_ACTION` (empty + sub-ms; JSON status aligned) |
+| `(created_at, paper_order_id)` on `paper_orders` | before/after | `NO_ACTION` (empty + sub-ms) |
+| `(evaluation_time, snapshot_id)` on snapshots | before/after; may be low value | `NO_ACTION` (4 rows + sub-ms) |
+| `(created_at, event_id)` on `audit_events` | before/after | `NO_ACTION` (exec << route) |
+| Explain / remove ~2.13 s FastAPI residual (region hypothesis) | APM or co-locate before/after Layer C | `FOLLOW_UP_REQUIRED` (ops) |
+| Events list projection (no payload) | Layer A/B or parse/projection A/B | `OPTIMIZATION_CANDIDATE` (not Top-3) |
 | Cache TTL tweaks (#99) | after audit + staleness review | deferred |
 | Tuple keyset rewrite | EXPLAIN + latency delta | `NO_ACTION` until measured benefit |
 
@@ -522,8 +559,12 @@ Promote to confirmed Top-3 only after Layers A–D on one environment.
 | Keep CI perf soft-gated until variance known (#102) | confirmed |
 | Continue using engine-level query listeners with detach | confirmed (#96 tests) |
 | Treat API p95 ≠ dashboard UX | confirmed (this protocol) |
+| Compute unattributed residual as p95(per-sample total−db), not p95(total)−p95(db) | confirmed (Layer C probe) |
 
-No index adoption confirmed yet (await Layer D + route deltas).
+No index adoption confirmed — Railway Layer D shows sub-ms SQL relative to measured
+route latency; indexes are not the bottleneck. Highest-impact follow-up is explaining
+or removing the ~2.13 s unattributed FastAPI residual (region split = leading
+hypothesis), not an Alembic migration.
 
 ---
 
@@ -536,6 +577,8 @@ No index adoption confirmed yet (await Layer D + route deltas).
 | Ship index migration inside #101 | Scope split: audit vs migration |
 | Change cache TTLs during audit | #99 post-audit only |
 | Invent p50/p95 placeholders as “results” | Forbidden |
+| Rank “cross-region dominates” as proven Top-1 without before/after | Residual is measured; region attribution remains a hypothesis |
+| Rank history JSON as Top-3 from size alone | Layer C: large bodies with flat API totals vs thin routes |
 
 ---
 
@@ -543,14 +586,16 @@ No index adoption confirmed yet (await Layer D + route deltas).
 
 | Item | Status |
 |------|--------|
-| Layer A Playwright against Railway public URL | `NOT_MEASURED` |
-| Layer B SSR TTFB against public dashboard | `NOT_MEASURED` |
-| Layer C via Railway **private** API hop | `NOT_MEASURED` |
-| Layer D EXPLAIN on empty local `paper_trading_test` | `MEASURED` (first page only; see artifact) |
-| Layer D EXPLAIN on production-like row counts + cursor pages | `NOT_MEASURED` (Railway/private DB hop) |
-| Top-3 confirmed from real scored data | `FOLLOW_UP_REQUIRED` |
-| Events payload byte share on Railway | `NOT_MEASURED` |
-| Index before/after packages | not started |
+| Layer A Playwright against Railway public URL | `NOT_MEASURED` (needs dashboard password) |
+| Layer B authenticated SSR TTFB | `NOT_MEASURED` (needs dashboard password) |
+| Layer B public `/login` SSR | `PARTIAL` / `MEASURED` |
+| Layer C via Railway **private** API hop | `MEASURED` (warm 20/3; HTTP-validated) |
+| Layer D EXPLAIN on empty local `paper_trading_test` | `MEASURED` (first page only) |
+| Layer D EXPLAIN on Railway (+ cursor where rows allow) | `MEASURED` |
+| Top-3 from Layer C/D data | `MEASURED` (pending A UX confirmation) |
+| Events payload byte share on Railway | `MEASURED` (~17%) |
+| Index before/after packages | not started / not justified yet |
+| APM / co-location before/after for ~2.13 s residual | `FOLLOW_UP_REQUIRED` |
 
 ---
 
@@ -565,9 +610,12 @@ Dataset (row counts / date / env):
 Baseline plan (first + cursor):
 Baseline exec ms / buffers:
 Baseline API p95 / browser usable p95:
-Change applied (test index / projection) — temporary:
+Baseline unattributed residual p95 (per-sample total−db):
+Baseline private hop p95 (per-sample client−total):
+Change applied (test index / projection / region move) — temporary:
 New plan:
 New exec ms / buffers:
+New residual / hop p95:
 Delta:
 Write-overhead assessment:
 Decision: ADOPT | REJECT
@@ -585,12 +633,13 @@ Do **not** change TTLs in this audit. After numbers exist, recommend per data cl
 
 | Class | Options | Constraint |
 |-------|---------|------------|
-| Readiness / critical warnings | no cache or 1–2 s | Must not hide degradation |
-| Wallet / open positions | 1–2 s or 3–5 s | |
-| Orders / fills tables | 3–5 s | |
-| Equity / events / scheduler history | 15–30 s | Already 30 s on API today — re-validate |
+| Readiness / critical warnings | keep **1–2 s** | Origin ~2.5–3 s; TTL cannot remove ~2.13 s residual |
+| Wallet / open positions | **3–5 s** remain plausible | Stampede control only |
+| Orders / fills tables | **3–5 s** | Tables empty in prod evidence |
+| Equity / events / scheduler history | **15–30 s** remains reasonable | Size ≠ proven API latency driver |
 
-Issue #99 final approval waits on this audit.
+Do **not** lengthen TTLs to paper over the ~2.13 s unattributed residual. Issue #99 final
+approval still waits on authenticated A/B + optional residual before/after remeasure.
 
 ---
 
@@ -607,19 +656,19 @@ Keep soft for now (`tests/perf` reporting / artifacts). Propose a hard gate only
 
 ## Acceptance checklist for closing Issue #101
 
-- [ ] Browser, SSR, API, and DB measurements documented separately
-- [ ] Navigation → skeleton and → real data measured
-- [ ] Next.js TTFB measured
-- [ ] API exposes/logs `total_ms`, `db_ms`, `query_count`, `response_bytes`
-- [ ] Railway measurement path documented correctly
-- [ ] Top-3 routes chosen from real data
-- [ ] `/events` + `payload_json` analyzed with sizes
-- [ ] History first + cursor pages have `EXPLAIN (ANALYZE, BUFFERS)`
-- [ ] Existing indexes considered
-- [ ] No index recommended solely because of Seq Scan
-- [ ] Every index candidate has measured before/after benefit
-- [ ] Index migrations still separate
-- [ ] Cache recommendations derived from measurements only
-- [ ] Open Railway steps marked `NOT_MEASURED` honestly
-- [ ] Duplicate PR #110 closed; #117 recognized as checklist merge
-- [ ] Tests and executed measurements documented in the PR
+- [x] Browser, SSR, API, and DB measurements documented separately (A/auth-B still open)
+- [ ] Navigation → skeleton and → real data measured (Layer A)
+- [ ] Next.js authenticated TTFB measured (Layer B); public `/login` done
+- [x] API exposes/logs `total_ms`, `db_ms`, `query_count`, `response_bytes`
+- [x] Railway measurement path documented correctly
+- [x] Top-3 chosen from real Layer C/D data (confirm with A when credentials available)
+- [x] `/events` + `payload_json` analyzed with sizes (~17% share)
+- [x] History first + cursor pages have `EXPLAIN` where rows allow (empty tables noted)
+- [x] Existing indexes considered
+- [x] No index recommended solely because of Seq Scan
+- [x] Index candidates: no before/after required yet — gate not met (`NO_ACTION`)
+- [x] Index migrations still separate
+- [x] Cache recommendations derived from measurements only
+- [x] Remaining Railway steps marked `NOT_MEASURED` honestly (A + auth B)
+- [x] Duplicate PR #110 closed; #117 recognized as checklist merge
+- [ ] Authenticated A/B artifacts attached (or owner waiver) before close
