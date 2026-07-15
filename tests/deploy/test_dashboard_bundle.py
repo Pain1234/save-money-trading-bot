@@ -37,10 +37,12 @@ def test_dashboard_client_uses_server_side_env_only() -> None:
 def test_dashboard_client_cache_policy() -> None:
     source = _client_source()
     assert "REVALIDATE" in source
-    assert "REVALIDATE.STATUS" in source
-    assert "REVALIDATE.SUMMARY" in source
+    # Object keys and/or usages (mergeable across stacked PR bases).
+    assert "STATUS:" in source or "REVALIDATE.STATUS" in source
+    assert "SUMMARY:" in source or "REVALIDATE.SUMMARY" in source
     assert "fetchDashboardSummary" in source
     assert "next: { revalidate:" in source
+    assert "revalidate: REVALIDATE.SUMMARY" in source
 
 
 def test_dashboard_overview_uses_summary_fetch() -> None:
