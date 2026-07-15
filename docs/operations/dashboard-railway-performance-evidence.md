@@ -1,5 +1,7 @@
 # Railway dashboard performance evidence (Issue #101)
 
+> **Update (Issue #121, 2026-07-15):** Region hypothesis **CONFIRMED**. After moving paper-trading-api sfo → europe-west4-drams3a with no other changes, residual p95 fell from ~2155–2176 ms to ~49–54 ms on wallet/summary/status. See dashboard-fastapi-residual-121.md and dashboard-layer-c-before-121.json / dashboard-layer-c-after-121.json.
+
 **Date:** 2026-07-15 (Layer C remodeled: HTTP-validated, warm **20** / warmup **3**, per-sample residual/hop p95)
 **Project:** `graceful-compassion` / environment `production`
 **Deployed Git SHA (main after #119):** `32a94384504fd35ee19ac077799a5c135b4b4aaf`

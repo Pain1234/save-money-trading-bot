@@ -1,6 +1,6 @@
 # Dashboard Performance Audit Protocol (P2.5 / Issue #101)
 
-**Status:** Harnesses landed (#119). Railway Layer C (warm 20/3, HTTP-validated) + D (`NO_ACTION`) + public `/login` SSR are recorded (2026-07-15). Authenticated Layers A + B remain `NOT_MEASURED`. Top-1 is the measured ~2.13 s unattributed FastAPI residual (region split = leading hypothesis, not proven). Full pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
+**Status:** Harnesses landed (#119). Railway Layer C/D recorded; authenticated A/B still `NOT_MEASURED`. Issue **#121** region experiment **CONFIRMED**: moving `paper-trading-api` `sfo` → `europe-west4-drams3a` cut residual p95 from ~2.13 s to ~49–54 ms (`dashboard-fastapi-residual-121.md`). Remaining ~50 ms + per-request engine = `FOLLOW_UP_REQUIRED`. Full pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
 
 **PR lineage:** Checklist #117; harnesses #119; duplicate #110 closed. This document
 is the continuation of Issue #101 (not a new issue).
@@ -517,16 +517,13 @@ Prioritize with a scored blend of:
 - Call frequency (overview/status > rare history drills)
 - Table growth potential
 
-**Current Top-3 (from Railway Layer C/D; Layer A still pending for UX confirmation):**
+**Current Top-3 (Layer C/D; #121 region experiment CONFIRMED; Layer A still pending):**
 
 ```text
-1. ~2.13 s unattributed FastAPI residual (p95 of per-sample total_ms − db_ms);
-   region split (API sfo vs Postgres/Dashboard EU West) = leading hypothesis —
-   not confirmed without instrumentation or co-location before/after
-2. GET /api/v1/dashboard-summary — worst API total/db/query_count
-   (p95 total 3121 ms, db 984 ms, 6 queries)
-3. GET /api/v1/status — next multi-query cost
-   (p95 total 2903 ms, db 701 ms, 4 queries)
+1. WAS ~2.13 s FastAPI residual — CONFIRMED as API region sfo vs EU Postgres/Dashboard
+   (#121): after API → europe-west4 residual p95 ≈ 49–54 ms (see dashboard-fastapi-residual-121.md)
+2. Remaining ~50 ms residual + per-request engine/dispose — FOLLOW_UP_REQUIRED (H2)
+3. GET /api/v1/dashboard-summary — still heaviest multi-query route after co-location
 ```
 
 Large history JSON (`/events`, `/scheduler-runs`) is **`OPTIMIZATION_CANDIDATE` only**:
@@ -544,7 +541,7 @@ Layer A authentication still required before treating Top-3 as UX-final.
 | `(created_at, paper_order_id)` on `paper_orders` | before/after | `NO_ACTION` (empty + sub-ms) |
 | `(evaluation_time, snapshot_id)` on snapshots | before/after; may be low value | `NO_ACTION` (4 rows + sub-ms) |
 | `(created_at, event_id)` on `audit_events` | before/after | `NO_ACTION` (exec << route) |
-| Explain / remove ~2.13 s FastAPI residual (region hypothesis) | APM or co-locate before/after Layer C | `FOLLOW_UP_REQUIRED` (ops) |
+| Explain / remove ~2.13 s FastAPI residual (region) | Layer C before/after (#121) | `CONFIRMED` — API → EU West |
 | Events list projection (no payload) | Layer A/B or parse/projection A/B | `OPTIMIZATION_CANDIDATE` (not Top-3) |
 | Cache TTL tweaks (#99) | after audit + staleness review | deferred |
 | Tuple keyset rewrite | EXPLAIN + latency delta | `NO_ACTION` until measured benefit |
@@ -562,9 +559,9 @@ Layer A authentication still required before treating Top-3 as UX-final.
 | Compute unattributed residual as p95(per-sample total−db), not p95(total)−p95(db) | confirmed (Layer C probe) |
 
 No index adoption confirmed — Railway Layer D shows sub-ms SQL relative to measured
-route latency; indexes are not the bottleneck. Highest-impact follow-up is explaining
-or removing the ~2.13 s unattributed FastAPI residual (region split = leading
-hypothesis), not an Alembic migration.
+route latency; indexes are not the bottleneck. Issue **#121** confirmed the former
+~2.13 s residual as API region mismatch (now co-located). Remaining ~50 ms residual /
+per-request engine disposal is `FOLLOW_UP_REQUIRED` — not an Alembic migration.
 
 ---
 
@@ -577,7 +574,7 @@ hypothesis), not an Alembic migration.
 | Ship index migration inside #101 | Scope split: audit vs migration |
 | Change cache TTLs during audit | #99 post-audit only |
 | Invent p50/p95 placeholders as “results” | Forbidden |
-| Rank “cross-region dominates” as proven Top-1 without before/after | Residual is measured; region attribution remains a hypothesis |
+| Rank “cross-region dominates” as proven Top-1 **without** before/after | Forbidden during #101; later **CONFIRMED** in #121 with before/after |
 | Rank history JSON as Top-3 from size alone | Layer C: large bodies with flat API totals vs thin routes |
 
 ---
@@ -595,7 +592,8 @@ hypothesis), not an Alembic migration.
 | Top-3 from Layer C/D data | `MEASURED` (pending A UX confirmation) |
 | Events payload byte share on Railway | `MEASURED` (~17%) |
 | Index before/after packages | not started / not justified yet |
-| APM / co-location before/after for ~2.13 s residual | `FOLLOW_UP_REQUIRED` |
+| Co-location before/after for ~2.13 s residual (#121) | `CONFIRMED` / `MEASURED` |
+| Remaining ~50 ms residual / process-scoped engine | `FOLLOW_UP_REQUIRED` |
 
 ---
 
@@ -623,7 +621,7 @@ Rollback plan:
 Follow-up issue: (only if ADOPT and migration needed)
 ```
 
-No rows yet — attach when an experiment is run.
+See `dashboard-fastapi-residual-121.md` for the #121 region before/after package. Additional candidate blocks still attach here when run.
 
 ---
 
@@ -633,13 +631,12 @@ Do **not** change TTLs in this audit. After numbers exist, recommend per data cl
 
 | Class | Options | Constraint |
 |-------|---------|------------|
-| Readiness / critical warnings | keep **1–2 s** | Origin ~2.5–3 s; TTL cannot remove ~2.13 s residual |
+| Readiness / critical warnings | keep **1–2 s** | Post-#121 origin ~50–70 ms API; TTL still for stampede/staleness |
 | Wallet / open positions | **3–5 s** remain plausible | Stampede control only |
 | Orders / fills tables | **3–5 s** | Tables empty in prod evidence |
 | Equity / events / scheduler history | **15–30 s** remains reasonable | Size ≠ proven API latency driver |
 
-Do **not** lengthen TTLs to paper over the ~2.13 s unattributed residual. Issue #99 final
-approval still waits on authenticated A/B + optional residual before/after remeasure.
+Do **not** lengthen TTLs as a substitute for locating residual cost. The #121 region fix removed the ~2.13 s class of delay. Issue #99 final approval still waits on authenticated A/B + optional remaining-~50 ms follow-up.
 
 ---
 

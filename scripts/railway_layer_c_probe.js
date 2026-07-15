@@ -166,11 +166,17 @@ function summarize(name, path, samples) {
     name,
     path,
     status,
+    warm_client_p50_ms: percentile(client, 50),
     warm_client_p95_ms: percentile(client, 95),
+    warm_header_total_p50_ms: percentile(totals, 50),
     warm_header_total_p95_ms: percentile(totals, 95),
+    warm_header_db_p50_ms: percentile(dbs, 50),
     warm_header_db_p95_ms: percentile(dbs, 95),
+    warm_unattributed_api_p50_ms: percentile(residuals, 50),
     warm_unattributed_api_ms: percentile(residuals, 95),
+    warm_private_hop_p50_ms: percentile(hops, 50),
     warm_private_hop_p95_ms: percentile(hops, 95),
+    warm_query_count_p50: percentile(qcs, 50),
     warm_query_count_p95: percentile(qcs, 95),
     warm_response_bytes_p50: sizes[Math.floor(sizes.length / 2)],
     warm_response_bytes_max: Math.max(...sizes),
@@ -188,8 +194,15 @@ function summarize(name, path, samples) {
 }
 
 (async () => {
+  const allow = (process.env.LAYER_C_ROUTES || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const selected = allow.length
+    ? ROUTES.filter(([name]) => allow.includes(name))
+    : ROUTES;
   const routes = [];
-  for (const [name, path] of ROUTES) {
+  for (const [name, path] of selected) {
     try {
       for (let i = 0; i < WARMUP; i++) await sample(path);
       const samples = [];
@@ -206,15 +219,15 @@ function summarize(name, path, samples) {
   }
   const report = {
     measurement: "layer_c_fastapi",
-    issue: 101,
+    issue: Number(process.env.LAYER_C_ISSUE || 121),
     environment: "railway-production",
     network_path: "paper-trading-dashboard -> PRIVATE_PAPER_API_URL -> paper-trading-api",
     base_url_host_only: base.replace(/^https?:\/\//, ""),
     region_probe_service: "paper-trading-dashboard",
     regions: {
-      "paper-trading-dashboard": "EU West",
-      "paper-trading-api": "sfo",
-      "paper-trading-postgres": "EU West",
+      "paper-trading-dashboard": process.env.LAYER_C_DASHBOARD_REGION || "NOT_MEASURED",
+      "paper-trading-api": process.env.LAYER_C_API_REGION || "NOT_MEASURED",
+      "paper-trading-postgres": process.env.LAYER_C_POSTGRES_REGION || "NOT_MEASURED",
     },
     public_dashboard_url: "https://bot.save-money.xyz",
     evidence_doc: "docs/operations/dashboard-railway-performance-evidence.md",
