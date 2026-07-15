@@ -225,9 +225,9 @@ function summarize(name, path, samples) {
     base_url_host_only: base.replace(/^https?:\/\//, ""),
     region_probe_service: "paper-trading-dashboard",
     regions: {
-      "paper-trading-dashboard": "EU West",
-      "paper-trading-api": "sfo",
-      "paper-trading-postgres": "EU West",
+      "paper-trading-dashboard": process.env.LAYER_C_DASHBOARD_REGION || "NOT_MEASURED",
+      "paper-trading-api": process.env.LAYER_C_API_REGION || "NOT_MEASURED",
+      "paper-trading-postgres": process.env.LAYER_C_POSTGRES_REGION || "NOT_MEASURED",
     },
     public_dashboard_url: "https://bot.save-money.xyz",
     evidence_doc: "docs/operations/dashboard-railway-performance-evidence.md",

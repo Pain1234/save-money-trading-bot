@@ -22,6 +22,22 @@ PROBE = REPO / "scripts" / "railway_layer_c_probe.js"
 DEFAULT_OUT = REPO / "docs" / "operations" / "dashboard-layer-c-api-railway.json"
 HOST = "railway-paper-trading-dashboard"
 
+DEFAULT_DASHBOARD_REGION = "europe-west4-drams3a"
+DEFAULT_POSTGRES_REGION = "europe-west4-drams3a"
+
+
+def resolve_regions() -> dict[str, str]:
+    """Caller-supplied regions override any probe defaults (never invent ``sfo``)."""
+    return {
+        "paper-trading-dashboard": os.environ.get(
+            "LAYER_C_DASHBOARD_REGION", DEFAULT_DASHBOARD_REGION
+        ),
+        "paper-trading-postgres": os.environ.get(
+            "LAYER_C_POSTGRES_REGION", DEFAULT_POSTGRES_REGION
+        ),
+        "paper-trading-api": os.environ.get("LAYER_C_API_REGION", "NOT_MEASURED"),
+    }
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -39,7 +55,14 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="Optional label stored in artifact (e.g. before-region, after-region).",
     )
+    parser.add_argument(
+        "--api-region",
+        default="",
+        help="Overrides LAYER_C_API_REGION for artifact metadata.",
+    )
     args = parser.parse_args(argv)
+    if args.api_region:
+        os.environ["LAYER_C_API_REGION"] = args.api_region
 
     probe_text = PROBE.read_text(encoding="utf-8")
     upload = subprocess.run(
@@ -61,10 +84,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"upload failed: {upload.returncode}", file=sys.stderr)
         return upload.returncode or 1
 
+    regions = resolve_regions()
     remote_env = (
         f"LAYER_C_ISSUE={args.issue} "
         f"LAYER_C_WARM_RUNS={args.warm_runs} "
         f"LAYER_C_WARMUP_RUNS={args.warmup_runs} "
+        f"LAYER_C_API_REGION={regions['paper-trading-api']} "
+        f"LAYER_C_DASHBOARD_REGION={regions['paper-trading-dashboard']} "
+        f"LAYER_C_POSTGRES_REGION={regions['paper-trading-postgres']} "
     )
     if args.routes:
         remote_env += f"LAYER_C_ROUTES={args.routes} "
@@ -98,15 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     report["local_git_head"] = (
         subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO).decode().strip()
     )
-    # Region metadata filled by caller or optional enrichment script — never secrets.
-    report.setdefault(
-        "regions",
-        {
-            "paper-trading-dashboard": "europe-west4-drams3a",
-            "paper-trading-postgres": "europe-west4-drams3a",
-            "paper-trading-api": os.environ.get("LAYER_C_API_REGION", "NOT_MEASURED"),
-        },
-    )
+    # Always overwrite probe defaults with explicit caller/env metadata.
+    report["regions"] = resolve_regions()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {args.output} ({args.output.stat().st_size} bytes)")
