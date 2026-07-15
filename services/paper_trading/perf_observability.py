@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -25,6 +26,9 @@ class RequestPerfMetrics:
     correlation_id: str
     query_count: int = 0
     db_ms: float = 0.0
+    engine_create_ms: float = 0.0
+    session_setup_ms: float = 0.0
+    pool_connect_ms: float = 0.0
     started_at: float = field(default_factory=time.perf_counter)
 
     def record_query(self, duration_ms: float) -> None:
@@ -61,6 +65,34 @@ def attach_engine_query_metrics(engine: Engine, metrics: RequestPerfMetrics) -> 
     event.listen(engine, "before_cursor_execute", _before)
     event.listen(engine, "after_cursor_execute", _after)
     return _before, _after
+
+
+
+def breakdown_enabled() -> bool:
+    """Opt-in fine-grained setup timings for residual attribution (#121)."""
+    return os.environ.get("PAPER_API_PERF_BREAKDOWN", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def attach_engine_connect_metrics(engine: Engine, metrics: RequestPerfMetrics) -> Any:
+    """Record approximate time to first pool connect for this request engine."""
+
+    started = time.perf_counter()
+
+    def _on_connect(_dbapi_conn: Any, _connection_record: Any) -> None:
+        if metrics.pool_connect_ms <= 0.0:
+            metrics.pool_connect_ms = (time.perf_counter() - started) * 1000.0
+
+    event.listen(engine, "connect", _on_connect)
+    return _on_connect
+
+
+def detach_engine_connect_metrics(engine: Engine, on_connect: Any) -> None:
+    event.remove(engine, "connect", on_connect)
 
 
 def detach_engine_query_metrics(engine: Engine, before: Any, after: Any) -> None:
@@ -116,12 +148,16 @@ class PerformanceLoggingMiddleware(BaseHTTPMiddleware):
         response.headers["X-Perf-Db-Ms"] = f"{metrics.db_ms:.1f}"
         response.headers["X-Perf-Query-Count"] = str(metrics.query_count)
         response.headers["X-Perf-Response-Bytes"] = str(response_bytes)
+        if breakdown_enabled():
+            response.headers["X-Perf-Engine-Create-Ms"] = f"{metrics.engine_create_ms:.1f}"
+            response.headers["X-Perf-Session-Setup-Ms"] = f"{metrics.session_setup_ms:.1f}"
+            response.headers["X-Perf-Pool-Connect-Ms"] = f"{metrics.pool_connect_ms:.1f}"
         # Skip Cache-Control on health/readiness probes (Issue #99).
         if request.url.path not in {"/health", "/readiness"}:
             max_age = _cache_max_age(request.url.path)
             if max_age is not None:
                 response.headers["Cache-Control"] = f"private, max-age={max_age}"
-        return response
+        return response  # type: ignore[no-any-return]
 
 
 def _cache_max_age(path: str) -> int | None:

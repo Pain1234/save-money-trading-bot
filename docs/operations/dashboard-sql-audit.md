@@ -517,17 +517,14 @@ Prioritize with a scored blend of:
 - Call frequency (overview/status > rare history drills)
 - Table growth potential
 
-**Current Top-3 (from Railway Layer C/D; Layer A still pending for UX confirmation):**
+**Current Top-3 (Layer C/D; #121 region experiment CONFIRMED; Layer A still pending):**
 
-```text
-1. ~2.13 s unattributed FastAPI residual (p95 of per-sample total_ms − db_ms);
-   region split (API sfo vs Postgres/Dashboard EU West) = leading hypothesis —
-   not confirmed without instrumentation or co-location before/after
-2. GET /api/v1/dashboard-summary — worst API total/db/query_count
-   (p95 total 3121 ms, db 984 ms, 6 queries)
-3. GET /api/v1/status — next multi-query cost
-   (p95 total 2903 ms, db 701 ms, 4 queries)
-```
+`	ext
+1. WAS ~2.13 s FastAPI residual — CONFIRMED as API region sfo vs EU Postgres/Dashboard
+   (#121): after API → europe-west4 residual p95 ≈ 49–54 ms (see dashboard-fastapi-residual-121.md)
+2. Remaining ~50 ms residual + per-request engine/dispose — FOLLOW_UP_REQUIRED (H2)
+3. GET /api/v1/dashboard-summary — still heaviest multi-query route after co-location
+`
 
 Large history JSON (`/events`, `/scheduler-runs`) is **`OPTIMIZATION_CANDIDATE` only**:
 API totals match thin routes despite 15–17 KB bodies. Not a data-backed Top-3 item.

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (P2.5 — Issue #121)
+
+- Confirmed ~2.13 s FastAPI residual as cross-region placement: moved paper-trading-api from sfo to europe-west4-drams3a with measured before/after Layer C (docs/operations/dashboard-fastapi-residual-121.md). Residual p95 fell ~97% on wallet/summary/status; API left co-located with Postgres/Dashboard.
+- Opt-in setup timing headers behind PAPER_API_PERF_BREAKDOWN for further residual attribution (no pooling change in this experiment).
+
+
 ### Added (governance — P2.5 and P7 roadmap)
 
 - **P2.5** milestone `P2.5 – Dashboard Performance & Responsiveness` with performance budgets and exit criteria in `ROADMAP.md`.
