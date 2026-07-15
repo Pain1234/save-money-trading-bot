@@ -79,9 +79,9 @@ def test_dashboard_auth_middleware_protects_routes() -> None:
     assert "session.isLoggedIn" in source
 
 
-def test_dashboard_overview_parallelizes_fetches() -> None:
+def test_dashboard_overview_uses_summary_fetch() -> None:
     source = (DASHBOARD_ROOT / "page.tsx").read_text(encoding="utf-8")
-    assert "Promise.all" in source
+    assert "fetchDashboardSummary" in source
 
 
 def test_dashboard_status_parallelizes_fetches() -> None:
