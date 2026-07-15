@@ -242,6 +242,8 @@ Honest classification of dashboard readiness. **Planning and acceptance criteria
 
 ### Current
 
+- Route-level `loading.tsx` skeletons verified in CI (`tests/deploy/test_dashboard_bundle.py`)
+
 - Locally usable Next.js dashboard with login
 - Real paper-trading PostgreSQL data displayable (no mock requirement in production path)
 - Wallet, PnL, positions, fills, and equity visible
