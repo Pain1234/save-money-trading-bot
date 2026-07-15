@@ -241,6 +241,32 @@ def _estimate_row_count(conn: Any, table: str) -> float | None:
     return float(value)
 
 
+
+def _index_recommendation(first: PlanMetrics) -> dict[str, str]:
+    """Machine-readable index decision from this EXPLAIN sample alone.
+
+    Negligible plans cannot be a material share of multi-second API route
+    latency, so status is NO_ACTION. Larger plans stay FOLLOW_UP_REQUIRED until
+    a before/after package exists.
+    """
+    exec_ms = first.execution_ms
+    if first.status == "MEASURED" and exec_ms is not None and exec_ms < 5.0:
+        return {
+            "recommendation_status": "NO_ACTION",
+            "recommendation": (
+                "EXPLAIN execution time is negligible relative to measured route "
+                "latency; no index migration justified from this plan alone."
+            ),
+        }
+    return {
+        "recommendation_status": "FOLLOW_UP_REQUIRED",
+        "recommendation": (
+            "No index migration in this audit. Record before/after "
+            "plans before opening a separate migration issue."
+        ),
+    }
+
+
 def _exact_row_count_after(conn: Any, table: str) -> int:
     """Exact COUNT(*) only after EXPLAIN so it cannot warm buffers first."""
     from sqlalchemy import text
@@ -371,11 +397,7 @@ def run_audit(database_url: str) -> dict[str, Any]:
                                 "cursor_page": asdict(cursor),
                                 "first_page_sql": spec["first_page_sql"],
                                 "cursor_page_sql": cursor_sql,
-                                "recommendation_status": "FOLLOW_UP_REQUIRED",
-                                "recommendation": (
-                                    "No index migration in this audit. Record before/after "
-                                    "plans before opening a separate migration issue."
-                                ),
+                                **_index_recommendation(first),
                             }
                         )
                 except Exception as exc:  # noqa: BLE001 — capture per-route failures

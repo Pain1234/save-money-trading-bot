@@ -2,6 +2,9 @@
 /**
  * Layer C probe from paper-trading-dashboard (private Next.js -> FastAPI hop).
  * Issue #101 Railway evidence. Prints JSON to stdout only.
+ *
+ * MEASURED requires: HTTP 2xx (res.ok), finite X-Perf-Total-Ms / Db-Ms / Query-Count.
+ * Status codes and correlation IDs are retained on the route summary for validation.
  */
 const base = (process.env.PRIVATE_PAPER_API_URL || "").replace(/\/$/, "");
 if (!base) {
@@ -21,9 +24,10 @@ const ROUTES = [
   ["scheduler_runs", "/api/v1/scheduler-runs?limit=50"],
 ];
 
-const WARMUP = 1;
-const WARM = 5;
-const TIMEOUT_MS = 15000;
+// Match scripts/measure_dashboard_layer_c_api.py defaults (p95 with n=5 ~= max).
+const WARMUP = Number(process.env.LAYER_C_WARMUP_RUNS || 3);
+const WARM = Number(process.env.LAYER_C_WARM_RUNS || 20);
+const TIMEOUT_MS = Number(process.env.LAYER_C_TIMEOUT_MS || 30000);
 
 function percentile(values, pct) {
   if (!values.length) return null;
@@ -33,6 +37,12 @@ function percentile(values, pct) {
     Math.min(ordered.length - 1, Math.round((pct / 100) * (ordered.length - 1))),
   );
   return ordered[idx];
+}
+
+function parseFiniteNumber(raw) {
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 function payloadShare(bodyText, path) {
@@ -69,11 +79,12 @@ async function sample(path) {
     const clientMs = performance.now() - started;
     const share = payloadShare(bodyText, path);
     return {
+      ok: res.ok,
       status_code: res.status,
       client_total_ms: clientMs,
-      header_total_ms: res.headers.get("x-perf-total-ms"),
-      header_db_ms: res.headers.get("x-perf-db-ms"),
-      header_query_count: res.headers.get("x-perf-query-count"),
+      header_total_ms: parseFiniteNumber(res.headers.get("x-perf-total-ms")),
+      header_db_ms: parseFiniteNumber(res.headers.get("x-perf-db-ms")),
+      header_query_count: parseFiniteNumber(res.headers.get("x-perf-query-count")),
       response_bytes: Buffer.byteLength(bodyText),
       correlation_id: res.headers.get("x-correlation-id"),
       payload_json_bytes: share.payload_bytes,
@@ -84,51 +95,90 @@ async function sample(path) {
   }
 }
 
+function sampleIsMeasured(s) {
+  return (
+    s.ok === true &&
+    s.status_code >= 200 &&
+    s.status_code < 300 &&
+    s.header_total_ms != null &&
+    s.header_db_ms != null &&
+    s.header_query_count != null &&
+    Number.isFinite(s.header_total_ms) &&
+    Number.isFinite(s.header_db_ms) &&
+    Number.isFinite(s.header_query_count)
+  );
+}
+
 function summarize(name, path, samples) {
   if (!samples.length) {
     return { name, path, status: "NOT_MEASURED", note: "no samples" };
   }
-  const complete = samples.every(
+
+  const statusCodes = [...new Set(samples.map((s) => s.status_code))];
+  const correlationIds = samples
+    .map((s) => s.correlation_id)
+    .filter((id) => typeof id === "string" && id.length > 0);
+  const httpOk = samples.every((s) => s.ok === true);
+  const measuredOk = samples.every(sampleIsMeasured);
+  const anyHeaders = samples.some(
     (s) =>
-      s.header_total_ms != null &&
-      s.header_db_ms != null &&
-      s.header_query_count != null,
+      s.header_total_ms != null || s.header_db_ms != null || s.header_query_count != null,
   );
+
+  let status;
+  let note = "";
+  if (measuredOk) {
+    status = "MEASURED";
+  } else if (!httpOk) {
+    status = "NOT_MEASURED";
+    note = `non-2xx HTTP status in samples: ${statusCodes.join(",")}`;
+  } else if (anyHeaders) {
+    status = "PARTIAL";
+    note = "2xx responses but missing/non-finite required X-Perf-* headers";
+  } else {
+    status = "NOT_MEASURED";
+    note = "2xx responses but no usable X-Perf-* headers";
+  }
+
   const client = samples.map((s) => s.client_total_ms);
-  const totals = samples
-    .map((s) => (s.header_total_ms == null ? null : Number(s.header_total_ms)))
-    .filter((v) => v != null);
-  const dbs = samples
-    .map((s) => (s.header_db_ms == null ? null : Number(s.header_db_ms)))
-    .filter((v) => v != null);
-  const qcs = samples
-    .map((s) => (s.header_query_count == null ? null : Number(s.header_query_count)))
-    .filter((v) => v != null);
-  const sizes = samples.map((s) => s.response_bytes);
+  const totals = samples.map((s) => s.header_total_ms).filter((v) => v != null);
+  const dbs = samples.map((s) => s.header_db_ms).filter((v) => v != null);
+  const qcs = samples.map((s) => s.header_query_count).filter((v) => v != null);
+  const sizes = samples.map((s) => s.response_bytes).sort((a, b) => a - b);
   const payloadSizes = samples
     .map((s) => s.payload_json_bytes)
-    .filter((v) => v != null);
+    .filter((v) => v != null)
+    .sort((a, b) => a - b);
   const payloadShares = samples
     .map((s) => s.payload_json_share)
-    .filter((v) => v != null);
-  sizes.sort((a, b) => a - b);
+    .filter((v) => v != null)
+    .sort((a, b) => a - b);
+
+  const totalP95 = percentile(totals, 95);
+  const dbP95 = percentile(dbs, 95);
+
   return {
     name,
     path,
-    status: complete ? "MEASURED" : "PARTIAL",
+    status,
     warm_client_p95_ms: percentile(client, 95),
-    warm_header_total_p95_ms: percentile(totals, 95),
-    warm_header_db_p95_ms: percentile(dbs, 95),
+    warm_header_total_p95_ms: totalP95,
+    warm_header_db_p95_ms: dbP95,
+    warm_unattributed_api_ms:
+      totalP95 != null && dbP95 != null ? totalP95 - dbP95 : null,
     warm_query_count_p95: percentile(qcs, 95),
     warm_response_bytes_p50: sizes[Math.floor(sizes.length / 2)],
     warm_response_bytes_max: Math.max(...sizes),
     events_payload_json_bytes_p50: payloadSizes.length
-      ? payloadSizes.sort((a, b) => a - b)[Math.floor(payloadSizes.length / 2)]
+      ? payloadSizes[Math.floor(payloadSizes.length / 2)]
       : null,
     events_payload_json_share_p50: payloadShares.length
-      ? payloadShares.sort((a, b) => a - b)[Math.floor(payloadShares.length / 2)]
+      ? payloadShares[Math.floor(payloadShares.length / 2)]
       : null,
-    note: complete ? "" : "missing one or more X-Perf-* headers",
+    sample_status_codes: statusCodes,
+    sample_correlation_ids: correlationIds.slice(0, 5),
+    sample_count: samples.length,
+    note,
   };
 }
 
@@ -153,11 +203,20 @@ function summarize(name, path, samples) {
     measurement: "layer_c_fastapi",
     issue: 101,
     environment: "railway-production",
-    network_path: "paper-trading-dashboard â†’ PRIVATE_PAPER_API_URL â†’ paper-trading-api",
+    network_path: "paper-trading-dashboard -> PRIVATE_PAPER_API_URL -> paper-trading-api",
     base_url_host_only: base.replace(/^https?:\/\//, ""),
     region_probe_service: "paper-trading-dashboard",
+    regions: {
+      "paper-trading-dashboard": "EU West",
+      "paper-trading-api": "sfo",
+      "paper-trading-postgres": "EU West",
+    },
+    public_dashboard_url: "https://bot.save-money.xyz",
+    evidence_doc: "docs/operations/dashboard-railway-performance-evidence.md",
     warm_runs: WARM,
     warmup_runs: WARMUP,
+    warmup_note:
+      "warmup_runs are discarded probes to stabilize the process; p95 uses warm_runs only (default 20/3 matches measure_dashboard_layer_c_api.py).",
     measured_at: new Date().toISOString(),
     routes,
   };
