@@ -1,0 +1,135 @@
+{
+  "generated_at": "2026-07-15T17:15:23.603261+00:00",
+  "base_url": "http://127.0.0.1:8089",
+  "environment_notes": {
+    "railway_region": "local/unset",
+    "python": "3.14.5"
+  },
+  "methodology": {
+    "cold_runs": 3,
+    "warm_runs": 5,
+    "optimization_applied": false,
+    "include_dashboard_summary": true,
+    "measured_against": "feat/98-dashboard-summary-api"
+  },
+  "p25_budgets_ms": {
+    "overview_warm_p95": 1500,
+    "status_p95": 250,
+    "wallet_p95": 250,
+    "table_endpoints_p95": 500
+  },
+  "endpoints": [
+    {
+      "name": "status",
+      "path": "/api/v1/status",
+      "cold": {
+        "p50_ms": 36.77370000514202,
+        "p95_ms": 53.88160000438802,
+        "max_ms": 53.88160000438802,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 63.890599994920194,
+        "p95_ms": 85.67990000301506,
+        "max_ms": 85.67990000301506,
+        "samples": 5
+      }
+    },
+    {
+      "name": "wallet",
+      "path": "/api/v1/wallet",
+      "cold": {
+        "p50_ms": 64.1172000032384,
+        "p95_ms": 93.1066000048304,
+        "max_ms": 93.1066000048304,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 63.001600006828085,
+        "p95_ms": 96.13600000739098,
+        "max_ms": 96.13600000739098,
+        "samples": 5
+      }
+    },
+    {
+      "name": "positions",
+      "path": "/api/v1/positions?limit=50",
+      "cold": {
+        "p50_ms": 42.41500000352971,
+        "p95_ms": 47.00409999350086,
+        "max_ms": 47.00409999350086,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 42.71789999620523,
+        "p95_ms": 44.120499995187856,
+        "max_ms": 44.120499995187856,
+        "samples": 5
+      }
+    },
+    {
+      "name": "orders",
+      "path": "/api/v1/orders?limit=50",
+      "cold": {
+        "p50_ms": 45.402999996440485,
+        "p95_ms": 56.934399995952845,
+        "max_ms": 56.934399995952845,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 46.556999994209036,
+        "p95_ms": 83.43499999318738,
+        "max_ms": 83.43499999318738,
+        "samples": 5
+      }
+    },
+    {
+      "name": "fills",
+      "path": "/api/v1/fills?limit=50",
+      "cold": {
+        "p50_ms": 47.54119999415707,
+        "p95_ms": 74.17379999242257,
+        "max_ms": 74.17379999242257,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 39.77459999441635,
+        "p95_ms": 92.4803000089014,
+        "max_ms": 92.4803000089014,
+        "samples": 5
+      }
+    },
+    {
+      "name": "equity",
+      "path": "/api/v1/equity?limit=100",
+      "cold": {
+        "p50_ms": 34.574600009364076,
+        "p95_ms": 80.57710000139195,
+        "max_ms": 80.57710000139195,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 65.25129999499768,
+        "p95_ms": 94.65089999139309,
+        "max_ms": 94.65089999139309,
+        "samples": 5
+      }
+    },
+    {
+      "name": "dashboard_summary",
+      "path": "/api/v1/dashboard-summary",
+      "cold": {
+        "p50_ms": 95.97309998935089,
+        "p95_ms": 147.40440000605304,
+        "max_ms": 147.40440000605304,
+        "samples": 3
+      },
+      "warm": {
+        "p50_ms": 41.53349999978673,
+        "p95_ms": 56.37580000620801,
+        "max_ms": 56.37580000620801,
+        "samples": 5
+      }
+    }
+  ]
+}
