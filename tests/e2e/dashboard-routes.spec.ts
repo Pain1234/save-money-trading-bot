@@ -16,27 +16,31 @@ for (const key of requiredEnv) {
   }
 }
 
-const routes = [
-  "/dashboard",
-  "/dashboard/positions",
-  "/dashboard/fills",
-  "/dashboard/equity",
-] as const;
+const routes: ReadonlyArray<{ path: string; heading: RegExp }> = [
+  { path: "/dashboard", heading: /^Overview$/i },
+  { path: "/dashboard/positions", heading: /^Positions/i },
+  { path: "/dashboard/fills", heading: /^Fills/i },
+  { path: "/dashboard/equity", heading: /^Equity History$/i },
+];
 
 test("login and navigate core dashboard routes", async ({ page }) => {
   const user = process.env.PAPER_DASHBOARD_USER!;
   const password = process.env.PAPER_DASHBOARD_PASSWORD!;
 
-  await page.goto("/login");
+  const loginResponse = await page.goto("/login");
+  expect(loginResponse, "login navigation should return a response").not.toBeNull();
+  expect(loginResponse!.ok(), `login HTTP ${loginResponse!.status()}`).toBeTruthy();
+
   await page.getByLabel("Username").fill(user);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/dashboard/, { timeout: 20_000 });
 
-  for (const route of routes) {
-    await page.goto(route);
-    await expect(page.locator("body")).toBeVisible();
-    // Loading skeletons or content should be present; route must not 404.
+  for (const { path, heading } of routes) {
+    const response = await page.goto(path);
+    expect(response, `${path} should return a response`).not.toBeNull();
+    expect(response!.ok(), `${path} HTTP ${response!.status()}`).toBeTruthy();
     await expect(page).not.toHaveURL(/\/login/);
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
 });

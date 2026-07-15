@@ -245,6 +245,7 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Run reporting performance tests (PostgreSQL)
+        # Latency budgets soft (in artifact); HTTP/schema failures still fail.
         run: |
           python -m pytest tests/perf -m "reporting and postgres" -q --tb=short
 

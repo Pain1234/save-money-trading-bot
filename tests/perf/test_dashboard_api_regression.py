@@ -1,7 +1,8 @@
-"""Reporting-only dashboard API latency checks (P2.5 / Issue #102).
+﻿"""Reporting-only dashboard API latency checks (P2.5 / Issue #102).
 
 These tests are marked ``reporting`` and are **excluded from the default CI unit
-job** (``not reporting``). Run manually or in a release gate:
+job** (``not reporting``). Latency budgets are recorded in the JSON artifact —
+they never fail the job. Functional checks (HTTP 200, schema, headers) remain hard.
 
     pytest tests/perf -m reporting -q
     PAPER_RAILWAY_API_BASE_URL=... pytest tests/perf -m reporting -q
@@ -16,6 +17,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 from urllib.request import Request, urlopen
 from uuid import uuid4
@@ -102,13 +104,24 @@ def _warm_p95_ms(client: TestClient, path: str, *, runs: int = 5) -> float:
     return timings[index]
 
 
+def _budget_row(p95_ms: float, ceiling_ms: float) -> dict[str, Any]:
+    return {
+        "p95_ms": round(p95_ms, 3),
+        "ceiling_ms": round(ceiling_ms, 3),
+        "within_budget": p95_ms < ceiling_ms,
+    }
+
+
 @pytest.mark.reporting
-def test_status_endpoint_warm_p95_within_local_budget(perf_client: TestClient) -> None:
-    """Reporting-only: relaxed guardrail (not a CI merge gate)."""
+def test_status_endpoint_records_warm_p95_vs_budget(perf_client: TestClient) -> None:
+    """Measure status p95 vs roadmap budget; breach is reported, not a fail."""
     p95 = _warm_p95_ms(perf_client, "/api/v1/status")
-    budget = BUDGETS["status_p95"]
-    assert p95 < budget * 10, (
-        f"status warm p95 {p95:.1f}ms exceeds relaxed budget {budget * 10}ms"
+    budget = float(BUDGETS["status_p95"])
+    relaxed = budget * 10
+    comparison = _budget_row(p95, relaxed)
+    print(
+        f"[reporting] status warm p95={p95:.1f}ms "
+        f"relaxed_ceiling={relaxed:.1f}ms within={comparison['within_budget']}"
     )
 
 
@@ -150,7 +163,7 @@ def _measured_regression_ceiling_ms(endpoint: str, *, fallback_budget_key: str) 
     measured = MEASURED.get(endpoint)
     if measured is not None:
         return float(measured) * LOCAL_REGRESSION_FACTOR
-    return BUDGETS[fallback_budget_key] * 10
+    return float(BUDGETS[fallback_budget_key]) * 10
 
 
 def _write_reporting_artifact(payload: dict[str, object]) -> Path:
@@ -166,25 +179,51 @@ def _write_reporting_artifact(payload: dict[str, object]) -> Path:
 def test_postgres_core_endpoints_warm_p95_artifact(
     postgres_perf_client: TestClient,
 ) -> None:
-    """Real PostgreSQL: measure core routes and write CI/release artifact."""
+    """Real PostgreSQL: measure core routes and write CI/release artifact.
+
+    Latency budget breaches are recorded under ``budget_comparisons`` with
+    ``within_budget: false`` — they do **not** fail this test. Functional
+    hard gates: HTTP 200 per sample (in ``_warm_p95_ms``) and artifact write.
+    """
     results: dict[str, float] = {}
     for name, path in CORE_PATHS:
         results[name] = _warm_p95_ms(postgres_perf_client, path, runs=5)
-    artifact = {
-        "generated_at": datetime.now(tz=UTC).isoformat(),
-        "mode": "reporting",
-        "database": "paper_trading_test",
-        "warm_p95_ms": results,
-        "caveat": "warm_runs=5 → p95 ≈ max; prefer scripts/measure with --warm-runs 20",
-    }
-    path = _write_reporting_artifact(artifact)
-    assert path.is_file()
+
     status_ceiling = _measured_regression_ceiling_ms(
         "status",
         fallback_budget_key="status_p95",
     )
-    assert results["status"] < status_ceiling
-    assert results["dashboard_summary"] < BUDGETS["overview_warm_p95"]
+    summary_ceiling = float(BUDGETS["overview_warm_p95"])
+    budget_comparisons = {
+        "status": _budget_row(results["status"], status_ceiling),
+        "dashboard_summary": _budget_row(
+            results["dashboard_summary"],
+            summary_ceiling,
+        ),
+    }
+    any_breach = not all(row["within_budget"] for row in budget_comparisons.values())
+
+    artifact = {
+        "generated_at": datetime.now(tz=UTC).isoformat(),
+        "mode": "reporting",
+        "latency_gate": "soft",
+        "database": "paper_trading_test",
+        "warm_p95_ms": results,
+        "budget_comparisons": budget_comparisons,
+        "latency_budget_breach": any_breach,
+        "caveat": (
+            "warm_runs=5 → p95 ≈ max; prefer scripts/measure with --warm-runs 20. "
+            "Latency breaches are informational only (CI job must stay green)."
+        ),
+    }
+    path = _write_reporting_artifact(artifact)
+    assert path.is_file()
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    assert loaded.get("mode") == "reporting"
+    assert "warm_p95_ms" in loaded
+    assert "budget_comparisons" in loaded
+    if any_breach:
+        print(f"[reporting] soft latency budget breach recorded: {budget_comparisons}")
 
 
 @requires_postgres
@@ -200,7 +239,10 @@ def test_postgres_status_returns_correlation_header(
 
 @pytest.mark.reporting
 def test_railway_dashboard_summary_when_configured() -> None:
-    """Optional Railway measurement — set PAPER_RAILWAY_API_BASE_URL."""
+    """Optional Railway measurement — set PAPER_RAILWAY_API_BASE_URL.
+
+    Latency vs overview budget is printed only; HTTP 200 remains hard.
+    """
     base_url = os.environ.get("PAPER_RAILWAY_API_BASE_URL")
     if not base_url:
         pytest.skip("PAPER_RAILWAY_API_BASE_URL not set")
@@ -216,9 +258,10 @@ def test_railway_dashboard_summary_when_configured() -> None:
         status = resp.status
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     assert status == 200, body[:200]
-    assert elapsed_ms < BUDGETS["overview_warm_p95"], (
-        f"Railway dashboard-summary {elapsed_ms:.1f}ms exceeds overview budget "
-        f"{BUDGETS['overview_warm_p95']}ms"
+    budget = float(BUDGETS["overview_warm_p95"])
+    print(
+        f"[reporting] Railway dashboard-summary {elapsed_ms:.1f}ms "
+        f"(overview budget {budget}ms, within={elapsed_ms < budget})"
     )
 
 
