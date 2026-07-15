@@ -1,6 +1,8 @@
 # Dashboard SQL query audit (P2.5 / Issue #101)
 
-**Status:** Analysis checklist and repository query map. Run `EXPLAIN ANALYZE` against a production-like dataset before adding indexes.
+**Status:** Procedure + query map only. **EXPLAIN ANALYZE results are not yet
+attached** — this PR must not claim index work as Done until those results are
+recorded below or linked from Issue #101.
 
 ## Scope
 
@@ -48,6 +50,15 @@ Status and readiness share `_runtime_readiness_snapshot()` — expect **one** `g
 
 ## Deliverables
 
-- [ ] EXPLAIN output attached to Issue #101 or PR
+- [ ] EXPLAIN output attached to Issue #101 or PR (required before merge as complete)
 - [ ] Index migration only if seq scan confirmed on ≥10k row tables
 - [ ] No schema change without Alembic issue scope
+
+## Recorded EXPLAIN ANALYZE (fill before closing #101)
+
+| Route / SQL | Env (date) | Seq scan? | Execution time | Notes |
+|-------------|------------|-----------|----------------|-------|
+| _pending_ | | | | |
+
+Until this table has real rows from a production-like dataset, treat #117 as
+an audit checklist — not evidence of optimized SQL.
