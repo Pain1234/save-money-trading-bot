@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -15,13 +17,17 @@ from fastapi.testclient import TestClient
 from paper_trading.enums import RuntimeStatus
 from paper_trading.models import PaperWalletState, RuntimeState
 from paper_trading.readonly_api import app
+from tests.postgres_fixtures import _postgres_url, requires_postgres
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BUDGETS = json.loads(
+BASELINE_FIXTURE = json.loads(
     (REPO_ROOT / "tests" / "fixtures" / "perf" / "baseline-sample.json").read_text(
         encoding="utf-8"
     )
-)["p25_budgets_ms"]
+)
+BUDGETS = BASELINE_FIXTURE["p25_budgets_ms"]
+MEASURED = BASELINE_FIXTURE.get("measured_local_warm_p95_ms", {})
+LOCAL_REGRESSION_FACTOR = 3.0
 
 
 @pytest.fixture
@@ -92,3 +98,82 @@ def test_dashboard_summary_schema_and_headers(perf_client: TestClient) -> None:
 @pytest.mark.reporting
 def test_readonly_api_rejects_mutations(perf_client: TestClient) -> None:
     assert perf_client.post("/api/v1/dashboard-summary").status_code == 405
+
+
+@pytest.fixture
+def postgres_perf_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    """Real PostgreSQL via get_db_session — no repository mock."""
+    monkeypatch.setenv("PAPER_TRADING_DATABASE_URL", _postgres_url())
+    from paper_trading import api_dependencies
+
+    app.dependency_overrides.clear()
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+
+def _measured_regression_ceiling_ms(endpoint: str, *, fallback_budget_key: str) -> float:
+    measured = MEASURED.get(endpoint)
+    if measured is not None:
+        return float(measured) * LOCAL_REGRESSION_FACTOR
+    return BUDGETS[fallback_budget_key] * 10
+
+
+@requires_postgres
+@pytest.mark.postgres
+@pytest.mark.reporting
+def test_postgres_status_warm_p95_within_measured_ceiling(
+    postgres_perf_client: TestClient,
+) -> None:
+    """Real PostgreSQL: status warm p95 must stay within 3× measured main baseline."""
+    p95 = _warm_p95_ms(postgres_perf_client, "/api/v1/status")
+    ceiling = _measured_regression_ceiling_ms("status", fallback_budget_key="status_p95")
+    assert p95 < ceiling, f"status warm p95 {p95:.1f}ms exceeds ceiling {ceiling:.1f}ms"
+
+
+@requires_postgres
+@pytest.mark.postgres
+@pytest.mark.reporting
+def test_postgres_dashboard_summary_warm_p95_within_overview_budget(
+    postgres_perf_client: TestClient,
+) -> None:
+    """Real PostgreSQL: summary endpoint warm p95 within overview budget."""
+    p95 = _warm_p95_ms(postgres_perf_client, "/api/v1/dashboard-summary")
+    ceiling = min(
+        BUDGETS["overview_warm_p95"],
+        _measured_regression_ceiling_ms(
+            "dashboard_summary_after_98",
+            fallback_budget_key="overview_warm_p95",
+        ),
+    )
+    assert p95 < ceiling, f"dashboard-summary warm p95 {p95:.1f}ms exceeds ceiling {ceiling:.1f}ms"
+
+
+@requires_postgres
+@pytest.mark.postgres
+@pytest.mark.reporting
+def test_postgres_status_returns_correlation_header(postgres_perf_client: TestClient) -> None:
+    response = postgres_perf_client.get("/api/v1/status")
+    assert response.status_code == 200
+    assert response.headers.get("X-Correlation-Id")
+
+
+@pytest.mark.reporting
+def test_railway_dashboard_summary_when_configured() -> None:
+    """Optional Railway measurement — set PAPER_RAILWAY_API_BASE_URL in CI/release gate."""
+    base_url = os.environ.get("PAPER_RAILWAY_API_BASE_URL")
+    if not base_url:
+        pytest.skip("PAPER_RAILWAY_API_BASE_URL not set")
+    from urllib.request import Request, urlopen
+
+    url = f"{base_url.rstrip('/')}/api/v1/dashboard-summary"
+    started = time.perf_counter()
+    with urlopen(Request(url, headers={"Accept": "application/json"}, method="GET"), timeout=30) as resp:
+        body = resp.read()
+        status = resp.status
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    assert status == 200, body[:200]
+    assert elapsed_ms < BUDGETS["overview_warm_p95"], (
+        f"Railway dashboard-summary {elapsed_ms:.1f}ms exceeds overview budget "
+        f"{BUDGETS['overview_warm_p95']}ms"
+    )
