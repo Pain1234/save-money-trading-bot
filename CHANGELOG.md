@@ -58,8 +58,9 @@ No runtime performance optimizations, multi-asset trading, HIP-3 implementation,
 
 - Layer A: heading timing no longer waits on skeleton timeout; LCP via `PerformanceObserver`; true cold contexts; Overview soft-nav starts from Status.
 - Layer C: fail-closed `PARTIAL` when `X-Perf-*` headers missing; warm-up probes renamed (not cold).
-- Layer D: cursor anchor = last row of first page; `pg_class.reltuples` before EXPLAIN; exact `COUNT(*)` only after.
+- Layer D: cursor anchor = last row of first page; `pg_class.reltuples` before EXPLAIN; exact `COUNT(*)` only after; `SET TRANSACTION READ ONLY` + `SET LOCAL statement_timeout`.
 - Layer B: reject login-redirect HTML without dashboard auth marker.
+- Layer A cold wording: fresh authenticated context (login may warm assets; not zero-cache).
 
 ### Added (P3 — historical market data)
 

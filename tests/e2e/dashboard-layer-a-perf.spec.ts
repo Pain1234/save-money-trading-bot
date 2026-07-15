@@ -175,7 +175,8 @@ async function measureColdGoto(
   browser: Browser,
   route: (typeof routes)[number],
 ): Promise<RouteTiming> {
-  // Cold: isolated browser context (empty cookies + cache).
+  // Cold: fresh browser context + login (login may warm shared assets;
+  // this is not a zero-cache claim — "fresh authenticated context").
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
@@ -254,13 +255,18 @@ test.describe("Issue #101 Layer A browser timings", () => {
       budget_note:
         "ROADMAP 1.5s refers to visible/usable content, not API-only latency.",
       methodology: {
-        cold_goto: "Fresh browser.newContext() per route (empty cookies/cache).",
+        cold_goto:
+          "Fresh authenticated context per route (new browser.newContext() + login). " +
+          "Login may warm shared assets; not a zero-HTTP-cache claim.",
         warm_goto: "Same warmed authenticated context, hard navigation.",
         soft_nav:
           "Same warmed context; Overview soft-nav starts from /dashboard/status.",
         skeleton:
           "Observed in parallel with heading; headingAt never waits on skeleton timeout.",
-        lcp: "PerformanceObserver buffered LCP on hard nav only; soft_nav lcp_ms=null.",
+        lcp:
+          "PerformanceObserver buffered LCP on hard nav only; soft_nav lcp_ms=null. " +
+          "On first Railway run, verify hard-nav LCP is non-null (observer may still " +
+          "miss if read before a final candidate).",
       },
       timings,
     };

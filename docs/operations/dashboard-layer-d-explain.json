@@ -1,8 +1,14 @@
 {
   "measurement": "layer_d_postgresql_explain",
   "issue": 101,
-  "measured_at": "2026-07-15T20:49:12.871510+00:00",
+  "measured_at": "2026-07-15T21:07:32.099302+00:00",
   "status": "MEASURED",
+  "methodology_notes": [
+    "Row estimate from pg_class.reltuples before EXPLAIN (no COUNT(*))",
+    "Exact COUNT(*) only after EXPLAIN to avoid buffer warm-up bias",
+    "Cursor anchor is last row of first page (keyset for page 2)",
+    "SET TRANSACTION READ ONLY + SET LOCAL statement_timeout=30000ms (first statements of each transaction)"
+  ],
   "postgres_sort_notes": [
     "DESC is not required for a fully backward-scannable B-tree.",
     "Column order matching keyset pagination matters more than DESC markers.",
@@ -12,7 +18,11 @@
     {
       "route": "/api/v1/fills",
       "table": "paper_fills",
+      "rows_total_estimate": -1.0,
+      "rows_total_exact": 0,
       "rows_total": 0,
+      "first_page_row_count": 0,
+      "cursor_anchor_position": null,
       "existing_indexes": [
         "ix_paper_fills_symbol_time (symbol, fill_time)"
       ],
@@ -20,17 +30,17 @@
       "index_gate": "Propose index only if scan/sort/filter is a material share of route latency AND before/after on the same representative dataset shows a real benefit. Seq Scan alone (even at >10k rows) is not sufficient.",
       "first_page": {
         "status": "MEASURED",
-        "execution_ms": 0.029,
-        "planning_ms": 0.075,
+        "execution_ms": 0.03,
+        "planning_ms": 1.187,
         "plan_node": "Limit",
         "actual_rows": 0,
         "planned_rows": 50,
         "shared_hit_blocks": 6,
-        "shared_read_blocks": null,
+        "shared_read_blocks": 1,
         "sort_method": "quicksort",
         "sort_space_used": "25kB",
         "rows_removed_by_filter": null,
-        "raw_excerpt": "Limit  (cost=15.62..15.74 rows=50 width=592) (actual time=0.019..0.020 rows=0 loops=1)\n  Buffers: shared hit=6\n  ->  Sort  (cost=15.62..15.94 rows=130 width=592) (actual time=0.019..0.019 rows=0 loops=1)\n        Sort Key: fill_time DESC, fill_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        Buffers: shared hit=6\n        ->  Seq Scan on paper_fills  (cost=0.00..11.30 rows=130 width=592) (actual time=0.002..0.002 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=37\nPlanning Time: 0.075 ms\nExecution Time: 0.029 ms",
+        "raw_excerpt": "Limit  (cost=15.62..15.74 rows=50 width=592) (actual time=0.018..0.018 rows=0 loops=1)\n  Buffers: shared hit=6\n  ->  Sort  (cost=15.62..15.94 rows=130 width=592) (actual time=0.017..0.017 rows=0 loops=1)\n        Sort Key: fill_time DESC, fill_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        Buffers: shared hit=6\n        ->  Seq Scan on paper_fills  (cost=0.00..11.30 rows=130 width=592) (actual time=0.003..0.003 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=174 read=1\nPlanning Time: 1.187 ms\nExecution Time: 0.030 ms",
         "note": ""
       },
       "cursor_page": {
@@ -56,7 +66,11 @@
     {
       "route": "/api/v1/orders",
       "table": "paper_orders",
+      "rows_total_estimate": -1.0,
+      "rows_total_exact": 0,
       "rows_total": 0,
+      "first_page_row_count": 0,
+      "cursor_anchor_position": null,
       "existing_indexes": [
         "ix_paper_orders_status_fill_time (status, expected_fill_time)",
         "ix_paper_orders_symbol (symbol)"
@@ -65,17 +79,17 @@
       "index_gate": "Propose index only if scan/sort/filter is a material share of route latency AND before/after on the same representative dataset shows a real benefit. Seq Scan alone (even at >10k rows) is not sufficient.",
       "first_page": {
         "status": "MEASURED",
-        "execution_ms": 0.011,
-        "planning_ms": 0.038,
+        "execution_ms": 0.012,
+        "planning_ms": 0.951,
         "plan_node": "Limit",
         "actual_rows": 0,
         "planned_rows": 50,
-        "shared_hit_blocks": 4,
-        "shared_read_blocks": null,
+        "shared_hit_blocks": 78,
+        "shared_read_blocks": 4,
         "sort_method": "quicksort",
         "sort_space_used": "25kB",
         "rows_removed_by_filter": null,
-        "raw_excerpt": "Limit  (cost=19.94..20.07 rows=50 width=316) (actual time=0.004..0.004 rows=0 loops=1)\n  ->  Sort  (cost=19.94..20.52 rows=230 width=316) (actual time=0.004..0.004 rows=0 loops=1)\n        Sort Key: created_at DESC, paper_order_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on paper_orders  (cost=0.00..12.30 rows=230 width=316) (actual time=0.002..0.002 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=4\nPlanning Time: 0.038 ms\nExecution Time: 0.011 ms",
+        "raw_excerpt": "Limit  (cost=19.94..20.07 rows=50 width=316) (actual time=0.005..0.005 rows=0 loops=1)\n  ->  Sort  (cost=19.94..20.52 rows=230 width=316) (actual time=0.005..0.005 rows=0 loops=1)\n        Sort Key: created_at DESC, paper_order_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on paper_orders  (cost=0.00..12.30 rows=230 width=316) (actual time=0.003..0.003 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=78 read=4\nPlanning Time: 0.951 ms\nExecution Time: 0.012 ms",
         "note": ""
       },
       "cursor_page": {
@@ -101,7 +115,11 @@
     {
       "route": "/api/v1/equity",
       "table": "portfolio_snapshots",
+      "rows_total_estimate": -1.0,
+      "rows_total_exact": 0,
       "rows_total": 0,
+      "first_page_row_count": 0,
+      "cursor_anchor_position": null,
       "existing_indexes": [
         "ix_portfolio_snapshots_eval_time (evaluation_time)"
       ],
@@ -110,16 +128,16 @@
       "first_page": {
         "status": "MEASURED",
         "execution_ms": 0.01,
-        "planning_ms": 0.04,
+        "planning_ms": 0.57,
         "plan_node": "Limit",
         "actual_rows": 0,
         "planned_rows": 100,
-        "shared_hit_blocks": 3,
-        "shared_read_blocks": null,
+        "shared_hit_blocks": 64,
+        "shared_read_blocks": 1,
         "sort_method": "quicksort",
         "sort_space_used": "25kB",
         "rows_removed_by_filter": null,
-        "raw_excerpt": "Limit  (cost=17.46..17.71 rows=100 width=482) (actual time=0.004..0.004 rows=0 loops=1)\n  ->  Sort  (cost=17.46..17.86 rows=160 width=482) (actual time=0.003..0.004 rows=0 loops=1)\n        Sort Key: evaluation_time DESC, snapshot_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on portfolio_snapshots  (cost=0.00..11.60 rows=160 width=482) (actual time=0.002..0.002 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=3\nPlanning Time: 0.040 ms\nExecution Time: 0.010 ms",
+        "raw_excerpt": "Limit  (cost=17.46..17.71 rows=100 width=482) (actual time=0.005..0.005 rows=0 loops=1)\n  ->  Sort  (cost=17.46..17.86 rows=160 width=482) (actual time=0.004..0.005 rows=0 loops=1)\n        Sort Key: evaluation_time DESC, snapshot_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on portfolio_snapshots  (cost=0.00..11.60 rows=160 width=482) (actual time=0.003..0.003 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=64 read=1\nPlanning Time: 0.570 ms\nExecution Time: 0.010 ms",
         "note": ""
       },
       "cursor_page": {
@@ -145,7 +163,11 @@
     {
       "route": "/api/v1/events",
       "table": "audit_events",
+      "rows_total_estimate": -1.0,
+      "rows_total_exact": 0,
       "rows_total": 0,
+      "first_page_row_count": 0,
+      "cursor_anchor_position": null,
       "existing_indexes": [
         "ix_audit_events_created (created_at)",
         "ix_audit_events_type (event_type)",
@@ -156,17 +178,17 @@
       "index_gate": "Propose index only if scan/sort/filter is a material share of route latency AND before/after on the same representative dataset shows a real benefit. Seq Scan alone (even at >10k rows) is not sufficient.",
       "first_page": {
         "status": "MEASURED",
-        "execution_ms": 0.021,
-        "planning_ms": 0.042,
+        "execution_ms": 0.016,
+        "planning_ms": 0.849,
         "plan_node": "Limit",
         "actual_rows": 0,
         "planned_rows": 50,
         "shared_hit_blocks": 4,
-        "shared_read_blocks": null,
+        "shared_read_blocks": 5,
         "sort_method": "quicksort",
         "sort_space_used": "25kB  Peak Memory: 25kB",
         "rows_removed_by_filter": null,
-        "raw_excerpt": "Limit  (cost=0.39..12.68 rows=50 width=316) (actual time=0.012..0.012 rows=0 loops=1)\n  Buffers: shared hit=4\n  ->  Incremental Sort  (cost=0.39..56.89 rows=230 width=316) (actual time=0.011..0.012 rows=0 loops=1)\n        Sort Key: created_at DESC, event_id DESC\n        Presorted Key: created_at\n        Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB\n        Buffers: shared hit=4\n        ->  Index Scan Backward using ix_audit_events_created on audit_events  (cost=0.14..47.59 rows=230 width=316) (actual time=0.001..0.001 rows=0 loops=1)\n              Buffers: shared hit=1\nPlanning:\n  Buffers: shared hit=5\nPlanning Time: 0.042 ms\nExecution Time: 0.021 ms",
+        "raw_excerpt": "Limit  (cost=0.39..12.68 rows=50 width=316) (actual time=0.008..0.008 rows=0 loops=1)\n  Buffers: shared hit=4\n  ->  Incremental Sort  (cost=0.39..56.89 rows=230 width=316) (actual time=0.008..0.008 rows=0 loops=1)\n        Sort Key: created_at DESC, event_id DESC\n        Presorted Key: created_at\n        Full-sort Groups: 1  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB\n        Buffers: shared hit=4\n        ->  Index Scan Backward using ix_audit_events_created on audit_events  (cost=0.14..47.59 rows=230 width=316) (actual time=0.002..0.002 rows=0 loops=1)\n              Buffers: shared hit=1\nPlanning:\n  Buffers: shared hit=83 read=5\nPlanning Time: 0.849 ms\nExecution Time: 0.016 ms",
         "note": ""
       },
       "cursor_page": {
@@ -192,7 +214,11 @@
     {
       "route": "/api/v1/scheduler-runs",
       "table": "scheduler_runs",
+      "rows_total_estimate": -1.0,
+      "rows_total_exact": 0,
       "rows_total": 0,
+      "first_page_row_count": 0,
+      "cursor_anchor_position": null,
       "existing_indexes": [
         "ix_scheduler_runs_running (status, started_at)",
         "ix_scheduler_runs_recovery_of",
@@ -202,17 +228,17 @@
       "index_gate": "Propose index only if scan/sort/filter is a material share of route latency AND before/after on the same representative dataset shows a real benefit. Seq Scan alone (even at >10k rows) is not sufficient.",
       "first_page": {
         "status": "MEASURED",
-        "execution_ms": 0.01,
-        "planning_ms": 0.04,
+        "execution_ms": 0.011,
+        "planning_ms": 1.111,
         "plan_node": "Limit",
         "actual_rows": 0,
         "planned_rows": 50,
-        "shared_hit_blocks": 6,
-        "shared_read_blocks": null,
+        "shared_hit_blocks": 112,
+        "shared_read_blocks": 1,
         "sort_method": "quicksort",
         "sort_space_used": "25kB",
         "rows_removed_by_filter": null,
-        "raw_excerpt": "Limit  (cost=15.62..15.74 rows=50 width=590) (actual time=0.004..0.004 rows=0 loops=1)\n  ->  Sort  (cost=15.62..15.94 rows=130 width=590) (actual time=0.003..0.004 rows=0 loops=1)\n        Sort Key: scheduled_for DESC, run_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on scheduler_runs  (cost=0.00..11.30 rows=130 width=590) (actual time=0.002..0.002 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=6\nPlanning Time: 0.040 ms\nExecution Time: 0.010 ms",
+        "raw_excerpt": "Limit  (cost=15.62..15.74 rows=50 width=590) (actual time=0.005..0.005 rows=0 loops=1)\n  ->  Sort  (cost=15.62..15.94 rows=130 width=590) (actual time=0.004..0.004 rows=0 loops=1)\n        Sort Key: scheduled_for DESC, run_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on scheduler_runs  (cost=0.00..11.30 rows=130 width=590) (actual time=0.003..0.003 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=112 read=1\nPlanning Time: 1.111 ms\nExecution Time: 0.011 ms",
         "note": ""
       },
       "cursor_page": {
@@ -238,7 +264,11 @@
     {
       "route": "/api/v1/positions",
       "table": "paper_positions",
+      "rows_total_estimate": -1.0,
+      "rows_total_exact": 0,
       "rows_total": 0,
+      "first_page_row_count": 0,
+      "cursor_anchor_position": null,
       "existing_indexes": [
         "ix_paper_positions_status (status)",
         "uq_paper_positions_open_symbol (partial)"
@@ -247,17 +277,17 @@
       "index_gate": "Propose index only if scan/sort/filter is a material share of route latency AND before/after on the same representative dataset shows a real benefit. Seq Scan alone (even at >10k rows) is not sufficient.",
       "first_page": {
         "status": "MEASURED",
-        "execution_ms": 0.011,
-        "planning_ms": 0.036,
+        "execution_ms": 0.01,
+        "planning_ms": 0.535,
         "plan_node": "Limit",
         "actual_rows": 0,
         "planned_rows": 50,
-        "shared_hit_blocks": 3,
+        "shared_hit_blocks": 84,
         "shared_read_blocks": null,
         "sort_method": "quicksort",
         "sort_space_used": "25kB",
         "rows_removed_by_filter": null,
-        "raw_excerpt": "Limit  (cost=17.78..17.90 rows=50 width=406) (actual time=0.004..0.004 rows=0 loops=1)\n  ->  Sort  (cost=17.78..18.23 rows=180 width=406) (actual time=0.003..0.003 rows=0 loops=1)\n        Sort Key: opened_at DESC, position_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on paper_positions  (cost=0.00..11.80 rows=180 width=406) (actual time=0.002..0.002 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=3\nPlanning Time: 0.036 ms\nExecution Time: 0.011 ms",
+        "raw_excerpt": "Limit  (cost=17.78..17.90 rows=50 width=406) (actual time=0.004..0.004 rows=0 loops=1)\n  ->  Sort  (cost=17.78..18.23 rows=180 width=406) (actual time=0.004..0.004 rows=0 loops=1)\n        Sort Key: opened_at DESC, position_id DESC\n        Sort Method: quicksort  Memory: 25kB\n        ->  Seq Scan on paper_positions  (cost=0.00..11.80 rows=180 width=406) (actual time=0.002..0.002 rows=0 loops=1)\nPlanning:\n  Buffers: shared hit=84\nPlanning Time: 0.535 ms\nExecution Time: 0.010 ms",
         "note": ""
       },
       "cursor_page": {

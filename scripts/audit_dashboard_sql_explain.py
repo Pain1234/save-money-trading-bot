@@ -294,10 +294,16 @@ def _explain(conn: Any, sql: str) -> PlanMetrics:
 
 
 def _prepare_session(conn: Any) -> None:
+    """Apply transaction-scoped protections as the first statements.
+
+    ``SET TRANSACTION READ ONLY`` must be the first statement of the
+    current transaction. ``default_transaction_read_only`` only affects
+    *subsequent* transactions and is intentionally not used here.
+    """
     from sqlalchemy import text
 
-    conn.execute(text("SET statement_timeout = '30000'"))
-    conn.execute(text("SET default_transaction_read_only = on"))
+    conn.execute(text("SET TRANSACTION READ ONLY"))
+    conn.execute(text("SET LOCAL statement_timeout = '30000ms'"))
 
 
 def run_audit(database_url: str) -> dict[str, Any]:
@@ -310,69 +316,69 @@ def run_audit(database_url: str) -> dict[str, Any]:
             # Fresh connection per route so one SQL error cannot abort siblings.
             with engine.connect() as conn:
                 try:
-                    _prepare_session(conn)
-                    # Estimate *before* EXPLAIN without scanning the table.
-                    rows_estimate = _estimate_row_count(conn, spec["table"])
-                    first = _explain(conn, spec["first_page_sql"])
-                    first_rows = _fetch_first_page_rows(conn, spec["first_page_sql"])
-                    page_limit = int(spec["page_limit"])
-                    anchor = _anchor_from_rows(first_rows, spec["cursor_keys"])
-                    if anchor is None:
-                        cursor = PlanMetrics(
-                            status="NOT_MEASURED",
-                            note="empty table — no cursor page",
+                    # Begin explicitly so SET TRANSACTION is the first statement.
+                    with conn.begin():
+                        _prepare_session(conn)
+                        # Estimate *before* EXPLAIN without scanning the table.
+                        rows_estimate = _estimate_row_count(conn, spec["table"])
+                        first = _explain(conn, spec["first_page_sql"])
+                        first_rows = _fetch_first_page_rows(conn, spec["first_page_sql"])
+                        page_limit = int(spec["page_limit"])
+                        anchor = _anchor_from_rows(first_rows, spec["cursor_keys"])
+                        if anchor is None:
+                            cursor = PlanMetrics(
+                                status="NOT_MEASURED",
+                                note="empty table — no cursor page",
+                            )
+                            cursor_sql = None
+                        elif len(first_rows) < page_limit:
+                            cursor = PlanMetrics(
+                                status="NOT_MEASURED",
+                                note=(
+                                    f"first page returned {len(first_rows)} < "
+                                    f"{page_limit} — no second page"
+                                ),
+                            )
+                            cursor_sql = None
+                        else:
+                            cursor_sql = spec["cursor_page_sql_template"].format(
+                                ts=anchor["ts"],
+                                id=anchor["id"],
+                            )
+                            cursor = _explain(conn, cursor_sql)
+                        # Exact count *after* EXPLAIN so it cannot warm buffers first.
+                        rows_exact = _exact_row_count_after(conn, spec["table"])
+                        routes.append(
+                            {
+                                "route": spec["route"],
+                                "table": spec["table"],
+                                "rows_total_estimate": rows_estimate,
+                                "rows_total_exact": rows_exact,
+                                "rows_total": rows_exact,
+                                "first_page_row_count": len(first_rows),
+                                "cursor_anchor_position": (
+                                    "last_row_of_first_page" if anchor else None
+                                ),
+                                "existing_indexes": spec["existing_indexes"],
+                                "candidate_index": spec["candidate_index"],
+                                "index_gate": (
+                                    "Propose index only if scan/sort/filter is a material "
+                                    "share of route latency AND before/after on the same "
+                                    "representative dataset shows a real benefit. "
+                                    "Seq Scan alone (even at >10k rows) is not sufficient."
+                                ),
+                                "first_page": asdict(first),
+                                "cursor_page": asdict(cursor),
+                                "first_page_sql": spec["first_page_sql"],
+                                "cursor_page_sql": cursor_sql,
+                                "recommendation_status": "FOLLOW_UP_REQUIRED",
+                                "recommendation": (
+                                    "No index migration in this audit. Record before/after "
+                                    "plans before opening a separate migration issue."
+                                ),
+                            }
                         )
-                        cursor_sql = None
-                    elif len(first_rows) < page_limit:
-                        cursor = PlanMetrics(
-                            status="NOT_MEASURED",
-                            note=(
-                                f"first page returned {len(first_rows)} < "
-                                f"{page_limit} — no second page"
-                            ),
-                        )
-                        cursor_sql = None
-                    else:
-                        cursor_sql = spec["cursor_page_sql_template"].format(
-                            ts=anchor["ts"],
-                            id=anchor["id"],
-                        )
-                        cursor = _explain(conn, cursor_sql)
-                    # Exact count *after* EXPLAIN so it cannot warm the buffer cache first.
-                    rows_exact = _exact_row_count_after(conn, spec["table"])
-                    routes.append(
-                        {
-                            "route": spec["route"],
-                            "table": spec["table"],
-                            "rows_total_estimate": rows_estimate,
-                            "rows_total_exact": rows_exact,
-                            "rows_total": rows_exact,
-                            "first_page_row_count": len(first_rows),
-                            "cursor_anchor_position": (
-                                "last_row_of_first_page" if anchor else None
-                            ),
-                            "existing_indexes": spec["existing_indexes"],
-                            "candidate_index": spec["candidate_index"],
-                            "index_gate": (
-                                "Propose index only if scan/sort/filter is a material "
-                                "share of route latency AND before/after on the same "
-                                "representative dataset shows a real benefit. "
-                                "Seq Scan alone (even at >10k rows) is not sufficient."
-                            ),
-                            "first_page": asdict(first),
-                            "cursor_page": asdict(cursor),
-                            "first_page_sql": spec["first_page_sql"],
-                            "cursor_page_sql": cursor_sql,
-                            "recommendation_status": "FOLLOW_UP_REQUIRED",
-                            "recommendation": (
-                                "No index migration in this audit. Record before/after "
-                                "plans before opening a separate migration issue."
-                            ),
-                        }
-                    )
-                    conn.commit()
                 except Exception as exc:  # noqa: BLE001 — capture per-route failures
-                    conn.rollback()
                     routes.append(
                         {
                             "route": spec["route"],
@@ -401,7 +407,8 @@ def run_audit(database_url: str) -> dict[str, Any]:
             "Row estimate from pg_class.reltuples before EXPLAIN (no COUNT(*))",
             "Exact COUNT(*) only after EXPLAIN to avoid buffer warm-up bias",
             "Cursor anchor is last row of first page (keyset for page 2)",
-            "statement_timeout=30s; default_transaction_read_only=on",
+            "SET TRANSACTION READ ONLY + SET LOCAL statement_timeout=30000ms "
+            "(first statements of each transaction)",
         ],
         "postgres_sort_notes": [
             "DESC is not required for a fully backward-scannable B-tree.",

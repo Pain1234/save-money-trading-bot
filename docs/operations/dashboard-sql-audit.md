@@ -160,12 +160,18 @@ Captures per route (cold hard navigation, warm hard navigation, soft nav):
 - Time to visible page heading
 - Time to skeleton (`data-testid="dashboard-skeleton"`), if shown
 - Skeleton → real data (heading/table)
-- LCP via Performance entries when available
+- LCP via `PerformanceObserver` (hard navigation only; soft_nav → `null`)
 - Full navigation to usable content
+
+**Cold vs warm:** Cold uses a **fresh authenticated** `browser.newContext()` per
+route (login may already warm shared assets — not a zero-cache claim). Warm
+reuses one authenticated context. Overview soft-nav starts from `/dashboard/status`.
 
 **Caveat:** `src/app/dashboard/layout.tsx` sets `dynamic = "force-dynamic"`. Hard
 navigations often skip the loading UI because the server holds the response until
-SSR finishes. Soft navigations are more likely to expose skeletons.
+SSR finishes. Soft navigations are more likely to expose skeletons. On the first
+Railway run, verify hard-nav LCP is non-null (observer may miss if read before a
+final candidate).
 
 ### Results
 
@@ -282,6 +288,14 @@ export PYTHONPATH=services
 python scripts/audit_dashboard_sql_explain.py \
   --output docs/operations/dashboard-layer-d-explain.json
 ```
+
+Session protections (first statements of each route transaction):
+
+- `SET TRANSACTION READ ONLY`
+- `SET LOCAL statement_timeout = '30000ms'`
+
+Row counts: `pg_class.reltuples` estimate **before** EXPLAIN; exact `COUNT(*)`
+only **after** EXPLAIN (avoids buffer warm-up bias).
 
 For each history route capture first page **and** cursor follow-up page:
 

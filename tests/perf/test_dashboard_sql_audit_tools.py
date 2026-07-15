@@ -197,6 +197,17 @@ def test_index_gate_rejects_seq_scan_only_rule() -> None:
     assert "10.000" in doc or "10k" in doc.lower()
 
 
+def test_prepare_session_uses_set_transaction_read_only() -> None:
+    import inspect
+
+    explain = _load("explain_ro", "scripts/audit_dashboard_sql_explain.py")
+    source = inspect.getsource(explain._prepare_session)
+    assert 'text("SET TRANSACTION READ ONLY")' in source
+    assert "SET LOCAL statement_timeout" in source
+    assert 'text("SET default_transaction_read_only' not in source
+    assert "SET TRANSACTION READ ONLY" in source.split("conn.execute")[1]
+
+
 def test_layer_a_source_avoids_skeleton_timeout_before_heading() -> None:
     source = (
         REPO_ROOT / "tests" / "e2e" / "dashboard-layer-a-perf.spec.ts"
