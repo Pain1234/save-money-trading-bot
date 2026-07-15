@@ -1,9 +1,14 @@
 export const API_TIMEOUT_MS = 5000;
 
 export const REVALIDATE = {
-  STATUS: 4,
+  /** Status and summary: 1–2s (P2.5 cache policy) */
+  STATUS: 2,
+  SUMMARY: 2,
+  /** Wallet and positions: 3–5s */
   MONITORING: 5,
-  HISTORY: 10,
+  /** Orders, fills, equity history: 5–30s */
+  TABLES: 5,
+  HISTORY: 30,
 } as const;
 
 export type DisplayStatus = "READY" | "DEGRADED" | "STOPPED";
@@ -31,7 +36,6 @@ export interface StatusResponse {
     reasons: string[];
   };
 }
-
 
 export interface DashboardSummaryResponse {
   display_status: DisplayStatus;
@@ -182,15 +186,13 @@ export async function fetchPaperApi<T>(
 
 export async function fetchStatus(): Promise<StatusResponse> {
   return fetchPaperApi<StatusResponse>("/api/v1/status", {
-    noStore: true,
+    revalidate: REVALIDATE.STATUS,
   });
 }
 
-
-
 export async function fetchDashboardSummary(): Promise<DashboardSummaryResponse> {
   return fetchPaperApi<DashboardSummaryResponse>("/api/v1/dashboard-summary", {
-    noStore: true,
+    revalidate: REVALIDATE.SUMMARY,
   });
 }
 
@@ -208,13 +210,13 @@ export async function fetchPositions(): Promise<Paginated<PositionItem>> {
 
 export async function fetchOrders(): Promise<Paginated<OrderItem>> {
   return fetchPaperApi<Paginated<OrderItem>>("/api/v1/orders?limit=50", {
-    revalidate: REVALIDATE.MONITORING,
+    revalidate: REVALIDATE.TABLES,
   });
 }
 
 export async function fetchFills(): Promise<Paginated<FillItem>> {
   return fetchPaperApi<Paginated<FillItem>>("/api/v1/fills?limit=50", {
-    revalidate: REVALIDATE.MONITORING,
+    revalidate: REVALIDATE.TABLES,
   });
 }
 
@@ -244,6 +246,6 @@ export async function fetchEquity(): Promise<Paginated<EquityPoint>> {
 
 export async function fetchMarketData(): Promise<Record<string, unknown>> {
   return fetchPaperApi<Record<string, unknown>>("/api/v1/market-data", {
-    noStore: true,
+    revalidate: REVALIDATE.STATUS,
   });
 }

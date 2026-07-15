@@ -34,13 +34,19 @@ def test_dashboard_client_uses_server_side_env_only() -> None:
     assert "NEXT_PUBLIC_" not in source
 
 
-def test_dashboard_status_bypasses_next_cache() -> None:
+def test_dashboard_client_cache_policy() -> None:
     source = _client_source()
-    assert 'cache: "no-store"' in source
-    assert "noStore: true" in source
+    assert "REVALIDATE" in source
+    assert "REVALIDATE.STATUS" in source
+    assert "REVALIDATE.SUMMARY" in source
+    assert "fetchDashboardSummary" in source
     assert "next: { revalidate:" in source
-    assert "REVALIDATE.MONITORING" in source
-    assert "REVALIDATE.HISTORY" in source
+
+
+def test_dashboard_overview_uses_summary_fetch() -> None:
+    source = (DASHBOARD_ROOT / "page.tsx").read_text(encoding="utf-8")
+    assert "fetchDashboardSummary" in source
+    assert "Promise.all" not in source
 
 
 def test_dashboard_client_has_api_timeout() -> None:
@@ -49,6 +55,11 @@ def test_dashboard_client_has_api_timeout() -> None:
     assert "API_TIMEOUT_MS = 5000" in source
     assert "PaperApiTimeoutError" in source
     assert "getMonitoringErrorMessage" in source
+
+
+def test_dashboard_status_parallelizes_fetches() -> None:
+    source = (DASHBOARD_ROOT / "status/page.tsx").read_text(encoding="utf-8")
+    assert "Promise.all" in source
 
 
 def test_dashboard_loading_states_exist() -> None:
@@ -77,16 +88,6 @@ def test_dashboard_auth_middleware_protects_routes() -> None:
     source = MIDDLEWARE_PATH.read_text(encoding="utf-8")
     assert 'matcher: ["/dashboard/:path*"]' in source
     assert "session.isLoggedIn" in source
-
-
-def test_dashboard_overview_uses_summary_fetch() -> None:
-    source = (DASHBOARD_ROOT / "page.tsx").read_text(encoding="utf-8")
-    assert "fetchDashboardSummary" in source
-
-
-def test_dashboard_status_parallelizes_fetches() -> None:
-    source = (DASHBOARD_ROOT / "status/page.tsx").read_text(encoding="utf-8")
-    assert "Promise.all" in source
 
 
 def test_dashboard_build_succeeds() -> None:
