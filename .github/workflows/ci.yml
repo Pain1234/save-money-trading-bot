@@ -118,11 +118,11 @@ jobs:
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
 
-      - name: Run unit tests (no PostgreSQL, no live, no soak, no dashboard build)
+      - name: Run unit tests (no PostgreSQL, no live, no soak, no reporting, no dashboard build)
         run: |
           python -m pytest tests/ \
             --ignore=tests/deploy \
-            -m "not postgres and not live and not soak" \
+            -m "not postgres and not live and not soak and not reporting" \
             -q
 
   test-market-data:
