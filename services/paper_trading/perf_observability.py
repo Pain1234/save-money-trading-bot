@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import event
-from sqlalchemy.orm import Session
+from sqlalchemy.engine import Engine
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -32,8 +32,9 @@ class RequestPerfMetrics:
         self.db_ms += duration_ms
 
 
-def attach_session_query_metrics(session: Session, metrics: RequestPerfMetrics) -> None:
-    @event.listens_for(session, "before_cursor_execute")
+def attach_engine_query_metrics(engine: Engine, metrics: RequestPerfMetrics) -> tuple[Any, Any]:
+    """Register cursor timing listeners on the Engine (all connections for this request)."""
+
     def _before(
         _conn: Any,
         _cursor: Any,
@@ -45,7 +46,6 @@ def attach_session_query_metrics(session: Session, metrics: RequestPerfMetrics) 
         if context is not None:
             context._perf_start = time.perf_counter()  # noqa: SLF001
 
-    @event.listens_for(session, "after_cursor_execute")
     def _after(
         _conn: Any,
         _cursor: Any,
@@ -58,6 +58,15 @@ def attach_session_query_metrics(session: Session, metrics: RequestPerfMetrics) 
             elapsed_ms = (time.perf_counter() - context._perf_start) * 1000.0  # noqa: SLF001
             metrics.record_query(elapsed_ms)
 
+    event.listen(engine, "before_cursor_execute", _before)
+    event.listen(engine, "after_cursor_execute", _after)
+    return _before, _after
+
+
+def detach_engine_query_metrics(engine: Engine, before: Any, after: Any) -> None:
+    event.remove(engine, "before_cursor_execute", before)
+    event.remove(engine, "after_cursor_execute", after)
+
 
 def get_request_metrics(request: Request) -> RequestPerfMetrics:
     metrics = getattr(request.state, PERF_LOG_ATTR, None)
@@ -68,6 +77,8 @@ def get_request_metrics(request: Request) -> RequestPerfMetrics:
 
 
 class PerformanceLoggingMiddleware(BaseHTTPMiddleware):
+    """Log structured per-request timing without sensitive payloads."""
+
     async def dispatch(self, request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
         correlation_id = request.headers.get(CORRELATION_HEADER) or str(uuid.uuid4())
         metrics = RequestPerfMetrics(correlation_id=correlation_id)
