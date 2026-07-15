@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-pytest_plugins = ["tests.paper_trading.test_readonly_api"]
-
 from fastapi.testclient import TestClient
+
+pytest_plugins = ["tests.paper_trading.test_readonly_api"]
 
 
 def test_readonly_dashboard_summary_schema(readonly_client: TestClient) -> None:
