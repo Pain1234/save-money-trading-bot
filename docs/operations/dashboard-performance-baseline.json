@@ -1,17 +1,27 @@
 {
-  "generated_at": "2026-07-15T17:05:31.405468+00:00",
-  "base_url": "http://127.0.0.1:8088",
+  "generated_at": "2026-07-15T19:14:12.403584+00:00",
+  "base_url": "http://127.0.0.1:8090",
   "environment_notes": {
     "railway_region": "local/unset",
+    "railway_resources": "unset",
     "python": "3.14.5"
   },
   "methodology": {
     "cold_runs": 3,
-    "warm_runs": 5,
+    "warm_runs": 20,
     "optimization_applied": false,
     "include_dashboard_summary": false,
-    "measured_against": "main",
-    "caveat": "warm_runs=5 makes reported p95 nearly equal to max; overview must use parallel wall-clock metric, not max of separate p95s. Re-run with --warm-runs 20 before citing improvement percentages."
+    "include_parallel_overview": true,
+    "measured_against": "perf/95-dashboard-api-baseline",
+    "p95_interpretation": "With warm_runs=20, p95 is an order-statistic estimate (index round(0.95*(n-1))). Prefer n>=20.",
+    "overview_metric": "overview_parallel_status_wallet = wall-clock of concurrent GET /status + GET /wallet per iteration (not max of separate p95s)",
+    "out_of_scope": [
+      "Next.js SSR / dashboard page timing",
+      "Playwright login\u2192route flows (Issue #102)",
+      "DB query_count / db_ms (Issue #96 instrumentation)",
+      "EXPLAIN ANALYZE / index audit (Issue #101)",
+      "Railway CPU/RAM resource counters (record in environment_notes)"
+    ]
   },
   "p25_budgets_ms": {
     "overview_warm_p95": 1500,
@@ -21,99 +31,143 @@
   },
   "endpoints": [
     {
+      "name": "overview_parallel_status_wallet",
+      "path": "/api/v1/status+/api/v1/wallet",
+      "cold": {
+        "p50_ms": 43.517700003576465,
+        "p95_ms": 55.427300001611,
+        "max_ms": 55.427300001611,
+        "samples": 3,
+        "response_bytes_p50": 923,
+        "response_bytes_max": 923
+      },
+      "warm": {
+        "p50_ms": 85.2876000062679,
+        "p95_ms": 121.77579999843147,
+        "max_ms": 131.95009999617469,
+        "samples": 20,
+        "response_bytes_p50": 923,
+        "response_bytes_max": 923
+      }
+    },
+    {
       "name": "status",
       "path": "/api/v1/status",
       "cold": {
-        "p50_ms": 54.377700012992136,
-        "p95_ms": 65.40700000186916,
-        "max_ms": 65.40700000186916,
-        "samples": 3
+        "p50_ms": 70.587100010016,
+        "p95_ms": 389.5377000008011,
+        "max_ms": 389.5377000008011,
+        "samples": 3,
+        "response_bytes_p50": 684,
+        "response_bytes_max": 684
       },
       "warm": {
-        "p50_ms": 56.70260000624694,
-        "p95_ms": 96.01239999756217,
-        "max_ms": 96.01239999756217,
-        "samples": 5
+        "p50_ms": 54.526300002180506,
+        "p95_ms": 120.81039999611676,
+        "max_ms": 142.26829999824986,
+        "samples": 20,
+        "response_bytes_p50": 684,
+        "response_bytes_max": 684
       }
     },
     {
       "name": "wallet",
       "path": "/api/v1/wallet",
       "cold": {
-        "p50_ms": 41.17450000194367,
-        "p95_ms": 49.5321999915177,
-        "max_ms": 49.5321999915177,
-        "samples": 3
+        "p50_ms": 42.79639999731444,
+        "p95_ms": 51.6217999975197,
+        "max_ms": 51.6217999975197,
+        "samples": 3,
+        "response_bytes_p50": 238,
+        "response_bytes_max": 238
       },
       "warm": {
-        "p50_ms": 45.18699999607634,
-        "p95_ms": 70.17439999617636,
-        "max_ms": 70.17439999617636,
-        "samples": 5
+        "p50_ms": 40.502449999621604,
+        "p95_ms": 117.0200000051409,
+        "max_ms": 118.29179999767803,
+        "samples": 20,
+        "response_bytes_p50": 238,
+        "response_bytes_max": 238
       }
     },
     {
       "name": "positions",
       "path": "/api/v1/positions?limit=50",
       "cold": {
-        "p50_ms": 37.02530000009574,
-        "p95_ms": 50.82889999903273,
-        "max_ms": 50.82889999903273,
-        "samples": 3
+        "p50_ms": 28.627600011532195,
+        "p95_ms": 80.04260000598151,
+        "max_ms": 80.04260000598151,
+        "samples": 3,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
       },
       "warm": {
-        "p50_ms": 43.73659999691881,
-        "p95_ms": 70.76619999133982,
-        "max_ms": 70.76619999133982,
-        "samples": 5
+        "p50_ms": 42.470300002605654,
+        "p95_ms": 93.28360001381952,
+        "max_ms": 134.68220000504516,
+        "samples": 20,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
       }
     },
     {
       "name": "orders",
       "path": "/api/v1/orders?limit=50",
       "cold": {
-        "p50_ms": 39.622700001928024,
-        "p95_ms": 77.28029999998398,
-        "max_ms": 77.28029999998398,
-        "samples": 3
+        "p50_ms": 28.65639999799896,
+        "p95_ms": 68.39919999765698,
+        "max_ms": 68.39919999765698,
+        "samples": 3,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
       },
       "warm": {
-        "p50_ms": 41.52450000401586,
-        "p95_ms": 91.90149999631103,
-        "max_ms": 91.90149999631103,
-        "samples": 5
+        "p50_ms": 45.17694999958621,
+        "p95_ms": 111.72349999833386,
+        "max_ms": 126.55000000086147,
+        "samples": 20,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
       }
     },
     {
       "name": "fills",
       "path": "/api/v1/fills?limit=50",
       "cold": {
-        "p50_ms": 42.879000000539236,
-        "p95_ms": 42.91570000350475,
-        "max_ms": 42.91570000350475,
-        "samples": 3
+        "p50_ms": 27.37130000605248,
+        "p95_ms": 41.54180000477936,
+        "max_ms": 41.54180000477936,
+        "samples": 3,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
       },
       "warm": {
-        "p50_ms": 40.4914000100689,
-        "p95_ms": 101.78450000239536,
-        "max_ms": 101.78450000239536,
-        "samples": 5
+        "p50_ms": 35.57579999323934,
+        "p95_ms": 102.69840000546537,
+        "max_ms": 103.09680001228116,
+        "samples": 20,
+        "response_bytes_p50": 42,
+        "response_bytes_max": 42
       }
     },
     {
       "name": "equity",
       "path": "/api/v1/equity?limit=100",
       "cold": {
-        "p50_ms": 40.65439999976661,
-        "p95_ms": 42.499300005147234,
-        "max_ms": 42.499300005147234,
-        "samples": 3
+        "p50_ms": 68.89310000406113,
+        "p95_ms": 89.57520000694785,
+        "max_ms": 89.57520000694785,
+        "samples": 3,
+        "response_bytes_p50": 43,
+        "response_bytes_max": 43
       },
       "warm": {
-        "p50_ms": 42.595500010065734,
-        "p95_ms": 88.8546999922255,
-        "max_ms": 88.8546999922255,
-        "samples": 5
+        "p50_ms": 32.700300005672034,
+        "p95_ms": 114.23330000252463,
+        "max_ms": 131.80049999209587,
+        "samples": 20,
+        "response_bytes_p50": 43,
+        "response_bytes_max": 43
       }
     }
   ]
