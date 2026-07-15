@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-07-15T00:00:00+00:00",
+  "base_url": "http://127.0.0.1:8080",
+  "environment_notes": {
+    "railway_region": "sample-only",
+    "python": "3.12"
+  },
+  "methodology": {
+    "cold_runs": 3,
+    "warm_runs": 5,
+    "optimization_applied": false
+  },
+  "p25_budgets_ms": {
+    "overview_warm_p95": 1500,
+    "status_p95": 250,
+    "wallet_p95": 250,
+    "table_endpoints_p95": 500
+  },
+  "endpoints": [
+    {
+      "name": "status",
+      "path": "/api/v1/status",
+      "cold": {"p50_ms": 0, "p95_ms": 0, "max_ms": 0, "samples": 3},
+      "warm": {"p50_ms": 0, "p95_ms": 0, "max_ms": 0, "samples": 5}
+    }
+  ]
+}
