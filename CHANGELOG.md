@@ -6,7 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
+### Added (governance — P2.5 and P7 roadmap)
+
+- **P2.5** milestone `P2.5 – Dashboard Performance & Responsiveness` with performance budgets and exit criteria in `ROADMAP.md`.
+- Nine P2.5 seed issues: performance baseline, instrumentation, redundant DB read removal, dashboard summary API, cache policy, loading states, SQL/index audit, regression tests, production dashboard acceptance.
+- **P7** renamed to `Multi-Asset and Independent Strategy Candidates` with sub-phases P7A–P7D (crypto, HIP-3 equity, HIP-3 index/commodity, independent strategy portfolio).
+- Three P7 planning seed issues: multi-asset metadata contract, HIP-3 equity perpetual validation requirements, correlated multi-asset exposure model.
+- ADR-014 in `docs/DECISION_LOG.md` — one Hyperliquid multi-asset platform with asset-specific profiles.
+- `docs/github-project-p25-p7-setup.md` — GitHub Project field setup for P2.5/P7 issues.
+- Dashboard maturity levels in `docs/railway-paper-trading-dashboard-v1.md`.
+- Multi-asset target architecture section in `docs/ARCHITECTURE.md`.
+- Risk register entries R-019 through R-024 (dashboard performance and multi-asset planning risks).
+
+### Changed (governance)
+
+- `ROADMAP.md` — P3 status **Complete** with evidence; P2.5 phase added; P7 renamed and expanded.
+- `docs/RISK_REGISTER.md` — R-018 updated for multi-asset correlation; R-019–R-024 added.
+- `docs/PROJECT_OPERATING_SYSTEM.md` — Phase field includes P2.5; Workstream field added.
+- `scripts/github_project_setup.py` — P2.5 milestone, renamed P7, 12 new seed issues, milestone title repair, decimal phase keys.
+
+### Note
+
+No runtime performance optimizations, multi-asset trading, HIP-3 implementation, or live-trading changes in this governance batch. Issue numbers for new seed issues assigned on first `github_project_setup.py --apply`.
+
+### Added (P3 — historical market data)
 
 - `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).
 - `services/market_data/manifest.py`, `content_hash.py` - dataset manifest schema and SHA-256 hashing (#77).

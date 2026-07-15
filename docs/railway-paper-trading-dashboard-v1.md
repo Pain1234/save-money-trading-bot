@@ -231,6 +231,50 @@ All routes are GET-only. Non-GET requests return `405`.
 No mutation, control, order, wallet-signing, or kill-switch endpoints are
 exposed on the read-only API service.
 
+**Deploy:** `deploy/Dockerfile.dashboard`, `deploy/railway/paper-trading-dashboard.toml`
+
+---
+
+## Dashboard maturity levels
+
+Honest classification of dashboard readiness. **Planning and acceptance criteria** — not claims of completed optimization.
+
+### Current
+
+- Locally usable Next.js dashboard with login
+- Real paper-trading PostgreSQL data displayable (no mock requirement in production path)
+- Wallet, PnL, positions, fills, and equity visible
+- Read-only — no trading mutations via dashboard or public API
+- Subjectively high load times; not production-accepted as performant monitoring
+
+### After P2.5 acceptance
+
+- Production-accepted paper monitoring dashboard on Railway
+- Measurable performance against documented budgets
+- Visible loading states on all relevant routes
+- Instrumented API and DB timing (server, API, SQL separable)
+- Documented error and stale-data states (API down, stale heartbeat, reconciliation errors)
+
+### After P4/P5
+
+- Research and experiment evaluation views
+- Benchmark and strategy comparison surfaces tied to experiment registry
+
+### After P6
+
+- Reliable 90-day paper observation data
+- Paper-to-market deviation tracking
+- Long-horizon operational metrics in dashboard
+
+### P8 (future)
+
+- Monitoring for a **separate** micro-live system
+- Still no uncontrolled trading control via dashboard
+
+See `ROADMAP.md` § P2.5 for exit criteria and performance budgets.
+
+---
+
 ## Domain `bot.save-money.xyz`
 
 1. Open Railway → `paper-trading-dashboard` → **Settings** → **Networking**.
