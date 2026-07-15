@@ -242,27 +242,72 @@ def _estimate_row_count(conn: Any, table: str) -> float | None:
 
 
 
-def _index_recommendation(first: PlanMetrics) -> dict[str, str]:
-    """Machine-readable index decision from this EXPLAIN sample alone.
+def _index_recommendation(
+    first: PlanMetrics,
+    cursor: PlanMetrics,
+    *,
+    route_latency_ms: float | None = None,
+    material_share: float = 0.05,
+    absolute_negligible_ms: float = 5.0,
+) -> dict[str, str]:
+    """Machine-readable index decision from first + cursor EXPLAIN samples.
 
-    Negligible plans cannot be a material share of multi-second API route
-    latency, so status is NO_ACTION. Larger plans stay FOLLOW_UP_REQUIRED until
-    a before/after package exists.
+    NO_ACTION only when every *measured* plan's execution time is below a real
+    relative threshold of route latency (default 5%). When route latency is
+    unknown, fall back to an absolute negligible floor and state that clearly —
+    do not claim a route-latency comparison without ``route_latency_ms``.
     """
-    exec_ms = first.execution_ms
-    if first.status == "MEASURED" and exec_ms is not None and exec_ms < 5.0:
+    measured_exec: list[float] = []
+    for plan in (first, cursor):
+        if plan.status == "MEASURED" and plan.execution_ms is not None:
+            measured_exec.append(float(plan.execution_ms))
+    if not measured_exec:
+        return {
+            "recommendation_status": "FOLLOW_UP_REQUIRED",
+            "recommendation": (
+                "No measured EXPLAIN execution times for first/cursor pages; "
+                "cannot apply the index gate."
+            ),
+        }
+
+    max_exec = max(measured_exec)
+    if route_latency_ms is not None and route_latency_ms > 0:
+        share = max_exec / route_latency_ms
+        if share < material_share:
+            return {
+                "recommendation_status": "NO_ACTION",
+                "recommendation": (
+                    f"Max measured plan exec {max_exec:.3f} ms is "
+                    f"{share:.4%} of route latency {route_latency_ms:.1f} ms "
+                    f"(threshold {material_share:.0%}); no index migration justified."
+                ),
+            }
+        return {
+            "recommendation_status": "FOLLOW_UP_REQUIRED",
+            "recommendation": (
+                f"Max measured plan exec {max_exec:.3f} ms is "
+                f"{share:.2%} of route latency {route_latency_ms:.1f} ms "
+                f"(>= {material_share:.0%} threshold). Record before/after plans "
+                "before opening a separate migration issue."
+            ),
+        }
+
+    if max_exec < absolute_negligible_ms:
         return {
             "recommendation_status": "NO_ACTION",
             "recommendation": (
-                "EXPLAIN execution time is negligible relative to measured route "
-                "latency; no index migration justified from this plan alone."
+                f"Max measured plan exec {max_exec:.3f} ms is below the absolute "
+                f"negligible floor ({absolute_negligible_ms:g} ms); route latency "
+                "was not supplied, so this is not a relative share claim. Re-run "
+                "with route_latency_ms to bind the index gate fully."
             ),
         }
     return {
         "recommendation_status": "FOLLOW_UP_REQUIRED",
         "recommendation": (
-            "No index migration in this audit. Record before/after "
-            "plans before opening a separate migration issue."
+            f"Max measured plan exec {max_exec:.3f} ms without route latency; "
+            "cannot prove/disprove material share. Record before/after plans "
+            "before opening a separate migration issue."
         ),
     }
 
@@ -332,9 +377,13 @@ def _prepare_session(conn: Any) -> None:
     conn.execute(text("SET LOCAL statement_timeout = '30000ms'"))
 
 
-def run_audit(database_url: str) -> dict[str, Any]:
+def run_audit(
+    database_url: str,
+    route_latency_by_path: dict[str, float] | None = None,
+) -> dict[str, Any]:
     from paper_trading.db.session import create_db_engine
 
+    route_latency_by_path = route_latency_by_path or {}
     engine = create_db_engine(database_url, application_name="dashboard-sql-audit")
     routes: list[dict[str, Any]] = []
     try:
@@ -397,7 +446,13 @@ def run_audit(database_url: str) -> dict[str, Any]:
                                 "cursor_page": asdict(cursor),
                                 "first_page_sql": spec["first_page_sql"],
                                 "cursor_page_sql": cursor_sql,
-                                **_index_recommendation(first),
+                                **_index_recommendation(
+                                    first,
+                                    cursor,
+                                    route_latency_ms=route_latency_by_path.get(
+                                        spec["route"]
+                                    ),
+                                ),
                             }
                         )
                 except Exception as exc:  # noqa: BLE001 — capture per-route failures
@@ -451,12 +506,27 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--route-latency-json",
+        default=None,
+        help=(
+            "Optional JSON object mapping API route path to route latency ms "
+            "for the index gate relative threshold."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default="docs/operations/dashboard-layer-d-explain.json",
     )
     args = parser.parse_args(argv)
     try:
-        report = run_audit(args.database_url)
+        route_latency: dict[str, float] = {}
+        if args.route_latency_json:
+            with open(args.route_latency_json, encoding="utf-8") as handle:
+                loaded = json.load(handle)
+            if not isinstance(loaded, dict):
+                raise TypeError("route-latency-json must be an object")
+            route_latency = {str(k): float(v) for k, v in loaded.items()}
+        report = run_audit(args.database_url, route_latency_by_path=route_latency)
     except Exception as exc:  # noqa: BLE001
         report = {
             "measurement": "layer_d_postgresql_explain",

@@ -61,7 +61,8 @@
       "first_page_sql": "SELECT * FROM paper_fills ORDER BY fill_time DESC, fill_id DESC LIMIT 50",
       "cursor_page_sql": null,
       "recommendation_status": "NO_ACTION",
-      "recommendation": "EXPLAIN execution time is negligible relative to measured route latency; no index migration justified from this plan alone."
+      "recommendation": "Max measured plan exec 0.043 ms is 0.0018% of route latency 2411.0 ms (threshold 5%); no index migration justified.",
+      "route_latency_ms_used": 2411.0
     },
     {
       "route": "/api/v1/orders",
@@ -110,7 +111,8 @@
       "first_page_sql": "SELECT * FROM paper_orders ORDER BY created_at DESC, paper_order_id DESC LIMIT 50",
       "cursor_page_sql": null,
       "recommendation_status": "NO_ACTION",
-      "recommendation": "EXPLAIN execution time is negligible relative to measured route latency; no index migration justified from this plan alone."
+      "recommendation": "Max measured plan exec 0.031 ms is 0.0013% of route latency 2413.3 ms (threshold 5%); no index migration justified.",
+      "route_latency_ms_used": 2413.3
     },
     {
       "route": "/api/v1/equity",
@@ -158,7 +160,8 @@
       "first_page_sql": "SELECT * FROM portfolio_snapshots ORDER BY evaluation_time DESC, snapshot_id DESC LIMIT 100",
       "cursor_page_sql": null,
       "recommendation_status": "NO_ACTION",
-      "recommendation": "EXPLAIN execution time is negligible relative to measured route latency; no index migration justified from this plan alone."
+      "recommendation": "Max measured plan exec 0.042 ms is 0.0017% of route latency 2409.2 ms (threshold 5%); no index migration justified.",
+      "route_latency_ms_used": 2409.2
     },
     {
       "route": "/api/v1/events",
@@ -209,7 +212,8 @@
       "first_page_sql": "SELECT * FROM audit_events ORDER BY created_at DESC, event_id DESC LIMIT 50",
       "cursor_page_sql": "SELECT * FROM audit_events WHERE created_at < '2026-07-15T19:54:30.942900+00:00' OR (created_at = '2026-07-15T19:54:30.942900+00:00' AND event_id < '10357fb8-b780-426a-9567-7c17000aae23') ORDER BY created_at DESC, event_id DESC LIMIT 50",
       "recommendation_status": "NO_ACTION",
-      "recommendation": "EXPLAIN execution time is negligible relative to measured route latency; no index migration justified from this plan alone."
+      "recommendation": "Max measured plan exec 0.087 ms is 0.0036% of route latency 2410.0 ms (threshold 5%); no index migration justified.",
+      "route_latency_ms_used": 2410.0
     },
     {
       "route": "/api/v1/scheduler-runs",
@@ -259,7 +263,8 @@
       "first_page_sql": "SELECT * FROM scheduler_runs ORDER BY scheduled_for DESC, run_id DESC LIMIT 50",
       "cursor_page_sql": "SELECT * FROM scheduler_runs WHERE scheduled_for < '2026-07-15T00:00:00+00:00' OR (scheduled_for = '2026-07-15T00:00:00+00:00' AND run_id < '5463c5e7-23fb-48f6-abb8-7eb142b49043') ORDER BY scheduled_for DESC, run_id DESC LIMIT 50",
       "recommendation_status": "NO_ACTION",
-      "recommendation": "EXPLAIN execution time is negligible relative to measured route latency; no index migration justified from this plan alone."
+      "recommendation": "Max measured plan exec 0.186 ms is 0.0073% of route latency 2552.2 ms (threshold 5%); no index migration justified.",
+      "route_latency_ms_used": 2552.2
     },
     {
       "route": "/api/v1/positions",
@@ -308,7 +313,8 @@
       "first_page_sql": "SELECT * FROM paper_positions ORDER BY opened_at DESC, position_id DESC LIMIT 50",
       "cursor_page_sql": null,
       "recommendation_status": "NO_ACTION",
-      "recommendation": "EXPLAIN execution time is negligible relative to measured route latency; no index migration justified from this plan alone."
+      "recommendation": "Max measured plan exec 0.027 ms is 0.0011% of route latency 2407.7 ms (threshold 5%); no index migration justified.",
+      "route_latency_ms_used": 2407.7
     }
   ]
 }

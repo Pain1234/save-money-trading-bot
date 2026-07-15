@@ -154,18 +154,23 @@ function summarize(name, path, samples) {
     .filter((v) => v != null)
     .sort((a, b) => a - b);
 
-  const totalP95 = percentile(totals, 95);
-  const dbP95 = percentile(dbs, 95);
+  // p95 of per-sample deltas — never p95(total) - p95(db) or client_p95 - total_p95.
+  const residuals = samples
+    .filter(sampleIsMeasured)
+    .map((s) => s.header_total_ms - s.header_db_ms);
+  const hops = samples
+    .filter(sampleIsMeasured)
+    .map((s) => s.client_total_ms - s.header_total_ms);
 
   return {
     name,
     path,
     status,
     warm_client_p95_ms: percentile(client, 95),
-    warm_header_total_p95_ms: totalP95,
-    warm_header_db_p95_ms: dbP95,
-    warm_unattributed_api_ms:
-      totalP95 != null && dbP95 != null ? totalP95 - dbP95 : null,
+    warm_header_total_p95_ms: percentile(totals, 95),
+    warm_header_db_p95_ms: percentile(dbs, 95),
+    warm_unattributed_api_ms: percentile(residuals, 95),
+    warm_private_hop_p95_ms: percentile(hops, 95),
     warm_query_count_p95: percentile(qcs, 95),
     warm_response_bytes_p50: sizes[Math.floor(sizes.length / 2)],
     warm_response_bytes_max: Math.max(...sizes),

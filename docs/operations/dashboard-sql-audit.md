@@ -270,19 +270,20 @@ python scripts/measure_dashboard_layer_c_api.py --warm-runs 20 \
 **Railway production** (2026-07-15 remodeled), private hop dashboard(EU) -> API(sfo),
 warm **20** / warmup **3**. Artifact: `dashboard-layer-c-api-railway.json`.
 All routes HTTP **200** with finite `X-Perf-*` and retained correlation IDs.
+Unattr./hop are **p95 of per-sample deltas** (not p95(a)-p95(b)).
 Browser/TTFB/skeleton columns stay `NOT_MEASURED` until Layer A/B authenticated runs.
 
-| Route | Client hop p95 | API total p95 | DB p95 | Unattr. | Queries | Bytes p50 | Hauptursache |
-| ----- | -------------: | ------------: | -----: | ------: | ------: | --------: | ------------ |
-| /api/v1/status | 2983 | **2833** | 699.6 | **2134** | 4 | 639 | multi-query + residual |
-| /api/v1/dashboard-summary | 3268 | **3119** | 979.9 | **2139** | 6 | 1175 | highest total/db/q |
-| /api/v1/wallet | 2554 | 2408 | 281.2 | **2126** | 1 | 238 | ~2.13 s residual |
-| /api/v1/positions | 2603 | 2416 | 283.0 | **2133** | 1 | 42 | ~2.13 s residual |
-| /api/v1/orders | 2559 | 2411 | 280.2 | **2130** | 1 | 42 | ~2.13 s residual |
-| /api/v1/fills | 2563 | 2416 | 282.9 | **2133** | 1 | 42 | ~2.13 s residual |
-| /api/v1/equity | 2566 | 2419 | 281.6 | **2137** | 1 | 1210 | ~2.13 s residual |
-| /api/v1/events | 2705 | 2415 | 282.0 | **2133** | 1 | **15191** | residual (size ≠ extra API ms) |
-| /api/v1/scheduler-runs | 2844 | 2554 | 423.6 | **2130** | 1 | **17119** | residual + higher db |
+| Route | Client hop p95 | API total p95 | DB p95 | Unattr. p95 | Hop p95 | Queries | Bytes p50 | Hauptursache |
+| ----- | -------------: | ------------: | -----: | ----------: | ------: | ------: | --------: | ------------ |
+| /api/v1/status | 3052 | **2903** | 701.4 | **2205** | **157** | 4 | 639 | multi-query + residual |
+| /api/v1/dashboard-summary | 3269 | **3121** | 984.2 | **2142** | **150** | 6 | 1175 | highest total/db/q |
+| /api/v1/wallet | 2559 | 2409 | 279.1 | **2130** | **151** | 1 | 238 | ~2.13 s residual |
+| /api/v1/positions | 2562 | 2408 | 280.6 | **2129** | **152** | 1 | 42 | ~2.13 s residual |
+| /api/v1/orders | 2565 | 2413 | 280.9 | **2134** | **155** | 1 | 42 | ~2.13 s residual |
+| /api/v1/fills | 2560 | 2411 | 282.6 | **2128** | **157** | 1 | 42 | ~2.13 s residual |
+| /api/v1/equity | 2562 | 2409 | 280.5 | **2130** | **156** | 1 | 1210 | ~2.13 s residual |
+| /api/v1/events | 2701 | 2410 | 280.7 | **2130** | **296** | 1 | **15191** | residual (size != extra API ms) |
+| /api/v1/scheduler-runs | 2845 | 2552 | 422.7 | **2132** | **297** | 1 | **17119** | residual + higher db |
 
 Local API-only samples from Issue #95 remain in
 `dashboard-performance-baseline.md` / `.json` and must not be relabeled as
@@ -384,7 +385,7 @@ Artifact: `dashboard-layer-d-explain-railway.json`.
 | /scheduler-runs | first | **310** | 50 | Limit+Sort top-N | 0.124 | hit=7 | — | `NO_ACTION` |
 | /scheduler-runs | cursor | 310 | 50 | Limit+Sort | 0.186 | hit=7 | — | `NO_ACTION` |
 
-SQL exec is sub-ms; **not** the 2.4–3.3 s API wall clock. Per-route `recommendation_status` is **`NO_ACTION`** (aligned with this doc and Layer D JSON).
+SQL exec is sub-ms; **not** the 2.4–3.3 s API wall clock. Per-route `recommendation_status` is **`NO_ACTION`** (max first/cursor exec vs Layer C route total; 5% share gate).
 
 ---
 
@@ -519,13 +520,13 @@ Prioritize with a scored blend of:
 **Current Top-3 (from Railway Layer C/D; Layer A still pending for UX confirmation):**
 
 ```text
-1. ~2.13 s unattributed FastAPI residual (total_ms − db_ms);
+1. ~2.13 s unattributed FastAPI residual (p95 of per-sample total_ms − db_ms);
    region split (API sfo vs Postgres/Dashboard EU West) = leading hypothesis —
    not confirmed without instrumentation or co-location before/after
 2. GET /api/v1/dashboard-summary — worst API total/db/query_count
-   (p95 total 3119 ms, db 980 ms, 6 queries)
+   (p95 total 3121 ms, db 984 ms, 6 queries)
 3. GET /api/v1/status — next multi-query cost
-   (p95 total 2833 ms, db 700 ms, 4 queries)
+   (p95 total 2903 ms, db 701 ms, 4 queries)
 ```
 
 Large history JSON (`/events`, `/scheduler-runs`) is **`OPTIMIZATION_CANDIDATE` only**:
@@ -547,6 +548,95 @@ Layer A authentication still required before treating Top-3 as UX-final.
 | Events list projection (no payload) | Layer A/B or parse/projection A/B | `OPTIMIZATION_CANDIDATE` (not Top-3) |
 | Cache TTL tweaks (#99) | after audit + staleness review | deferred |
 | Tuple keyset rewrite | EXPLAIN + latency delta | `NO_ACTION` until measured benefit |
+
+---
+
+## 14. bestätigte Empfehlungen
+
+| Recommendation | Status |
+|----------------|--------|
+| Keep audit and index migrations as separate issues/PRs | `MEASURED` (process) |
+| Keep CI perf soft-gated until variance known (#102) | confirmed |
+| Continue using engine-level query listeners with detach | confirmed (#96 tests) |
+| Treat API p95 ≠ dashboard UX | confirmed (this protocol) |
+| Compute unattributed residual as p95(per-sample total−db), not p95(total)−p95(db) | confirmed (Layer C probe) |
+
+No index adoption confirmed — Railway Layer D shows sub-ms SQL relative to measured
+route latency; indexes are not the bottleneck. Highest-impact follow-up is explaining
+or removing the ~2.13 s unattributed FastAPI residual (region split = leading
+hypothesis), not an Alembic migration.
+
+---
+
+## 15. verworfene Empfehlungen
+
+| Recommendation | Why discarded |
+|----------------|---------------|
+| “Add index whenever Seq Scan + ≥10k rows” | Replaced by latency-share + before/after gate |
+| Publicize private Railway API for easier probing | Security / architecture violation |
+| Ship index migration inside #101 | Scope split: audit vs migration |
+| Change cache TTLs during audit | #99 post-audit only |
+| Invent p50/p95 placeholders as “results” | Forbidden |
+| Rank “cross-region dominates” as proven Top-1 without before/after | Residual is measured; region attribution remains a hypothesis |
+| Rank history JSON as Top-3 from size alone | Layer C: large bodies with flat API totals vs thin routes |
+
+---
+
+## 16. offene Messungen
+
+| Item | Status |
+|------|--------|
+| Layer A Playwright against Railway public URL | `NOT_MEASURED` (needs dashboard password) |
+| Layer B authenticated SSR TTFB | `NOT_MEASURED` (needs dashboard password) |
+| Layer B public `/login` SSR | `PARTIAL` / `MEASURED` |
+| Layer C via Railway **private** API hop | `MEASURED` (warm 20/3; HTTP-validated) |
+| Layer D EXPLAIN on empty local `paper_trading_test` | `MEASURED` (first page only) |
+| Layer D EXPLAIN on Railway (+ cursor where rows allow) | `MEASURED` |
+| Top-3 from Layer C/D data | `MEASURED` (pending A UX confirmation) |
+| Events payload byte share on Railway | `MEASURED` (~17%) |
+| Index before/after packages | not started / not justified yet |
+| APM / co-location before/after for ~2.13 s residual | `FOLLOW_UP_REQUIRED` |
+
+---
+
+## 17. Vorher-/Nachher-Protokoll
+
+Use one block per candidate:
+
+```text
+Candidate:
+Route(s):
+Dataset (row counts / date / env):
+Baseline plan (first + cursor):
+Baseline exec ms / buffers:
+Baseline API p95 / browser usable p95:
+Baseline unattributed residual p95 (per-sample total−db):
+Baseline private hop p95 (per-sample client−total):
+Change applied (test index / projection / region move) — temporary:
+New plan:
+New exec ms / buffers:
+New residual / hop p95:
+Delta:
+Write-overhead assessment:
+Decision: ADOPT | REJECT
+Rollback plan:
+Follow-up issue: (only if ADOPT and migration needed)
+```
+
+No rows yet — attach when an experiment is run.
+
+---
+
+## Cache recommendations (post-measurement only)
+
+Do **not** change TTLs in this audit. After numbers exist, recommend per data class:
+
+| Class | Options | Constraint |
+|-------|---------|------------|
+| Readiness / critical warnings | keep **1–2 s** | Origin ~2.5–3 s; TTL cannot remove ~2.13 s residual |
+| Wallet / open positions | **3–5 s** remain plausible | Stampede control only |
+| Orders / fills tables | **3–5 s** | Tables empty in prod evidence |
+| Equity / events / scheduler history | **15–30 s** remains reasonable | Size ≠ proven API latency driver |
 
 Do **not** lengthen TTLs to paper over the ~2.13 s unattributed residual. Issue #99 final
 approval still waits on authenticated A/B + optional residual before/after remeasure.

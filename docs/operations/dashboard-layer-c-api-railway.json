@@ -15,16 +15,17 @@
   "warm_runs": 20,
   "warmup_runs": 3,
   "warmup_note": "warmup_runs are discarded probes to stabilize the process; p95 uses warm_runs only (default 20/3 matches measure_dashboard_layer_c_api.py).",
-  "measured_at": "2026-07-15T21:46:16.825Z",
+  "measured_at": "2026-07-15T22:08:39.803Z",
   "routes": [
     {
       "name": "status",
       "path": "/api/v1/status",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2982.7426329999944,
-      "warm_header_total_p95_ms": 2833.4,
-      "warm_header_db_p95_ms": 699.6,
-      "warm_unattributed_api_ms": 2133.8,
+      "warm_client_p95_ms": 3051.8782629999987,
+      "warm_header_total_p95_ms": 2902.9,
+      "warm_header_db_p95_ms": 701.4,
+      "warm_unattributed_api_ms": 2205.4,
+      "warm_private_hop_p95_ms": 157.00035200000002,
       "warm_query_count_p95": 4,
       "warm_response_bytes_p50": 639,
       "warm_response_bytes_max": 639,
@@ -34,11 +35,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "5c905067-b842-41d0-ba30-2332785c8e9f",
-        "77b9f297-0b45-4c3f-9e3e-256a39d256a4",
-        "8c43829f-27cf-450d-a303-bd7464f27c0a",
-        "5cacfde5-76ad-4a61-a30b-6b8bc7efc5cd",
-        "e5a0efcd-20ad-4362-9643-9ebd2393344c"
+        "b62d9ea3-eba6-48bf-99d5-6cb3de051e9f",
+        "1ddb959a-03e0-4ec7-8bbf-aa73627708a9",
+        "f5b1ec6c-945f-4d78-98e5-0e7ca93f2626",
+        "899f1720-ef35-406e-a1b7-cce05ec937b1",
+        "3d9227a2-9f90-42a0-bfc2-5b1944b52989"
       ],
       "sample_count": 20,
       "note": ""
@@ -47,10 +48,11 @@
       "name": "dashboard_summary",
       "path": "/api/v1/dashboard-summary",
       "status": "MEASURED",
-      "warm_client_p95_ms": 3267.611398000008,
-      "warm_header_total_p95_ms": 3119.2,
-      "warm_header_db_p95_ms": 979.9,
-      "warm_unattributed_api_ms": 2139.2999999999997,
+      "warm_client_p95_ms": 3268.965166000009,
+      "warm_header_total_p95_ms": 3121.4,
+      "warm_header_db_p95_ms": 984.2,
+      "warm_unattributed_api_ms": 2142.3,
+      "warm_private_hop_p95_ms": 150.4714309999954,
       "warm_query_count_p95": 6,
       "warm_response_bytes_p50": 1175,
       "warm_response_bytes_max": 1175,
@@ -60,11 +62,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "dce3bb3d-7522-4397-8d6d-93fb37376fce",
-        "94a4cc26-6afa-47c1-a9d8-8e4e2a795e2f",
-        "f2c90e90-c9fb-423c-b15b-c70ccfa13654",
-        "00d70c4d-00f6-49f6-8e27-c0fda5f3acfb",
-        "c87d8234-8b69-481a-bca6-ed917596f108"
+        "1dfa1020-6f94-492f-ad06-96c4f2254ac5",
+        "1f49362d-c007-4221-bece-e3fa0e56a463",
+        "a23ec85b-18a6-4edd-b16b-fbb8185344e5",
+        "1af1c6e7-6516-46b4-8f3f-4f5b7c5f0bc1",
+        "0cf8201a-fea2-4bbc-88c2-66883bb28d5a"
       ],
       "sample_count": 20,
       "note": ""
@@ -73,10 +75,11 @@
       "name": "wallet",
       "path": "/api/v1/wallet",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2554.3921770000015,
-      "warm_header_total_p95_ms": 2407.5,
-      "warm_header_db_p95_ms": 281.2,
-      "warm_unattributed_api_ms": 2126.3,
+      "warm_client_p95_ms": 2559.3804050000035,
+      "warm_header_total_p95_ms": 2408.6,
+      "warm_header_db_p95_ms": 279.1,
+      "warm_unattributed_api_ms": 2130.2000000000003,
+      "warm_private_hop_p95_ms": 151.476406999986,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 238,
       "warm_response_bytes_max": 238,
@@ -86,11 +89,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "c950baa9-6452-435e-a954-4298720e4cd9",
-        "97b3014a-4025-40ad-91dd-5e1a19dbbf2f",
-        "beb1d894-f41f-47d4-829c-179134113f7e",
-        "99eb91f1-1b4d-4acd-a3ed-af0cf7c1996a",
-        "f3d4b2cc-581b-4e3c-b7af-b224cc933764"
+        "ee6e1d1b-0bf5-4568-9add-6398b45ff333",
+        "932f8bd0-5710-4164-9c16-3a0c64d6035a",
+        "ce902e6b-c08d-4501-a50c-6af6192acf78",
+        "7f2bcaa2-55a2-477d-83b5-124bc510bd7d",
+        "e2634ed2-bc2d-4646-af70-c12e90296671"
       ],
       "sample_count": 20,
       "note": ""
@@ -99,10 +102,11 @@
       "name": "positions",
       "path": "/api/v1/positions?limit=50",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2602.502468999999,
-      "warm_header_total_p95_ms": 2416.2,
-      "warm_header_db_p95_ms": 283,
-      "warm_unattributed_api_ms": 2133.2,
+      "warm_client_p95_ms": 2562.1441789999953,
+      "warm_header_total_p95_ms": 2407.7,
+      "warm_header_db_p95_ms": 280.6,
+      "warm_unattributed_api_ms": 2128.7999999999997,
+      "warm_private_hop_p95_ms": 152.33181899999636,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 42,
       "warm_response_bytes_max": 42,
@@ -112,11 +116,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "09e6ef6c-9a86-42a9-b05e-b32377725a81",
-        "0f73bf92-fdc2-4f26-a197-caa3d275308b",
-        "381bee6a-34d0-423a-9dfe-4c5037830f1e",
-        "6f80677f-dd50-4ce7-8501-f21c9348d655",
-        "c2268826-a09b-416e-a636-1471bc820fd6"
+        "2e626a62-831f-467d-bcc9-49cef8728e67",
+        "cc641060-a121-4170-bd22-eec72f4288c9",
+        "9c7e4f8e-7a40-4b6a-a335-21153f6053ff",
+        "cb3e12e8-2ac0-4e54-ad36-40d4fe870145",
+        "6302391d-717b-4939-9440-042e4ec4c7da"
       ],
       "sample_count": 20,
       "note": ""
@@ -125,10 +129,11 @@
       "name": "orders",
       "path": "/api/v1/orders?limit=50",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2558.5889890000108,
-      "warm_header_total_p95_ms": 2410.5,
-      "warm_header_db_p95_ms": 280.2,
-      "warm_unattributed_api_ms": 2130.3,
+      "warm_client_p95_ms": 2565.1714860000066,
+      "warm_header_total_p95_ms": 2413.3,
+      "warm_header_db_p95_ms": 280.9,
+      "warm_unattributed_api_ms": 2133.9,
+      "warm_private_hop_p95_ms": 155.26721600000747,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 42,
       "warm_response_bytes_max": 42,
@@ -138,11 +143,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "e929cd0a-6260-4bf0-8f86-2a040532b271",
-        "524c868d-5571-4e95-8a04-d9bcac80b94a",
-        "7a04a85a-fbdd-4ff2-924f-e45b118ac06e",
-        "d2f09b16-8810-4a1e-80d7-eb09846f6088",
-        "e3a508fa-ab22-46f2-aeb7-ed55838703c3"
+        "22fabb65-2957-4266-8248-b9d39a29e373",
+        "57a2b9c6-4a14-41af-a4c8-f5a5a76ad6ee",
+        "2f05f9d3-bef2-42b0-be9e-558107412077",
+        "d5f42e4a-5e21-458f-aa6a-70f073ddd260",
+        "09f2a105-cd86-4944-8fff-598011aa06b6"
       ],
       "sample_count": 20,
       "note": ""
@@ -151,10 +156,11 @@
       "name": "fills",
       "path": "/api/v1/fills?limit=50",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2562.5513180000125,
-      "warm_header_total_p95_ms": 2415.8,
-      "warm_header_db_p95_ms": 282.9,
-      "warm_unattributed_api_ms": 2132.9,
+      "warm_client_p95_ms": 2559.7866979999817,
+      "warm_header_total_p95_ms": 2411,
+      "warm_header_db_p95_ms": 282.6,
+      "warm_unattributed_api_ms": 2127.7999999999997,
+      "warm_private_hop_p95_ms": 156.78764499999807,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 42,
       "warm_response_bytes_max": 42,
@@ -164,11 +170,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "3551b8a7-bba9-49c6-8cfc-23d377ee2def",
-        "d365eb14-6880-4e5c-b0c9-2f99bece7bd8",
-        "fc054cda-abbb-4b0d-bd6e-16c13ac069ae",
-        "bc39928b-fbd9-426e-b7e4-6833455ebd05",
-        "a2d6e14c-e8fc-484d-8319-e0ce814c5e24"
+        "43a559c2-0649-47da-a565-310010d0da46",
+        "4ecbaeb9-e88e-45a7-9298-b31a3a8ab88e",
+        "7865a600-e917-471f-99ad-7f26b80917c5",
+        "04f71931-c4da-4aab-a71f-679d69782004",
+        "2c445094-c5d7-49ae-b78a-5f84111cb00f"
       ],
       "sample_count": 20,
       "note": ""
@@ -177,10 +183,11 @@
       "name": "equity",
       "path": "/api/v1/equity?limit=100",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2565.7522229999886,
-      "warm_header_total_p95_ms": 2418.9,
-      "warm_header_db_p95_ms": 281.6,
-      "warm_unattributed_api_ms": 2137.3,
+      "warm_client_p95_ms": 2562.039435999992,
+      "warm_header_total_p95_ms": 2409.2,
+      "warm_header_db_p95_ms": 280.5,
+      "warm_unattributed_api_ms": 2129.7999999999997,
+      "warm_private_hop_p95_ms": 155.83943599999202,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 1210,
       "warm_response_bytes_max": 1210,
@@ -190,11 +197,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "e8c16bbd-c758-4d62-9199-290240246aa0",
-        "549dda05-7fe5-433c-ace7-d79ad9e13d10",
-        "7e9c5b16-4db1-4cb0-a2a4-59785ea4fc03",
-        "97056e53-7348-4fbe-8d85-7f268b576801",
-        "843d1854-284d-405a-9da1-c499bca63a5a"
+        "7e13550a-e311-44fe-8807-fc3172b5afb5",
+        "7938a53d-b493-481b-80be-752bb1fe6b54",
+        "8b75741d-707f-4d85-826d-091826eb17eb",
+        "e7fbe254-ad9d-42bf-843b-b1cd5e8b0717",
+        "7165198e-54cc-4f27-8b97-e0629ac1cc57"
       ],
       "sample_count": 20,
       "note": ""
@@ -203,10 +210,11 @@
       "name": "events",
       "path": "/api/v1/events?limit=50",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2705.303076000011,
-      "warm_header_total_p95_ms": 2414.7,
-      "warm_header_db_p95_ms": 282,
-      "warm_unattributed_api_ms": 2132.7,
+      "warm_client_p95_ms": 2701.260863000003,
+      "warm_header_total_p95_ms": 2410,
+      "warm_header_db_p95_ms": 280.7,
+      "warm_unattributed_api_ms": 2129.6,
+      "warm_private_hop_p95_ms": 295.7647850000185,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 15191,
       "warm_response_bytes_max": 15191,
@@ -216,11 +224,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "02ef2c5d-d9a7-4227-931c-ddc363800e8f",
-        "c4b8b34c-d3cb-4262-8162-56e2d5821f74",
-        "7ccfd893-e90f-40ed-92ea-227022616e00",
-        "42fd0f0b-174e-4482-98c4-b5844fbbf152",
-        "225494d0-434f-45ff-b148-54ed208c48ff"
+        "d7e7afb3-e9fa-4faa-8f4c-2518b519a333",
+        "7a4b58cf-7699-4f5f-b1a7-9de7588e7868",
+        "a83c7c60-353d-473b-94ac-6a60ff9b958d",
+        "7bef34cb-c4ad-4230-8955-f043cf8f0418",
+        "28e9da54-dd28-4e8e-a0be-d4117bd89a8f"
       ],
       "sample_count": 20,
       "note": ""
@@ -229,10 +237,11 @@
       "name": "scheduler_runs",
       "path": "/api/v1/scheduler-runs?limit=50",
       "status": "MEASURED",
-      "warm_client_p95_ms": 2843.9408270000713,
-      "warm_header_total_p95_ms": 2553.8,
-      "warm_header_db_p95_ms": 423.6,
-      "warm_unattributed_api_ms": 2130.2000000000003,
+      "warm_client_p95_ms": 2845.129200000083,
+      "warm_header_total_p95_ms": 2552.2,
+      "warm_header_db_p95_ms": 422.7,
+      "warm_unattributed_api_ms": 2132.2,
+      "warm_private_hop_p95_ms": 296.55168299998604,
       "warm_query_count_p95": 1,
       "warm_response_bytes_p50": 17119,
       "warm_response_bytes_max": 17119,
@@ -242,11 +251,11 @@
         200
       ],
       "sample_correlation_ids": [
-        "dec99c39-0a4e-4a8f-84ed-bbbef2f6a883",
-        "9c88ba28-acba-4547-8c25-8f9dfc2f0fe8",
-        "2d8d58c3-f188-4834-a13e-02d72f9b21ed",
-        "98c910f4-413e-464d-9517-fc55317f4812",
-        "68d29612-21aa-43ff-bf41-2b8974f9b1e1"
+        "a4a71f67-e11b-4847-8bab-99fad4f7a4e7",
+        "1ae1dab5-3305-4197-aab9-d0d7895f8573",
+        "9d9616ce-918a-4d42-8c55-e6d6661fae3d",
+        "30fa48e6-9af8-4042-8548-2bf7f8efaa4c",
+        "b15095bf-9185-455b-89d6-02ce2aa64e3f"
       ],
       "sample_count": 20,
       "note": ""
