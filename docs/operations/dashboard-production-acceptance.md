@@ -1,6 +1,8 @@
 # Production dashboard acceptance checklist (P2.5 / Issue #103)
 
-**Status:** Procedure template — execute against Railway paper stack when Issues #95–#102 are merged.
+**Status:** Procedure template — **Issue #103 / PR #116 must not be closed until this checklist is completed on Railway production (or production-like staging) with a signed-off row below.**
+
+Do not mark GitHub Issue #103 Done based on merged code alone. Deployment + manual acceptance are explicit gates.
 
 ## Environment
 
@@ -22,10 +24,22 @@
 
 ## Performance acceptance
 
-- [ ] Baseline JSON from Issue #95 archived for production-like run
+- [ ] Baseline JSON from Issue #95 archived for production-like run (`docs/operations/dashboard-performance-baseline.json`)
+- [ ] Issue #98 before/after summary measurement recorded (`docs/operations/dashboard-summary-before-after.md`)
 - [ ] Warm p95 within ROADMAP budgets or documented ADR deviation
-- [ ] Loading skeletons visible during slow fetches (Issue #100)
-- [ ] Issue #102 regression report attached (reporting mode)
+- [ ] Loading skeletons verified — see `docs/operations/dashboard-loading-states-proof.md` (Issue #100)
+- [ ] Issue #102 postgres regression passed locally; optional Railway probe via `PAPER_RAILWAY_API_BASE_URL`
+- [ ] Cache policy evidence reviewed (`docs/operations/cache-policy-evidence.md`, Issue #99)
+
+## Issue closure gate
+
+**Close Issue #103 only when:**
+
+1. Stack PRs #108–#115 are merged and deployed to Railway paper monitoring.
+2. Every checkbox in this document is checked or explicitly N/A with reason.
+3. Sign-off table below is filled (date, deployed Git SHA, tester name).
+
+Until then, leave Issue #103 open and PR #116 in draft or “awaiting acceptance” state.
 
 ## Security
 
