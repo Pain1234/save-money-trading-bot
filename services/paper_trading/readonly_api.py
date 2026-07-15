@@ -37,9 +37,9 @@ from paper_trading.clock import SystemClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.enums import RuntimeStatus
 from paper_trading.models import RuntimeState
+from paper_trading.perf_observability import PerformanceLoggingMiddleware
 from paper_trading.readiness import ReadinessService
 from paper_trading.repository import PaperTradingRepository
-from paper_trading.perf_observability import PerformanceLoggingMiddleware
 
 app = FastAPI(title="Paper Trading Read-only API", version="1.0.0", openapi_url=None)
 

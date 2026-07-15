@@ -3,8 +3,9 @@
 
 Usage:
     export PAPER_API_BASE_URL=http://127.0.0.1:8080
-    python scripts/measure_dashboard_api_baseline.py --warm-runs 5 --cold-runs 3
-    python scripts/measure_dashboard_api_baseline.py --output docs/operations/dashboard-performance-baseline.json
+    python scripts/measure_dashboard_api_baseline.py --warm-runs 20
+    python scripts/measure_dashboard_api_baseline.py \
+        --output docs/operations/dashboard-performance-baseline.json
 
 Does not apply optimizations — measurement only.
 """
