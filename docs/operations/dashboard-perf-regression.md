@@ -2,45 +2,55 @@
 
 ## CI policy
 
-`pytest.mark.reporting` tests are **not** merge gates. The unit job uses:
+| Job | Marker / command | Gate? |
+|-----|------------------|-------|
+| `test` (unit) | `not reporting` | exclude reporting |
+| `perf-reporting` | `pytest tests/perf -m "reporting and postgres"` | soft smoke + **artifact** |
+| Playwright (manual/release) | `npm run test:dashboard-perf` | optional env |
 
-```text
--m "not postgres and not live and not soak and not reporting"
+## Playwright (Node `@playwright/test`)
+
+Uses existing package.json dependency — **not** Python `playwright`.
+
+```bash
+export PAPER_DASHBOARD_BASE_URL=https://bot.example
+export PAPER_DASHBOARD_USER=monitor
+export PAPER_DASHBOARD_PASSWORD=...
+npm ci
+npx playwright install chromium
+npm run test:dashboard-perf
 ```
 
-Run manually / release gate:
+Selectors: `getByLabel("Username")` / `getByLabel("Password")` (LoginForm wraps
+inputs in labels; `name="username"|"password"` also present).
+
+Pytest wrapper (same env): `test_node_playwright_dashboard_routes_when_configured`
+shells out to `npx playwright test -c playwright.perf.config.ts`.
+
+## Artifact (CI)
+
+Job `perf-reporting` uploads `dashboard-perf-regression-report.json` when the
+postgres reporting tests write it (`test_postgres_core_endpoints_warm_p95_artifact`).
+
+Locally:
 
 ```bash
 export PAPER_TRADING_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/paper_trading_test
-python -m pytest tests/perf -m reporting -q
+python -m pytest tests/perf -m "reporting and postgres" -q
+# → docs/operations/dashboard-perf-regression-report.json
 ```
-
-Optional Railway / Playwright:
-
-```bash
-export PAPER_RAILWAY_API_BASE_URL=https://...
-export PAPER_DASHBOARD_BASE_URL=https://bot.save-money.xyz
-export PAPER_DASHBOARD_USER=...
-export PAPER_DASHBOARD_PASSWORD=...
-python -m pytest tests/perf -m reporting -q
-```
-
-## Artifact
-
-Postgres reporting runs write `docs/operations/dashboard-perf-regression-report.json`
-(warm p95 per core endpoint). Commit after a release measurement if desired.
 
 ## Acceptance map
 
 | AC | Evidence |
 |----|----------|
-| Core API endpoints measured | `test_postgres_core_endpoints_warm_p95_artifact`, `test_core_endpoints_return_200` |
-| Real PostgreSQL | `@requires_postgres` tests |
+| Core API endpoints measured | `test_postgres_core_endpoints_warm_p95_artifact` |
+| Real PostgreSQL | `@requires_postgres` / CI `perf-reporting` |
 | Optional Railway | `test_railway_dashboard_summary_when_configured` |
-| Playwright login→routes | `test_playwright_dashboard_routes_when_configured` (skip without env) |
-| CI artifact | `dashboard-perf-regression-report.json` when reporting job runs |
+| Playwright login→routes | `tests/e2e/dashboard-routes.spec.ts` + `npm run test:dashboard-perf` |
+| CI artifact | `actions/upload-artifact` ← `dashboard-perf-regression-report.json` |
 
 ## Caveat
 
-With `warm_runs=5` in reporting tests, p95 ≈ max. Prefer
+Reporting warm_runs default to 5 (p95≈max). Prefer
 `scripts/measure_dashboard_api_baseline.py --warm-runs 20` for published numbers.

@@ -223,11 +223,18 @@ def test_railway_dashboard_summary_when_configured() -> None:
 
 
 @pytest.mark.reporting
-def test_playwright_dashboard_routes_when_configured() -> None:
-    """Optional Playwright path — set PAPER_DASHBOARD_BASE_URL + credentials.
+def test_node_playwright_dashboard_routes_when_configured() -> None:
+    """Optional Node Playwright path — uses @playwright/test (package.json).
 
-    Covers login → overview, positions, fills, equity when env is present.
+    Run directly::
+
+        npm run test:dashboard-perf
+
+    Env: PAPER_DASHBOARD_BASE_URL, PAPER_DASHBOARD_USER, PAPER_DASHBOARD_PASSWORD.
+    Selectors: getByLabel('Username'|'Password') matching LoginForm.tsx.
     """
+    import subprocess
+
     base = os.environ.get("PAPER_DASHBOARD_BASE_URL")
     user = os.environ.get("PAPER_DASHBOARD_USER")
     password = os.environ.get("PAPER_DASHBOARD_PASSWORD")
@@ -236,18 +243,16 @@ def test_playwright_dashboard_routes_when_configured() -> None:
             "Playwright path requires PAPER_DASHBOARD_BASE_URL, "
             "PAPER_DASHBOARD_USER, PAPER_DASHBOARD_PASSWORD"
         )
-    playwright = pytest.importorskip("playwright.sync_api")
-    routes = ("/dashboard", "/dashboard/positions", "/dashboard/fills", "/dashboard/equity")
-    with playwright.sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        page.goto(f"{base.rstrip('/')}/login")
-        page.fill('input[name="username"]', user)
-        page.fill('input[name="password"]', password)
-        page.click('button[type="submit"]')
-        page.wait_for_url("**/dashboard**", timeout=15000)
-        for route in routes:
-            page.goto(f"{base.rstrip('/')}{route}")
-            page.wait_for_load_state("networkidle")
-            assert page.locator("body").count() == 1
-        browser.close()
+    result = subprocess.run(
+        ["npx", "playwright", "test", "-c", "playwright.perf.config.ts"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+        env=os.environ.copy(),
+    )
+    assert result.returncode == 0, (
+        f"Node Playwright failed (code={result.returncode}):\n"
+        f"{result.stdout[-2000:]}\n{result.stderr[-2000:]}"
+    )

@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-07-15T19:12:54.187772+00:00",
+  "mode": "reporting",
+  "database": "paper_trading_test",
+  "warm_p95_ms": {
+    "status": 116.89710000064224,
+    "wallet": 94.04969999741297,
+    "positions": 100.80670000752434,
+    "orders": 99.10110000055283,
+    "fills": 249.0065999882063,
+    "equity": 29.572200000984594,
+    "dashboard_summary": 38.51529999519698
+  },
+  "caveat": "warm_runs=5 \u2192 p95 \u2248 max; prefer scripts/measure with --warm-runs 20"
+}
