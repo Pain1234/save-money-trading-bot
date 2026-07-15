@@ -23,15 +23,29 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-DEFAULT_ENDPOINTS: tuple[tuple[str, str], ...] = (
+CORE_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("status", "/api/v1/status"),
     ("wallet", "/api/v1/wallet"),
     ("positions", "/api/v1/positions?limit=50"),
     ("orders", "/api/v1/orders?limit=50"),
     ("fills", "/api/v1/fills?limit=50"),
     ("equity", "/api/v1/equity?limit=100"),
-    ("dashboard_summary", "/api/v1/dashboard-summary"),
 )
+
+OPTIONAL_SUMMARY_ENDPOINT: tuple[str, str] = (
+    "dashboard_summary",
+    "/api/v1/dashboard-summary",
+)
+
+
+def resolve_endpoints(*, include_summary: bool) -> tuple[tuple[str, str], ...]:
+    if include_summary:
+        return CORE_ENDPOINTS + (OPTIONAL_SUMMARY_ENDPOINT,)
+    return CORE_ENDPOINTS
+
+
+# Backward-compatible alias for unit tests.
+DEFAULT_ENDPOINTS = resolve_endpoints(include_summary=False)
 
 
 @dataclass(frozen=True)
@@ -113,6 +127,7 @@ def build_report(
     endpoints: tuple[tuple[str, str], ...],
     cold_runs: int,
     warm_runs: int,
+    include_summary: bool = False,
 ) -> dict[str, Any]:
     measured = [
         asdict(
@@ -131,6 +146,8 @@ def build_report(
             "cold_runs": cold_runs,
             "warm_runs": warm_runs,
             "optimization_applied": False,
+            "include_dashboard_summary": include_summary,
+            "measured_against": os.environ.get("P2_BASELINE_GIT_REF", "unspecified"),
         },
         "p25_budgets_ms": {
             "overview_warm_p95": 1500,
@@ -154,14 +171,22 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         help="Write JSON report to this path (default: stdout only)",
     )
+    parser.add_argument(
+        "--include-summary",
+        action="store_true",
+        help="Also measure /api/v1/dashboard-summary (optional until Issue #98 merges)",
+    )
     args = parser.parse_args(argv)
+
+    endpoints = resolve_endpoints(include_summary=args.include_summary)
 
     try:
         report = build_report(
             base_url=args.base_url,
-            endpoints=DEFAULT_ENDPOINTS,
+            endpoints=endpoints,
             cold_runs=args.cold_runs,
             warm_runs=args.warm_runs,
+            include_summary=args.include_summary,
         )
     except URLError as exc:
         print(f"ERROR: could not reach API at {args.base_url}: {exc}", file=sys.stderr)

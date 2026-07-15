@@ -49,7 +49,9 @@ def test_build_report_uses_default_endpoints(monkeypatch) -> None:
         endpoints=DEFAULT_ENDPOINTS[:2],
         cold_runs=1,
         warm_runs=2,
+        include_summary=False,
     )
+    assert report["methodology"]["include_dashboard_summary"] is False
     assert report["base_url"] == "http://127.0.0.1:8080"
     assert len(report["endpoints"]) == 2
     warm = report["endpoints"][0]["warm"]
