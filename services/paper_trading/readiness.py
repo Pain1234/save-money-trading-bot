@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Final
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -32,6 +33,13 @@ class PromotionReadinessSnapshot:
 
     ready: bool
     reasons: tuple[str, ...]
+
+
+class _RuntimeUnset:
+    """Sentinel: caller did not provide runtime; evaluate() should fetch once."""
+
+
+RUNTIME_UNSET: Final = _RuntimeUnset()
 
 
 _PROMOTABLE_RUNTIME_STATUSES = frozenset(
@@ -69,24 +77,28 @@ class ReadinessService:
         advisory_lock: AdvisoryLock | None = None,
         scheduler_active: bool = False,
         recovery_active: bool = False,
-        runtime: RuntimeState | None = None,
+        runtime: RuntimeState | None | _RuntimeUnset = RUNTIME_UNSET,
     ) -> ReadinessSnapshot:
         reasons: list[str] = []
-        if runtime is None:
-            runtime = self._repo.get_runtime_state()
-        if runtime is None:
+        # Distinguish "not provided" (fetch) from "explicitly None" (no second read).
+        resolved: RuntimeState | None
+        if isinstance(runtime, _RuntimeUnset):
+            resolved = self._repo.get_runtime_state()
+        else:
+            resolved = runtime
+        if resolved is None:
             return ReadinessSnapshot(False, False, False, ("runtime_state_missing",))
 
-        liveness = self._process_liveness(runtime, reasons)
+        liveness = self._process_liveness(resolved, reasons)
         runtime_ready = self._runtime_readiness(
-            runtime,
+            resolved,
             market_data_ready=market_data_ready,
             advisory_lock=advisory_lock,
             scheduler_active=scheduler_active,
             recovery_active=recovery_active,
             reasons=reasons,
         )
-        entry_ready = runtime_ready and self._entry_readiness(runtime, reasons)
+        entry_ready = runtime_ready and self._entry_readiness(resolved, reasons)
         return ReadinessSnapshot(
             process_liveness=liveness,
             runtime_readiness=runtime_ready,
