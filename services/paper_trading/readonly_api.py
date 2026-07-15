@@ -100,7 +100,7 @@ def _runtime_dict(runtime: RuntimeState) -> dict[str, Any]:
     return RuntimeResponse(
         instance_id=format_uuid(runtime.instance_id),
         status=runtime.status.value,
-        last_error=runtime.last_error,
+        last_error=_sanitize_error(runtime.last_error),
         started_at=format_utc(runtime.started_at) if runtime.started_at else None,
         heartbeat_at=format_utc(runtime.heartbeat_at),
         kill_switch=runtime.kill_switch,
@@ -166,7 +166,10 @@ def readiness(
 ) -> JSONResponse:
     body = _readiness_body(repo, config)
     status_code = 200 if body.runtime_readiness else 503
-    return JSONResponse(content=body.model_dump(), status_code=status_code)
+    response = JSONResponse(content=body.model_dump(), status_code=status_code)
+    if status_code != 200:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/v1/status")
@@ -182,7 +185,8 @@ def api_market_data(
     repo: Annotated[PaperTradingRepository, Depends(get_repository)],
     config: Annotated[PaperTradingConfig, Depends(get_config)],
 ) -> dict[str, Any]:
-    runtime, _readiness = _runtime_readiness_snapshot(repo, config)
+    repo.session.expire_all()
+    runtime = repo.get_runtime_state()
     market_data_ready = _infer_market_data_ready(runtime, config)
     return {
         "hyperliquid_network": __import__("os").environ.get("HYPERLIQUID_NETWORK", "testnet"),
