@@ -44,6 +44,7 @@ markers = [
     "live: optional live Hyperliquid network smoke tests",
     "postgres: requires PostgreSQL integration database",
     "soak: long-running deterministic soak tests",
+    "reporting: performance regression checks (no CI gate)",
 ]
 
 [tool.mypy]

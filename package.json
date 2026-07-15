@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:visual": "playwright test",
-    "test:visual:ui": "playwright test --ui"
+    "test:visual:ui": "playwright test --ui",
+    "test:dashboard-perf": "playwright test -c playwright.perf.config.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
