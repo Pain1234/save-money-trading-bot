@@ -69,9 +69,11 @@ class ReadinessService:
         advisory_lock: AdvisoryLock | None = None,
         scheduler_active: bool = False,
         recovery_active: bool = False,
+        runtime: RuntimeState | None = None,
     ) -> ReadinessSnapshot:
         reasons: list[str] = []
-        runtime = self._repo.get_runtime_state()
+        if runtime is None:
+            runtime = self._repo.get_runtime_state()
         if runtime is None:
             return ReadinessSnapshot(False, False, False, ("runtime_state_missing",))
 

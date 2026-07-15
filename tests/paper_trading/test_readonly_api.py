@@ -55,7 +55,9 @@ def readonly_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     from paper_trading import api_dependencies
 
     app.dependency_overrides[api_dependencies.get_repository] = lambda: repo
-    return TestClient(app)
+    client = TestClient(app)
+    client._repo = repo  # type: ignore[attr-defined]
+    return client
 
 
 def test_readonly_health(readonly_client: TestClient) -> None:
@@ -94,7 +96,24 @@ def test_readonly_ready_worker_reports_full_readiness(readonly_client: TestClien
     assert readiness["last_error"] is None
 
 
+def test_readonly_dashboard_summary_schema(readonly_client: TestClient) -> None:
+    body = readonly_client.get("/api/v1/dashboard-summary").json()
+    assert body["display_status"] in {"READY", "DEGRADED", "STOPPED"}
+    assert "wallet" in body
+    assert "open_position_count" in body
+    assert "position_summary" in body
+    assert "warnings" in body
+    assert body["status"]["display_status"] == body["display_status"]
 
-def test_readonly_correlation_header(readonly_client: TestClient) -> None:
+
+def test_readonly_perf_and_cache_headers(readonly_client: TestClient) -> None:
     response = readonly_client.get("/api/v1/status")
     assert response.headers.get("X-Correlation-Id")
+    assert "max-age=2" in response.headers.get("Cache-Control", "")
+
+
+def test_status_uses_single_runtime_snapshot(readonly_client: TestClient) -> None:
+    repo = readonly_client._repo  # type: ignore[attr-defined]
+    repo.get_runtime_state.reset_mock()
+    readonly_client.get("/api/v1/status")
+    assert repo.get_runtime_state.call_count == 1
