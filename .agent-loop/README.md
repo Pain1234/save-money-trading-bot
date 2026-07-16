@@ -131,7 +131,7 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
 - **Allowlist review workspace (fail-closed):** live Codex runs in a **temp directory outside the repo** built by `build_review_workspace.py --git-rev <reviewed_head>`. Diff paths are materialized from **git blobs** (`git show <rev>:<path>`), never copied from the worktree. Symlinks (`120000`) are rejected. If any deny-listed path appears in the diff (`.env`, `.codex/**`, `*secret*`, credentials, private keys, etc.), the builder exits `1` and the gate returns `REVIEW_FAILED` — no usable workspace. Prompt, schema, patch, and optional `AGENTS.md` are still copied as review artifacts. Manifest lists allowlisted / skipped_missing / git_rev / out_dir_name only (no absolute `repo_root`).
 - **OS isolation:** on Linux/Unix the gate `chmod 000`s the repo root during Codex (then restores). Set `AGENT_LOOP_SKIP_OS_ISOLATION=1` only for tests/mocks. Other platforms → `REVIEW_FAILED` unless that skip is set.
-- **Auth isolation:** only `auth.json` is seeded into an isolated `CODEX_HOME` that is a **sibling temp directory outside the review workspace** (never under the Codex cwd/workspace). Real Codex without auth → `REVIEW_FAILED`. `KEEP_WORKSPACE` does not retain auth; only `AGENT_LOOP_KEEP_AUTH=1` keeps the auth home.
+- **Auth isolation (env-only):** Codex never receives a readable `auth.json`. The gate extracts `OPENAI_API_KEY` / `CODEX_API_KEY` from an existing env key or from the user's `auth.json` via `extract_codex_auth_env.py` (temp env file deleted immediately; never logged). An ephemeral empty `CODEX_HOME` (sibling temp, no `auth.json`) is set so Codex cannot browse `~/.codex`. Real Codex without env auth → `REVIEW_FAILED`. `KEEP_WORKSPACE` never retains tokens; `AGENT_LOOP_KEEP_AUTH=1` may keep only the empty home / `auth-via-env.ok` marker (never `auth.json`).
 - Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
 - Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_SKIP_OS_ISOLATION=1`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
@@ -161,6 +161,7 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 | `run-codex-review.ps1` | Main gate orchestration |
 | `run-review-loop.ps1` | Alias wrapper |
 | `build_review_workspace.py` | Allowlisted Codex workspace (secret isolation) |
+| `extract_codex_auth_env.py` | Map auth.json → env KEY=value (no token logs) |
 | `codex-review-prompt.md` | Codex instructions |
 | `codex-review-schema.json` | JSON Schema draft-07 |
 | `secret_scan.py` | Pre-Codex secret patterns |

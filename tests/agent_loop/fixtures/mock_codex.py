@@ -50,11 +50,21 @@ def main(argv: list[str]) -> int:
         return 2
 
     if os.environ.get("AGENT_LOOP_REQUIRE_AUTH", "").strip() == "1":
-        codex_home = os.environ.get("CODEX_HOME", "").strip()
-        auth = Path(codex_home) / "auth.json" if codex_home else None
-        if auth is None or not auth.is_file():
-            print("mock_codex: auth.json missing under CODEX_HOME", file=sys.stderr)
+        mock_ok = os.environ.get("AGENT_LOOP_MOCK_AUTH_OK", "").strip() == "1"
+        has_key = bool(
+            os.environ.get("OPENAI_API_KEY", "").strip()
+            or os.environ.get("CODEX_API_KEY", "").strip()
+        )
+        if not mock_ok and not has_key:
+            print(
+                "mock_codex: OPENAI_API_KEY/CODEX_API_KEY missing "
+                "(or set AGENT_LOOP_MOCK_AUTH_OK=1)",
+                file=sys.stderr,
+            )
             return 3
+        seen_file = os.environ.get("AGENT_LOOP_AUTH_ENV_SEEN_FILE", "").strip()
+        if seen_file and has_key:
+            Path(seen_file).write_text("AGENT_LOOP_AUTH_ENV_SEEN=1\n", encoding="utf-8")
 
     if argv[-1] == "-":
         instruction_text = sys.stdin.read()

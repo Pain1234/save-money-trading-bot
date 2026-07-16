@@ -473,6 +473,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     argv_file = tmp_path / "codex-argv.txt"
     home_file = tmp_path / "codex-home.txt"
     stdin_file = tmp_path / "codex-stdin.txt"
+    auth_seen = tmp_path / "auth-env-seen.txt"
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
@@ -481,6 +482,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
         AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
         AGENT_LOOP_CODEX_HOME_FILE=str(home_file),
         AGENT_LOOP_CODEX_STDIN_FILE=str(stdin_file),
+        AGENT_LOOP_AUTH_ENV_SEEN_FILE=str(auth_seen),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
         AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
         AGENT_LOOP_REQUIRE_AUTH="1",
@@ -497,7 +499,10 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     assert home_file.is_file(), "mock should record CODEX_HOME"
     codex_home = Path(home_file.read_text(encoding="utf-8").strip())
     assert codex_home.is_dir()
-    assert (codex_home / "auth.json").is_file()
+    assert not (codex_home / "auth.json").exists(), "auth.json must not be under CODEX_HOME"
+    assert (codex_home / "auth-via-env.ok").is_file()
+    assert auth_seen.is_file(), "mock should record env auth was present"
+    assert "AGENT_LOOP_AUTH_ENV_SEEN=1" in auth_seen.read_text(encoding="utf-8")
     assert codex_home.name.startswith("codex-auth-")
 
     stdin_text = stdin_file.read_text(encoding="utf-8")
@@ -509,6 +514,8 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     workspace = Path(m.group(1).strip())
     assert workspace.is_dir()
     assert (workspace / "workspace-manifest.json").is_file()
+    assert not (workspace / "auth.json").exists(), "auth.json must not be in workspace"
+    assert "UNTRUSTED DATA" in stdin_text
 
     # Auth home must NOT be under the Codex-readable workspace.
     try:
@@ -538,7 +545,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
 def test_14b_keep_workspace_does_not_keep_auth(
     repo_root, fixtures_dir, gate_ps1, tmp_path
 ):
-    """KEEP_WORKSPACE must not retain auth.json / CODEX_HOME."""
+    """KEEP_WORKSPACE must not retain auth.json / CODEX_HOME when KEEP_AUTH unset."""
     home_file = tmp_path / "codex-home.txt"
     stdin_file = tmp_path / "codex-stdin.txt"
     auth_src = tmp_path / "auth.json"

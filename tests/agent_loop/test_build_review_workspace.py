@@ -271,6 +271,79 @@ def test_paths_from_diff_extracts_c_quoted_paths():
     assert "foo\tbar" in paths
     assert mod.decode_c_quoted_path(r'b/foo\tbar') == "b/foo\tbar"
     assert mod.decode_c_quoted_path(r'b/foo\"bar') == 'b/foo"bar'
+    # Octal escapes are UTF-8 bytes: \303\266 → ö
+    assert "föo" in mod.decode_c_quoted_path(r"b/f\303\266o.txt")
+    assert mod.decode_c_quoted_path(r"b/f\303\266o.txt").endswith("föo.txt")
+
+
+def test_paths_from_diff_binary_and_rename_headers():
+    spec = importlib.util.spec_from_file_location(
+        "build_review_workspace_binary", BUILD_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    binary_diff = (
+        "diff --git a/.env b/.env\n"
+        "Binary files a/.env and b/.env differ\n"
+    )
+    paths = mod.paths_from_diff(binary_diff)
+    assert ".env" in paths
+
+    rename_diff = (
+        "diff --git a/ok.py b/.env\n"
+        "similarity index 100%\n"
+        "rename from ok.py\n"
+        "rename to .env\n"
+    )
+    rpaths = mod.paths_from_diff(rename_diff)
+    assert "ok.py" in rpaths
+    assert ".env" in rpaths
+
+    copy_diff = (
+        "diff --git a/src/a.py b/credentials.json\n"
+        "copy from src/a.py\n"
+        "copy to credentials.json\n"
+    )
+    cpaths = mod.paths_from_diff(copy_diff)
+    assert "src/a.py" in cpaths
+    assert "credentials.json" in cpaths
+
+
+def test_binary_env_diff_fail_closed(tmp_path):
+    """Binary .env diff must fail closed even without ---/+++ hunks."""
+    repo = tmp_path / "repo"
+    sha = _git_init_with_file(repo, "src/ok.py", "x=1\n")
+    diff = tmp_path / "binary_env.diff"
+    diff.write_text(
+        "diff --git a/.env b/.env\n"
+        "Binary files a/.env and b/.env differ\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "ws"
+    proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "deny-listed" in (proc.stderr or "").lower() or "DENIED" in (proc.stderr or "")
+    assert not out.exists() or not any(out.rglob("*"))
+
+
+def test_rename_to_denied_path_fail_closed(tmp_path):
+    """rename to a deny-listed path must fail closed."""
+    repo = tmp_path / "repo"
+    sha = _git_init_with_file(repo, "ok.py", "x=1\n")
+    diff = tmp_path / "rename_env.diff"
+    diff.write_text(
+        "diff --git a/ok.py b/.env\n"
+        "similarity index 100%\n"
+        "rename from ok.py\n"
+        "rename to .env\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "ws"
+    proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "deny-listed" in (proc.stderr or "").lower() or "DENIED" in (proc.stderr or "")
+    assert not out.exists() or not any(out.rglob("*"))
 
 
 def test_quoted_deny_path_in_diff_fail_closed(tmp_path):

@@ -27,6 +27,13 @@ from pathlib import Path
 DIFF_PATH_RE = re.compile(
     r'^(?:\+\+\+|---) (?:(?P<unquoted>[ab]/.+)|"(?P<quoted>.*)")$'
 )
+RENAME_COPY_RE = re.compile(
+    r'^(?:rename|copy) (?:from|to) (?P<path>.+)$'
+)
+BINARY_FILES_RE = re.compile(
+    r'^Binary files (?:(?P<a_unquoted>a/.+?)|"(?P<a_quoted>.*)") '
+    r'and (?:(?P<b_unquoted>b/.+?)|"(?P<b_quoted>.*)") differ$'
+)
 
 # Paths that must never be copied into the review workspace (even if in the diff).
 DENY_PATTERNS: tuple[str, ...] = (
@@ -58,7 +65,11 @@ def normalize_rel(path: str) -> str:
 
 
 def decode_c_quoted_path(raw: str) -> str:
-    """Decode a git C-quoted path body (contents inside the surrounding quotes)."""
+    """Decode a git C-quoted path body (contents inside the surrounding quotes).
+
+    Octal escapes (\\NNN) are bytes: consecutive octal escapes are collected into
+    a bytearray and UTF-8-decoded as a run (e.g. \\303\\266 → ö).
+    """
     out: list[str] = []
     i = 0
     n = len(raw)
@@ -94,19 +105,78 @@ def decode_c_quoted_path(raw: str) -> str:
             out.append("\\")
             i += 2
         elif nxt in "01234567":
-            # Up to three octal digits
-            j = i + 1
-            oct_digits = []
-            while j < n and len(oct_digits) < 3 and raw[j] in "01234567":
-                oct_digits.append(raw[j])
-                j += 1
-            out.append(chr(int("".join(oct_digits), 8)))
-            i = j
+            # Consecutive \\NNN octal escapes are UTF-8 bytes, not Latin-1 codepoints.
+            byte_vals = bytearray()
+            while i < n and raw[i] == "\\" and i + 1 < n and raw[i + 1] in "01234567":
+                j = i + 1
+                oct_digits: list[str] = []
+                while j < n and len(oct_digits) < 3 and raw[j] in "01234567":
+                    oct_digits.append(raw[j])
+                    j += 1
+                byte_vals.append(int("".join(oct_digits), 8))
+                i = j
+            out.append(byte_vals.decode("utf-8", errors="replace"))
         else:
             # Unknown escape: keep the escaped character
             out.append(nxt)
             i += 2
     return "".join(out)
+
+
+def _next_diff_path_token(s: str, start: int = 0) -> tuple[str, bool, int] | None:
+    """Parse one git diff path token.
+
+    Returns (raw_or_quoted_body, was_quoted, next_index).
+    """
+    while start < len(s) and s[start].isspace():
+        start += 1
+    if start >= len(s):
+        return None
+    if s[start] == '"':
+        i = start + 1
+        while i < len(s):
+            if s[i] == "\\":
+                i += 2 if i + 1 < len(s) else 1
+                continue
+            if s[i] == '"':
+                return s[start + 1 : i], True, i + 1
+            i += 1
+        return None
+    i = start
+    while i < len(s) and not s[i].isspace():
+        i += 1
+    return s[start:i], False, i
+
+
+def _normalize_diff_path_token(token: str, *, quoted: bool) -> str:
+    decoded = decode_c_quoted_path(token) if quoted else token
+    return normalize_rel(_strip_ab_prefix(decoded))
+
+
+def _add_path(found: list[str], seen: set[str], rel: str) -> None:
+    if not rel or rel == "/dev/null":
+        return
+    if rel not in seen:
+        seen.add(rel)
+        found.append(rel)
+
+
+def paths_from_diff_git_line(line: str) -> list[str]:
+    """Extract paths from a `diff --git ...` header line."""
+    if not line.startswith("diff --git "):
+        return []
+    rest = line[len("diff --git ") :]
+    paths: list[str] = []
+    pos = 0
+    for _ in range(2):
+        parsed = _next_diff_path_token(rest, pos)
+        if parsed is None:
+            break
+        token, quoted, pos = parsed
+        rel = _normalize_diff_path_token(token, quoted=quoted)
+        if rel and rel != "/dev/null":
+            paths.append(rel)
+    return paths
 
 
 def _strip_ab_prefix(path: str) -> str:
@@ -140,22 +210,52 @@ def is_denied(rel_path: str) -> bool:
 
 
 def paths_from_diff(diff_text: str) -> list[str]:
+    """Extract all file paths mentioned in a unified / git diff (fail-closed inputs)."""
     found: list[str] = []
     seen: set[str] = set()
     for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            for rel in paths_from_diff_git_line(line):
+                _add_path(found, seen, rel)
+            continue
+
         m = DIFF_PATH_RE.match(line)
-        if not m:
+        if m:
+            if m.group("quoted") is not None:
+                decoded = decode_c_quoted_path(m.group("quoted"))
+                rel = normalize_rel(_strip_ab_prefix(decoded))
+            else:
+                rel = normalize_rel(_strip_ab_prefix(m.group("unquoted")))
+            _add_path(found, seen, rel)
             continue
-        if m.group("quoted") is not None:
-            decoded = decode_c_quoted_path(m.group("quoted"))
-            rel = normalize_rel(_strip_ab_prefix(decoded))
-        else:
-            rel = normalize_rel(_strip_ab_prefix(m.group("unquoted")))
-        if not rel or rel == "/dev/null":
+
+        m = RENAME_COPY_RE.match(line)
+        if m:
+            # rename/copy lines have no a_/b_ prefix; may still be C-quoted.
+            raw_path = m.group("path")
+            if raw_path.startswith('"') and raw_path.endswith('"') and len(raw_path) >= 2:
+                rel = normalize_rel(decode_c_quoted_path(raw_path[1:-1]))
+            else:
+                rel = normalize_rel(raw_path)
+            _add_path(found, seen, rel)
             continue
-        if rel not in seen:
-            seen.add(rel)
-            found.append(rel)
+
+        m = BINARY_FILES_RE.match(line)
+        if m:
+            if m.group("a_quoted") is not None:
+                a_rel = normalize_rel(
+                    _strip_ab_prefix(decode_c_quoted_path(m.group("a_quoted")))
+                )
+            else:
+                a_rel = normalize_rel(_strip_ab_prefix(m.group("a_unquoted")))
+            if m.group("b_quoted") is not None:
+                b_rel = normalize_rel(
+                    _strip_ab_prefix(decode_c_quoted_path(m.group("b_quoted")))
+                )
+            else:
+                b_rel = normalize_rel(_strip_ab_prefix(m.group("b_unquoted")))
+            _add_path(found, seen, a_rel)
+            _add_path(found, seen, b_rel)
     return found
 
 
