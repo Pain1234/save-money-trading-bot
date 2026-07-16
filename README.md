@@ -55,13 +55,31 @@ Issue #58: build test failure was missing `npm ci`, not a dashboard source defec
 
 ### Tests
 
+Run these locally before pushing (mirrors the CI gate on `main`):
+
 ```bash
-python -m pytest tests/ -v
-python -m pytest tests/paper_trading -m postgres -v   # requires PostgreSQL
-ruff check .
+# Lint
+python -m ruff check .
+
+# Typecheck (dev dependency; not a required CI job, but recommended pre-push)
+python -m mypy .
+
+# Unit tests (no PostgreSQL / live / soak / reporting / dashboard build)
+python -m pytest tests/ \
+  --ignore=tests/deploy \
+  -m "not postgres and not live and not soak and not reporting" \
+  -q
+
+# PostgreSQL integration (requires local Postgres; see docker-compose note above)
+python -m pytest tests/paper_trading tests/market_data -m "postgres and not soak" -q
+
+# Optional: closer to full CI
+python -m pytest tests/market_data -m "not live and not postgres" -q
+python -m pytest tests/deploy -q   # needs npm ci + Node 22
 ```
 
 See `docs/baseline-paper-v1.md` for markers, CI jobs, and recorded baseline results.
+CI triggers and required checks: `docs/branch-protection.md`.
 
 ## Governance
 

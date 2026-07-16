@@ -4,6 +4,16 @@
 **Branch:** `main` (GitHub default since Issue #64, 2026-07-14)
 **Workflow:** `.github/workflows/ci.yml`
 
+## When CI runs
+
+| Event | Runs CI? |
+|-------|----------|
+| `pull_request` targeting `main` | Yes (cancel-in-progress on new commits) |
+| `push` to `main` | Yes |
+| `workflow_dispatch` | Yes (manual) |
+| Push to a feature branch | No (use the open PR against `main`) |
+| Docs-only PR (only `*.md` / `docs/**` / license noise) | Lightweight `changes` job only; required jobs are skipped and count as passing |
+
 ## Required status checks
 
 These job `name` values from CI must pass before merging a PR into `main`:
@@ -18,8 +28,8 @@ These job `name` values from CI must pass before merging a PR into `main`:
 | `test-deploy` | `test-deploy` | Dashboard build + bundle checks (Node 22) |
 | `postgres` | `postgres` | PostgreSQL integration tests (`-m "postgres and not soak"`) |
 
-**Not required:** `github-governance-setup.yml` `validate` job — runs only when governance
-paths change, not on every PR.
+**Not required:** `changes` (path filter), `research-repro`, `perf-reporting`, and
+`github-governance-setup.yml` `validate` (path-filtered governance dry-run).
 
 ## Protection rules
 
