@@ -6,6 +6,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+import jsonschema
 import pytest
 from pydantic import ValidationError
 from research.experiment_spec import (
@@ -115,7 +116,7 @@ def test_json_schema_validation_path() -> None:
 
     bad = deepcopy(data)
     bad["symbols"] = ["BTC", "DOGE"]
-    with pytest.raises(Exception):
+    with pytest.raises(jsonschema.ValidationError):
         validate_against_json_schema(bad)
 
 

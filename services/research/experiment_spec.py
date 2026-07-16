@@ -141,7 +141,11 @@ class ExperimentSpec(BaseModel):
         return ordered
 
 
-def parse_experiment_spec(data: dict[str, Any], *, check_json_schema: bool = False) -> ExperimentSpec:
+def parse_experiment_spec(
+    data: dict[str, Any],
+    *,
+    check_json_schema: bool = False,
+) -> ExperimentSpec:
     """Validate and parse a raw mapping into ``ExperimentSpec``."""
     assert_no_secrets(data)
     if check_json_schema:
@@ -157,7 +161,8 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, MarketSymbol):
         return value.value
     if isinstance(value, dict):
-        return {str(k): _canonical_value(v) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
+        items = sorted(value.items(), key=lambda kv: str(kv[0]))
+        return {str(k): _canonical_value(v) for k, v in items}
     if isinstance(value, (list, tuple)):
         return [_canonical_value(v) for v in value]
     return value
