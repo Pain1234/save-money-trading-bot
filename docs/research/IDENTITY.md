@@ -19,3 +19,5 @@
 ## CI double-run
 
 Two executions of the same Spec on the same commit/dataset must share `run_id` and produce identical **semantic** artifact hashes. `attempt_id` and timestamps are excluded from semantic hashes.
+
+Implemented by `research.repro.compare_semantic_run_dirs` and enforced in CI via `tests/research/test_double_run_repro.py` (job `research-repro`).
