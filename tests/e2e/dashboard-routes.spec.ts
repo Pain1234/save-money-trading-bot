@@ -18,8 +18,8 @@ for (const key of requiredEnv) {
 
 const routes: ReadonlyArray<{ path: string; heading: RegExp }> = [
   { path: "/dashboard", heading: /^Overview$/i },
-  { path: "/dashboard/positions", heading: /^Positions/i },
-  { path: "/dashboard/fills", heading: /^Fills/i },
+  { path: "/dashboard/positions", heading: /^Positions$/i },
+  { path: "/dashboard/fills", heading: /^Fills$/i },
   { path: "/dashboard/equity", heading: /^Equity History$/i },
 ];
 

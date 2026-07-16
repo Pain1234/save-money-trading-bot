@@ -1,8 +1,10 @@
 # Railway dashboard performance evidence (Issue #101)
 
+> **Update (Issue #124, 2026-07-16):** Layer A/B measurement honesty hardened. Exact success headings + `dashboard-error-panel` / `dashboard-page-ready` markers; warm/soft usable p95 with n=5 (max **877 ms** Status soft); cold usable p95 remains `NOT_MEASURED` (n=1). All 77 observed samples under 1.5 s. Layer B cold TTFB recorded separately (not warmup-only discard).
+
 > **Update (Issue #121, 2026-07-15):** Region hypothesis **CONFIRMED**. After moving paper-trading-api sfo → europe-west4-drams3a with no other changes, residual p95 fell from ~2155–2176 ms to ~49–54 ms on wallet/summary/status. See dashboard-fastapi-residual-121.md and dashboard-layer-c-before-121.json / dashboard-layer-c-after-121.json.
 
-> **Update (authenticated A/B, 2026-07-16):** Layer A + Layer B measured against `https://bot.save-money.xyz`. Artifacts: `dashboard-layer-a-browser.json`, `dashboard-layer-b-ssr.json`. Usable content max **869 ms** (Status soft_nav); hard-nav LCP non-null; warm SSR TTFB p95 **~106–135 ms**. Roadmap **1.5 s** usable-content budget **met**. Indexes remain `NO_ACTION`. H2 (~50 ms residual / per-request engine) stays `FOLLOW_UP_REQUIRED` outside #101 close scope.
+> **Update (authenticated A/B close #101, 2026-07-16):** Initial A/B artifacts attached via PR #123. Superseded for honesty by #124 remeasure (markers + p95 rules + cold Layer B).
 
 **Date:** 2026-07-15 (Layer C) / 2026-07-16 (Layers A/B)
 **Project:** `graceful-compassion` / environment `production`
@@ -40,36 +42,38 @@ Residuals/hops are **p95 of per-sample deltas**, not `p95(a) − p95(b)`.
 
 ---
 
-## Layer A — browser usable content (`MEASURED`)
+## Layer A — browser usable content (`MEASURED` samples; warm/soft p95 `MEASURED`)
 
-Authenticated Playwright (`npm run test:dashboard-perf -- tests/e2e/dashboard-layer-a-perf.spec.ts`), 2026-07-16.
+Authenticated Playwright (`LAYER_A_WARM_REPEATS=5`, `LAYER_A_COLD_REPEATS=1`), issue **#124**.
 
 | Metric | Value |
 |--------|------:|
-| Routes × modes | 7 × (cold/warm/soft) = 21 samples |
-| Hard-nav LCP | non-null on all routes |
-| Worst usable content | **869 ms** (Status soft_nav) |
-| Typical warm hard-nav usable | **47–61 ms** (most pages); Status warm **372 ms** |
-| 1.5 s budget | **met** on all samples |
+| Samples | 77 (7 routes × (1 cold + 5 warm + 5 soft)) |
+| Success criterion | Exact success heading; no `/unavailable/` heading; no `dashboard-error-panel` |
+| Observed max usable | **877 ms** (Status soft_nav) |
+| All samples under 1.5 s | **yes** (observation check) |
+| Warm/soft usable p95 | `MEASURED` (n=5); max soft p95 **877 ms** |
+| Cold usable p95 | `NOT_MEASURED` (n=1) |
 
-Skeletons usually absent on hard navigation (`force-dynamic`); soft_nav more often shows skeleton. Details in `dashboard-sql-audit.md` §5.
+Do **not** claim roadmap **p95** from single cold samples. Details in `dashboard-sql-audit.md` §5.
 
 ---
 
-## Layer B — authenticated SSR (`MEASURED`)
+## Layer B — authenticated SSR (`MEASURED`, cold + warm)
 
-`python scripts/measure_dashboard_ssr.py --warm-runs 10`, 2026-07-16.
+`python scripts/measure_dashboard_ssr.py --warm-runs 10 --cold-runs 2`, issue **#124**.
 
-| Route | TTFB p95 (ms) | HTML total p95 (ms) | HTML bytes p50 |
-|-------|--------------:|--------------------:|---------------:|
-| Overview | 106.2 | 113.9 | 12963 |
-| Status | 108.8 | 144.2 | 17052 |
-| Positions | 116.5 | 122.3 | 12459 |
-| Orders | 116.2 | 124.3 | 12438 |
-| Fills | 112.7 | 121.7 | 12431 |
-| Equity | 118.1 | 139.3 | 16610 |
-| Incidents | 134.6 | 160.1 | 26160 |
+| Route | Warm TTFB p95 (ms) | Cold TTFB p95 (ms) | HTML bytes p50 |
+|-------|-------------------:|-------------------:|---------------:|
+| Overview | 114.7 | 104.0 | 12963 |
+| Status | 111.4 | 107.9 | 17052 |
+| Positions | 103.3 | 105.8 | 12459 |
+| Orders | 122.3 | 101.6 | 12438 |
+| Fills | 106.8 | 88.6 | 12431 |
+| Equity | 103.1 | 101.6 | 16610 |
+| Incidents | 120.2 | 81.7 | 26160 |
 
+Cold samples are retained in the JSON (`cold_ttfb_samples_ms`); not discarded as warmup-only.
 Historical public `/login` only: TTFB p95 **187.4 ms**, HTML bytes p50 **6222**.
 
 ---
@@ -125,13 +129,14 @@ See `dashboard-layer-d-explain-railway.json`. Composite indexes not justified: e
 
 ---
 
-## Closing Issue #101
+## Closing Issue #101 / follow-up #124
 
-- [x] Layer A authenticated browser timings attached
-- [x] Layer B authenticated SSR TTFB attached
-- [x] Hard-nav LCP non-null on Railway confirmed
+- [x] Layer A authenticated browser timings attached (exact success markers in #124)
+- [x] Layer B authenticated SSR TTFB attached (cold + warm in #124)
+- [x] Warm/soft usable p95 under 1.5 s (n=5); cold p95 honestly `NOT_MEASURED`
 - [x] Region hypothesis for ~2.13 s residual confirmed (#121)
-- [ ] Optional later: EXPLAIN when fills/orders grow past empty (not a close blocker)
+- [ ] Optional later: cold Layer A with `LAYER_A_COLD_REPEATS≥5`
+- [ ] Optional later: EXPLAIN when fills/orders grow past empty
 - [ ] Optional later: H2 process-scoped engine follow-up (separate issue)
 
-Issue **#101** is closable with this evidence pack + audit checklist.
+Issue **#101** closed via PR #123; honesty corrections tracked in **#124**.

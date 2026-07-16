@@ -6,7 +6,10 @@ export function ErrorPanel({
   message?: string;
 }) {
   return (
-    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-6">
+    <div
+      data-testid="dashboard-error-panel"
+      className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
+    >
       <h1 className="text-xl font-semibold text-red-300">{title}</h1>
       <p className="mt-2 text-sm text-text-muted">
         {message ??

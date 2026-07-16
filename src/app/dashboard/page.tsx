@@ -20,7 +20,7 @@ export default async function DashboardOverviewPage() {
       status.heartbeat_age_seconds > status.stale_heartbeat_threshold_seconds;
 
     return (
-      <div className="space-y-6">
+      <div data-testid="dashboard-page-ready" className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Overview</h1>
           <StatusBadge status={summary.display_status} />
@@ -66,7 +66,10 @@ export default async function DashboardOverviewPage() {
     );
   } catch (error) {
     return (
-      <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-6">
+      <div
+        data-testid="dashboard-error-panel"
+        className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
+      >
         <h1 className="text-xl font-semibold text-red-300">API Error</h1>
         <p className="mt-2 text-sm">{getMonitoringErrorMessage(error)}</p>
       </div>

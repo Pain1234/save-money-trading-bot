@@ -220,3 +220,31 @@ def test_layer_a_source_avoids_skeleton_timeout_before_heading() -> None:
     # Must not await skeleton before recording heading.
     assert "await skeletonWatch" not in source
     assert "Same document" in source or "same document" in source.lower()
+    # #124: exact success headings / error rejection — not loose /Status/i.
+    assert "/^Status & Readiness$/i" in source
+    assert "/^Positions$/i" in source
+    assert "dashboard-error-panel" in source
+    assert "unavailable" in source
+    assert "p95 NOT_MEASURED" in source
+    assert "usable_content_p95_ms" in source
+
+
+def test_layer_b_records_cold_samples_separately() -> None:
+    source = (REPO_ROOT / "scripts" / "measure_dashboard_ssr.py").read_text(
+        encoding="utf-8"
+    )
+    assert "cold_ttfb_p95_ms" in source
+    assert "cold_status" in source
+    assert "cold_samples" in source
+    assert "not discarded as warmup-only" in source.lower() or "Cold samples are recorded" in source
+
+
+def test_error_panel_exposes_dashboard_error_testid() -> None:
+    panel = (REPO_ROOT / "src" / "components" / "monitor" / "ErrorPanel.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert 'data-testid="dashboard-error-panel"' in panel
+    table = (REPO_ROOT / "src" / "components" / "monitor" / "DataTable.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert 'data-testid="dashboard-page-ready"' in table
