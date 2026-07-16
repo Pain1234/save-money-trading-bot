@@ -11,7 +11,7 @@ export function DataTable({
 }) {
   if (rows.length === 0) {
     return (
-      <div>
+      <div data-testid="dashboard-page-ready">
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
         <p className="text-sm text-text-muted">{emptyMessage}</p>
       </div>
@@ -19,7 +19,7 @@ export function DataTable({
   }
 
   return (
-    <div>
+    <div data-testid="dashboard-page-ready">
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       <div className="overflow-x-auto rounded-xl border border-border-subtle">
         <table className="min-w-full text-left text-sm">

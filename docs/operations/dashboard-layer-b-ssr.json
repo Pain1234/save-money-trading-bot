@@ -2,7 +2,7 @@
   "measurement": "layer_b_nextjs_ssr",
   "issue": 101,
   "status": "MEASURED",
-  "measured_at": "2026-07-16T12:51:02.348281+00:00",
+  "measured_at": "2026-07-16T13:08:34.186156+00:00",
   "base_url_host_only": "bot.save-money.xyz",
   "warm_runs": 10,
   "cold_runs": 2,
@@ -12,85 +12,169 @@
       "name": "overview",
       "path": "/dashboard",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 106.17910000291886,
-      "warm_total_p95_ms": 113.90060000121593,
-      "html_bytes_p50": 12963,
-      "html_bytes_max": 12963,
+      "warm_ttfb_p95_ms": 114.7041999938665,
+      "warm_total_p95_ms": 125.21969999943394,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 104.0391999995336,
+      "cold_total_p95_ms": 111.91699999471894,
+      "cold_ttfb_samples_ms": [
+        104.0391999995336,
+        99.15239999827463
+      ],
+      "cold_total_samples_ms": [
+        111.91699999471894,
+        106.36939999676542
+      ],
+      "html_bytes_p50": 12965,
+      "html_bytes_max": 12965,
       "final_url": "https://bot.save-money.xyz/dashboard",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     },
     {
       "name": "status",
       "path": "/dashboard/status",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 108.84490000171354,
-      "warm_total_p95_ms": 144.16289999644505,
-      "html_bytes_p50": 17052,
-      "html_bytes_max": 17052,
+      "warm_ttfb_p95_ms": 111.37179999786895,
+      "warm_total_p95_ms": 279.4138999961433,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 107.85269999905722,
+      "cold_total_p95_ms": 194.54689999838592,
+      "cold_ttfb_samples_ms": [
+        107.85269999905722,
+        99.2268000045442
+      ],
+      "cold_total_samples_ms": [
+        194.54689999838592,
+        172.45810000167694
+      ],
+      "html_bytes_p50": 17054,
+      "html_bytes_max": 17054,
       "final_url": "https://bot.save-money.xyz/dashboard/status",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     },
     {
       "name": "positions",
       "path": "/dashboard/positions",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 116.4708999931463,
-      "warm_total_p95_ms": 122.29939999815542,
+      "warm_ttfb_p95_ms": 103.25119999470189,
+      "warm_total_p95_ms": 110.87689999840222,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 105.75840000092285,
+      "cold_total_p95_ms": 112.76750000251923,
+      "cold_ttfb_samples_ms": [
+        105.75840000092285,
+        98.19900000002235
+      ],
+      "cold_total_samples_ms": [
+        112.76750000251923,
+        105.80460000346648
+      ],
       "html_bytes_p50": 12459,
       "html_bytes_max": 12459,
       "final_url": "https://bot.save-money.xyz/dashboard/positions",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     },
     {
       "name": "orders",
       "path": "/dashboard/orders",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 116.21020000166027,
-      "warm_total_p95_ms": 124.28860000363784,
+      "warm_ttfb_p95_ms": 122.25089999992633,
+      "warm_total_p95_ms": 129.89920000109123,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 101.6109000047436,
+      "cold_total_p95_ms": 108.84320000332082,
+      "cold_ttfb_samples_ms": [
+        101.6109000047436,
+        87.07560000038939
+      ],
+      "cold_total_samples_ms": [
+        108.84320000332082,
+        95.67740000056801
+      ],
       "html_bytes_p50": 12438,
       "html_bytes_max": 12438,
       "final_url": "https://bot.save-money.xyz/dashboard/orders",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     },
     {
       "name": "fills",
       "path": "/dashboard/fills",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 112.70479999802774,
-      "warm_total_p95_ms": 121.69279999943683,
+      "warm_ttfb_p95_ms": 106.83749999589054,
+      "warm_total_p95_ms": 113.92179999529617,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 88.5539000009885,
+      "cold_total_p95_ms": 96.0761000023922,
+      "cold_ttfb_samples_ms": [
+        88.5539000009885,
+        81.40830000047572
+      ],
+      "cold_total_samples_ms": [
+        96.0761000023922,
+        94.5824000009452
+      ],
       "html_bytes_p50": 12431,
       "html_bytes_max": 12431,
       "final_url": "https://bot.save-money.xyz/dashboard/fills",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     },
     {
       "name": "equity",
       "path": "/dashboard/equity",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 118.08100000052946,
-      "warm_total_p95_ms": 139.31490000686608,
+      "warm_ttfb_p95_ms": 103.06649999984074,
+      "warm_total_p95_ms": 121.01830000028713,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 101.61560000415193,
+      "cold_total_p95_ms": 125.8386999979848,
+      "cold_ttfb_samples_ms": [
+        101.61560000415193,
+        94.3635000003269
+      ],
+      "cold_total_samples_ms": [
+        125.8386999979848,
+        114.11009999574162
+      ],
       "html_bytes_p50": 16610,
       "html_bytes_max": 16610,
       "final_url": "https://bot.save-money.xyz/dashboard/equity",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     },
     {
       "name": "incidents",
       "path": "/dashboard/incidents",
       "status": "MEASURED",
-      "warm_ttfb_p95_ms": 134.6285000036005,
-      "warm_total_p95_ms": 160.10370000003604,
+      "warm_ttfb_p95_ms": 120.2255000025616,
+      "warm_total_p95_ms": 142.88980000128504,
+      "cold_runs": 2,
+      "cold_status": "MEASURED",
+      "cold_ttfb_p95_ms": 81.67839999805437,
+      "cold_total_p95_ms": 107.94290000194451,
+      "cold_ttfb_samples_ms": [
+        79.84929999656742,
+        81.67839999805437
+      ],
+      "cold_total_samples_ms": [
+        107.94290000194451,
+        106.82200000155717
+      ],
       "html_bytes_p50": 26160,
       "html_bytes_max": 26160,
       "final_url": "https://bot.save-money.xyz/dashboard/incidents",
       "authenticated": true,
-      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route. Cold samples are recorded separately (not discarded as warmup-only)."
     }
   ],
   "layers": [

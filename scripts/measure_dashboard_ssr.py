@@ -150,12 +150,15 @@ def measure(
     routes: list[dict[str, Any]] = []
     for name, path in DASHBOARD_ROUTES:
         try:
-            for _ in range(cold_runs):
-                probe = fetch_html(opener, base_url, path, cold=True)
-                if not probe.authenticated:
-                    raise RuntimeError(
-                        f"unauthenticated response during warmup: {probe.final_url}"
-                    )
+            cold_samples = [
+                fetch_html(opener, base_url, path, cold=True) for _ in range(cold_runs)
+            ]
+            if not cold_samples or any(not s.authenticated for s in cold_samples):
+                bad = next((s for s in cold_samples if not s.authenticated), None)
+                raise RuntimeError(
+                    "unauthenticated response during cold sample: "
+                    f"{bad.final_url if bad else path}"
+                )
             samples = [fetch_html(opener, base_url, path, cold=False) for _ in range(warm_runs)]
             if not samples or any(not s.authenticated for s in samples):
                 bad = next((s for s in samples if not s.authenticated), None)
@@ -166,6 +169,9 @@ def measure(
                         "status": "NOT_MEASURED",
                         "warm_ttfb_p95_ms": None,
                         "warm_total_p95_ms": None,
+                        "cold_ttfb_p95_ms": None,
+                        "cold_total_p95_ms": None,
+                        "cold_status": "NOT_MEASURED",
                         "html_bytes_p50": None,
                         "html_bytes_max": None,
                         "final_url": bad.final_url if bad else None,
@@ -179,6 +185,9 @@ def measure(
             ttfbs = [s.ttfb_ms for s in samples]
             totals = [s.total_ms for s in samples]
             sizes = [s.html_bytes for s in samples]
+            cold_ttfbs = [s.ttfb_ms for s in cold_samples]
+            cold_totals = [s.total_ms for s in cold_samples]
+            cold_status = "MEASURED" if cold_runs >= 1 else "NOT_MEASURED"
             routes.append(
                 {
                     "name": name,
@@ -186,13 +195,24 @@ def measure(
                     "status": "MEASURED",
                     "warm_ttfb_p95_ms": _percentile(ttfbs, 95),
                     "warm_total_p95_ms": _percentile(totals, 95),
+                    "cold_runs": cold_runs,
+                    "cold_status": cold_status,
+                    "cold_ttfb_p95_ms": (
+                        _percentile(cold_ttfbs, 95) if cold_status == "MEASURED" else None
+                    ),
+                    "cold_total_p95_ms": (
+                        _percentile(cold_totals, 95) if cold_status == "MEASURED" else None
+                    ),
+                    "cold_ttfb_samples_ms": cold_ttfbs,
+                    "cold_total_samples_ms": cold_totals,
                     "html_bytes_p50": int(sorted(sizes)[len(sizes) // 2]),
                     "html_bytes_max": max(sizes),
                     "final_url": samples[0].final_url,
                     "authenticated": True,
                     "note": (
                         "TTFB approximates headers-ready; full HTML includes "
-                        "SSR + server-side FastAPI fetches for this route."
+                        "SSR + server-side FastAPI fetches for this route. "
+                        "Cold samples are recorded separately (not discarded as warmup-only)."
                     ),
                 }
             )
@@ -204,6 +224,9 @@ def measure(
                     "status": "NOT_MEASURED",
                     "warm_ttfb_p95_ms": None,
                     "warm_total_p95_ms": None,
+                    "cold_ttfb_p95_ms": None,
+                    "cold_total_p95_ms": None,
+                    "cold_status": "NOT_MEASURED",
                     "html_bytes_p50": None,
                     "html_bytes_max": None,
                     "note": f"{type(exc).__name__}: {exc}",
