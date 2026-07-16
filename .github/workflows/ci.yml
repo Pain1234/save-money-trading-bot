@@ -142,7 +142,10 @@ jobs:
 
       - name: Research schema + identity + runner + registry gate (#146)
         run: |
-          python -m pytest tests/research tests/paper_trading/test_backtester_parity.py -q --tb=short
+          python -m pytest tests/research \
+            tests/paper_trading/test_backtester_parity.py \
+            tests/paper_trading/test_backtester_signal_parity.py \
+            -q --tb=short
           python -c "from research.experiment_spec import load_experiment_spec; load_experiment_spec('examples/research/btc_eth_sol_experiment.example.json', check_json_schema=True)"
 
   test-market-data:
