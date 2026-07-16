@@ -2,6 +2,8 @@
 
 Copy this template for each research experiment. Store completed reports under `docs/strategies/` as `EXP-YYYYMMDD-NNN-short-title.md` or attach to the GitHub issue.
 
+Before running an experiment, define a machine-validated **ExperimentSpec** (`schema_version: "1.0"`). See [`docs/research/EXPERIMENT_SPEC.md`](research/EXPERIMENT_SPEC.md) and `examples/research/btc_eth_sol_experiment.example.json`.
+
 ---
 
 ```text
