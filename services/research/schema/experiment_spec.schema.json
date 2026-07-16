@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Pain1234/save-money-trading-bot/schemas/experiment_spec.schema.json",
+  "title": "ExperimentSpec",
+  "description": "Versioned research experiment specification contract (P4-01 / Issue #141). References a P3 DatasetManifest by id/path + content hash; does not embed the full manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "hypothesis",
+    "strategy_version",
+    "parameters",
+    "dataset_manifest_ref",
+    "symbols",
+    "time_range",
+    "starting_capital",
+    "fee_assumption",
+    "slippage_assumption",
+    "funding_assumption",
+    "benchmark",
+    "owner"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "ExperimentSpec schema version"
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "strategy_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Strategy/research parameters (no secrets)",
+      "additionalProperties": true
+    },
+    "dataset_manifest_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset_id", "content_hash"],
+      "properties": {
+        "dataset_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "DatasetManifest.dataset_id"
+        },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "DatasetManifest.content_hash (sha256 hex)"
+        },
+        "manifest_path": {
+          "type": ["string", "null"],
+          "description": "Optional path to the DatasetManifest document"
+        }
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["BTC", "ETH", "SOL"]
+      }
+    },
+    "time_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC start of research window"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC end of research window (must be after start)"
+        }
+      }
+    },
+    "starting_capital": {
+      "type": "string",
+      "description": "Starting capital as a decimal string (deterministic encoding)",
+      "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+    },
+    "fee_assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_fee_rate", "exit_fee_rate"],
+      "properties": {
+        "entry_fee_rate": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        },
+        "exit_fee_rate": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        }
+      }
+    },
+    "slippage_assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slippage_bps"],
+      "properties": {
+        "slippage_bps": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        }
+      }
+    },
+    "funding_assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "assumed_rate": {
+          "type": ["string", "null"],
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        }
+      }
+    },
+    "benchmark": {
+      "type": "string",
+      "minLength": 1
+    },
+    "random_seed": {
+      "type": ["integer", "null"]
+    },
+    "expected_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "notes": {
+      "type": "string",
+      "default": ""
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
