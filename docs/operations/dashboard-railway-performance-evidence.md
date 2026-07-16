@@ -1,6 +1,8 @@
 # Railway dashboard performance evidence (Issue #101)
 
-> **Update (Issue #124, 2026-07-16):** Layer A/B measurement honesty hardened. Exact success headings + `dashboard-error-panel` / `dashboard-page-ready` markers; warm/soft usable p95 with n=5 (max **877 ms** Status soft); cold usable p95 remains `NOT_MEASURED` (n=1). All 77 observed samples under 1.5 s. Layer B cold TTFB recorded separately (not warmup-only discard).
+> **Update (Issue #124 cold p95, 2026-07-16):** `LAYER_A_COLD_REPEATS=5` (+ 7s login gap). Cold usable p95 now `MEASURED` on all seven routes (max cold p95 **443 ms** Incidents; max overall soft **871 ms** Status). All 105 samples under 1.5 s.
+
+> **Update (Issue #124, 2026-07-16):** Layer A/B measurement honesty hardened. Exact success headings + `dashboard-error-panel` / `dashboard-page-ready` markers; warm/soft usable p95 with n=5; Layer B cold TTFB recorded separately.
 
 > **Update (Issue #121, 2026-07-15):** Region hypothesis **CONFIRMED**. After moving paper-trading-api sfo → europe-west4-drams3a with no other changes, residual p95 fell from ~2155–2176 ms to ~49–54 ms on wallet/summary/status. See dashboard-fastapi-residual-121.md and dashboard-layer-c-before-121.json / dashboard-layer-c-after-121.json.
 
@@ -42,20 +44,29 @@ Residuals/hops are **p95 of per-sample deltas**, not `p95(a) − p95(b)`.
 
 ---
 
-## Layer A — browser usable content (`MEASURED` samples; warm/soft p95 `MEASURED`)
+## Layer A — browser usable content (`MEASURED` p95 cold/warm/soft)
 
-Authenticated Playwright (`LAYER_A_WARM_REPEATS=5`, `LAYER_A_COLD_REPEATS=1`), issue **#124**.
+Authenticated Playwright (`LAYER_A_WARM_REPEATS=5`, `LAYER_A_COLD_REPEATS=5`, gap 7000 ms).
 
 | Metric | Value |
 |--------|------:|
-| Samples | 77 (7 routes × (1 cold + 5 warm + 5 soft)) |
+| Samples | 105 (7 routes × 5 cold/warm/soft) |
 | Success criterion | Exact success heading; no `/unavailable/` heading; no `dashboard-error-panel` |
-| Observed max usable | **877 ms** (Status soft_nav) |
-| All samples under 1.5 s | **yes** (observation check) |
-| Warm/soft usable p95 | `MEASURED` (n=5); max soft p95 **877 ms** |
-| Cold usable p95 | `NOT_MEASURED` (n=1) |
+| Observed max usable | **871 ms** (Status soft_nav) |
+| All samples under 1.5 s | **yes** |
+| Cold/warm/soft usable p95 | **all `MEASURED`** (n=5); max soft p95 **871 ms**; max cold p95 **443 ms** |
 
-Do **not** claim roadmap **p95** from single cold samples. Details in `dashboard-sql-audit.md` §5.
+| Route | Cold p95 | Warm p95 | Soft p95 |
+|-------|---------:|---------:|---------:|
+| Overview | 91 | 70 | 141 |
+| Status | 395 | 389 | 871 |
+| Positions | 375 | 67 | 140 |
+| Orders | 390 | 64 | 145 |
+| Fills | 370 | 75 | 138 |
+| Equity | 96 | 62 | 135 |
+| Incidents | 443 | 72 | 139 |
+
+Details in `dashboard-sql-audit.md` §5.
 
 ---
 
@@ -133,10 +144,9 @@ See `dashboard-layer-d-explain-railway.json`. Composite indexes not justified: e
 
 - [x] Layer A authenticated browser timings attached (exact success markers in #124)
 - [x] Layer B authenticated SSR TTFB attached (cold + warm in #124)
-- [x] Warm/soft usable p95 under 1.5 s (n=5); cold p95 honestly `NOT_MEASURED`
+- [x] Cold/warm/soft usable p95 under 1.5 s (n=5 each)
 - [x] Region hypothesis for ~2.13 s residual confirmed (#121)
-- [ ] Optional later: cold Layer A with `LAYER_A_COLD_REPEATS≥5`
 - [ ] Optional later: EXPLAIN when fills/orders grow past empty
 - [ ] Optional later: H2 process-scoped engine follow-up (separate issue)
 
-Issue **#101** closed via PR #123; honesty corrections tracked in **#124**.
+Issue **#101** closed via PR #123; honesty + cold p95 tracked in **#124** / follow-up PRs.
