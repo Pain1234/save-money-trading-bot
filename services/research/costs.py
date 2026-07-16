@@ -37,8 +37,17 @@ def require_cost_fields(spec: ExperimentSpec) -> None:
     if fee.entry_fee_rate is None or fee.exit_fee_rate is None:
         msg = "fee_assumption rates are required"
         raise ValueError(msg)
+    if not fee.model_version.strip():
+        msg = "fee_assumption.model_version is required"
+        raise ValueError(msg)
     if slip.slippage_bps is None:
         msg = "slippage_assumption.slippage_bps is required"
+        raise ValueError(msg)
+    if not slip.model_version.strip():
+        msg = "slippage_assumption.model_version is required"
+        raise ValueError(msg)
+    if not funding.model_version.strip():
+        msg = "funding_assumption.model_version is required"
         raise ValueError(msg)
     if funding.enabled and funding.assumed_rate is None:
         msg = "funding_assumption.assumed_rate required when funding enabled"
@@ -55,7 +64,10 @@ def cost_models_from_spec(
         exit_fee_rate=spec.fee_assumption.exit_fee_rate,
     )
     slip = SlippageModel(slippage_bps=spec.slippage_assumption.slippage_bps)
-    funding = FundingModel(enabled=spec.funding_assumption.enabled)
+    funding = FundingModel(
+        enabled=spec.funding_assumption.enabled,
+        assumed_rate=spec.funding_assumption.assumed_rate,
+    )
     return fee, slip, funding
 
 
@@ -64,6 +76,9 @@ def base_cost_scenario(spec: ExperimentSpec) -> CostScenario:
     require_cost_fields(spec)
     return CostScenario(
         name="base",
+        fee_model_version=spec.fee_assumption.model_version,
+        slippage_model_version=spec.slippage_assumption.model_version,
+        funding_model_version=spec.funding_assumption.model_version,
         entry_fee_rate=spec.fee_assumption.entry_fee_rate,
         exit_fee_rate=spec.fee_assumption.exit_fee_rate,
         slippage_bps=spec.slippage_assumption.slippage_bps,
@@ -73,14 +88,21 @@ def base_cost_scenario(spec: ExperimentSpec) -> CostScenario:
 
 
 def cost_manifest_fields(spec: ExperimentSpec) -> dict[str, Any]:
-    """Versioned cost pins for RunManifest / registry."""
+    """Versioned cost pins for RunManifest / costs.json artifact."""
     require_cost_fields(spec)
     scenario = base_cost_scenario(spec)
+    named = [s.name for s in spec.cost_scenarios]
     return {
         "cost_model_version": COST_MODEL_VERSION,
         "fee_model_version": scenario.fee_model_version,
         "slippage_model_version": scenario.slippage_model_version,
         "funding_model_version": scenario.funding_model_version,
         "cost_scenario": scenario.name,
+        "named_cost_scenarios": named,
+        "funding_assumed_rate": (
+            format(scenario.funding_assumed_rate, "f")
+            if scenario.funding_assumed_rate is not None
+            else None
+        ),
         "gross_net_required": True,
     }

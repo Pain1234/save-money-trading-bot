@@ -77,12 +77,14 @@ class FeeAssumption(BaseModel):
 
     entry_fee_rate: Decimal = Field(ge=Decimal("0"))
     exit_fee_rate: Decimal = Field(ge=Decimal("0"))
+    model_version: str = Field(default="1.0", min_length=1)
 
 
 class SlippageAssumption(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     slippage_bps: Decimal = Field(ge=Decimal("0"))
+    model_version: str = Field(default="1.0", min_length=1)
 
 
 class FundingAssumption(BaseModel):
@@ -93,6 +95,18 @@ class FundingAssumption(BaseModel):
         default=None,
         description="Optional constant funding rate assumption when enabled",
     )
+    model_version: str = Field(default="1.0", min_length=1)
+
+
+class CostScenarioSpec(BaseModel):
+    """Named cost variant declared on the Spec (capability only; no P5 stress)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1)
+    fee_assumption: FeeAssumption
+    slippage_assumption: SlippageAssumption
+    funding_assumption: FundingAssumption
 
 
 class ExperimentSpec(BaseModel):
@@ -111,6 +125,10 @@ class ExperimentSpec(BaseModel):
     fee_assumption: FeeAssumption
     slippage_assumption: SlippageAssumption
     funding_assumption: FundingAssumption
+    cost_scenarios: tuple[CostScenarioSpec, ...] = Field(
+        default_factory=tuple,
+        description="Optional named cost variants (scenario capability; P5 evaluates stress)",
+    )
     benchmark: str = Field(min_length=1)
     random_seed: int | None = None
     expected_artifacts: tuple[str, ...] = Field(default_factory=tuple)

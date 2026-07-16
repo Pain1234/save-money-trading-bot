@@ -10,6 +10,7 @@ from research.costs import (
 )
 from research.experiment_spec import (
     EXPERIMENT_SPEC_SCHEMA_VERSION,
+    CostScenarioSpec,
     DatasetManifestRef,
     ExperimentSpec,
     FeeAssumption,
@@ -61,6 +62,7 @@ __all__ = [
     "SCHEMA_PATH",
     "BenchmarkRef",
     "CostScenario",
+    "CostScenarioSpec",
     "DatasetManifestRef",
     "ExperimentRegistry",
     "ExperimentSpec",

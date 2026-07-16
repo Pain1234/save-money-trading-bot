@@ -117,8 +117,12 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
         "equity.json",
         "events.jsonl",
         "checksums.json",
+        "costs.json",
     ):
         assert (run_dir / name).is_file(), name
+    costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
+    assert costs["gross_net_required"] is True
+    assert "fee_model_version" in costs
     verify_checksums(run_dir)
 
     again = run_experiment(

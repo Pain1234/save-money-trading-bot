@@ -15,7 +15,12 @@ from strategy_engine.models import StrategyParameters
 
 from research.artifacts import ArtifactWriter, artifact_dir
 from research.benchmark import compute_benchmark_result
-from research.costs import COST_MODEL_VERSION, cost_models_from_spec, require_cost_fields
+from research.costs import (
+    COST_MODEL_VERSION,
+    cost_manifest_fields,
+    cost_models_from_spec,
+    require_cost_fields,
+)
 from research.experiment_spec import (
     ExperimentSpec,
     dumps_canonical,
@@ -175,6 +180,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
                 status="complete",
             )
             writer.write_bytes("run_manifest.json", dumps_run_manifest(complete) + b"\n")
+            writer.write_json("costs.json", cost_manifest_fields(spec))
             save_metrics_and_report(
                 metrics,
                 writer.work_dir / "metrics.json",

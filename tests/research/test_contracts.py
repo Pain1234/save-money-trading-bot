@@ -109,7 +109,28 @@ def test_missing_benchmark_fails_validation() -> None:
 
 def test_funding_enabled_requires_rate() -> None:
     data = json.loads(EXAMPLE_JSON.read_text(encoding="utf-8"))
-    data["funding_assumption"] = {"enabled": True, "assumed_rate": None}
+    data["funding_assumption"] = {
+        "enabled": True,
+        "assumed_rate": None,
+        "model_version": "1.0",
+    }
     spec = parse_experiment_spec(data)
     with pytest.raises(ValueError, match="assumed_rate"):
         require_cost_fields(spec)
+
+
+def test_funding_rate_mapped_to_backtester_model() -> None:
+    data = json.loads(EXAMPLE_JSON.read_text(encoding="utf-8"))
+    data["funding_assumption"] = {
+        "enabled": True,
+        "assumed_rate": "0.0001",
+        "model_version": "1.0",
+    }
+    spec = parse_experiment_spec(data)
+    _fee, _slip, funding = cost_models_from_spec(spec)
+    assert funding.enabled is True
+    assert funding.assumed_rate == Decimal("0.0001")
+    fields = cost_manifest_fields(spec)
+    assert fields["fee_model_version"] == "1.0"
+    assert fields["funding_assumed_rate"] == "0.0001"
+

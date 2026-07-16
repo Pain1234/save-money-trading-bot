@@ -103,6 +103,11 @@
         "exit_fee_rate": {
           "type": "string",
           "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1,
+          "default": "1.0"
         }
       }
     },
@@ -114,6 +119,11 @@
         "slippage_bps": {
           "type": "string",
           "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1,
+          "default": "1.0"
         }
       }
     },
@@ -128,8 +138,34 @@
         "assumed_rate": {
           "type": ["string", "null"],
           "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1,
+          "default": "1.0"
         }
       }
+    },
+    "cost_scenarios": {
+      "type": "array",
+      "description": "Optional named cost variants (scenario capability; no P5 stress gate)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "fee_assumption",
+          "slippage_assumption",
+          "funding_assumption"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "fee_assumption": { "$ref": "#/properties/fee_assumption" },
+          "slippage_assumption": { "$ref": "#/properties/slippage_assumption" },
+          "funding_assumption": { "$ref": "#/properties/funding_assumption" }
+        }
+      },
+      "default": []
     },
     "benchmark": {
       "type": "string",
