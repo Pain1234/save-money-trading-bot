@@ -124,13 +124,19 @@ def run_gate(
     """Invoke run-codex-review.ps1 with discovered PowerShell (optional wrapper script)."""
     ps1 = script if script is not None else AGENT_LOOP / "run-codex-review.ps1"
     exe = powershell if powershell is not None else discover_powershell()
+    args = list(extra_args)
+    # Shallow CI checkouts often lack origin/main; DiffFile tests should not require it.
+    has_diff_file = any(str(a).lower() == "-difffile" for a in args)
+    has_base_ref = any(str(a).lower() == "-baseref" for a in args)
+    if has_diff_file and not has_base_ref:
+        args = ["-BaseRef", "HEAD", *args]
     cmd = [
         exe,
         "-ExecutionPolicy",
         "Bypass",
         "-File",
         str(ps1),
-        *extra_args,
+        *args,
     ]
     return subprocess.run(
         cmd,

@@ -36,6 +36,8 @@ def _gate_env(**extra: str) -> dict[str, str]:
 
 
 def test_discover_powershell_prefers_pwsh(monkeypatch):
+    import shutil as shutil_mod
+
     calls: list[str] = []
 
     def fake_which(name: str):
@@ -44,20 +46,22 @@ def test_discover_powershell_prefers_pwsh(monkeypatch):
             return r"C:\Tools\pwsh.exe"
         return None
 
-    monkeypatch.setattr("conftest.shutil.which", fake_which)
+    monkeypatch.setattr(shutil_mod, "which", fake_which)
     assert discover_powershell() == r"C:\Tools\pwsh.exe"
     assert calls[0] == "pwsh"
 
 
 def test_run_gate_uses_discovered_powershell(monkeypatch, fixtures_dir, gate_ps1):
+    import conftest as gate_conf
+
     captured: dict[str, object] = {}
 
     def fake_run(cmd, **kwargs):
         captured["cmd"] = cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr("conftest.subprocess.run", fake_run)
-    monkeypatch.setattr("conftest.discover_powershell", lambda: "pwsh-from-helper")
+    monkeypatch.setattr(gate_conf, "discover_powershell", lambda: "pwsh-from-helper")
+    monkeypatch.setattr(gate_conf.subprocess, "run", fake_run)
     run_gate(
         "-DiffFile",
         str(fixtures_dir / "sample.diff"),
@@ -70,6 +74,30 @@ def test_run_gate_uses_discovered_powershell(monkeypatch, fixtures_dir, gate_ps1
     assert isinstance(cmd, list)
     assert cmd[0] == "pwsh-from-helper"
     assert "-File" in cmd
+    # DiffFile tests auto-prepend -BaseRef HEAD for shallow CI
+    assert "-BaseRef" in cmd
+    assert "HEAD" in cmd
+
+
+def test_difffile_with_nonexistent_baseref(repo_root, fixtures_dir, gate_ps1):
+    """Regression: missing base refs must not fail when -DiffFile is set (offline mode)."""
+    env = _gate_env(AGENT_LOOP_BASE_REF_ONLY="1")
+    proc = run_gate(
+        "-BaseRef",
+        "refs/does-not-exist-for-ci-baseref-test",
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        "-SkipCodex",
+        "-MockResultPath",
+        str(fixtures_dir / "approved_template.json"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "APPROVED"
+    data = json.loads(_result_path(repo_root).read_text(encoding="utf-8"))
+    # Offline mode: reviewed_base == reviewed_head when BaseRef cannot resolve.
+    assert data["reviewed_base"] == data["reviewed_head"]
 
 
 def test_01_valid_approved(repo_root, fixtures_dir, gate_ps1):
@@ -169,6 +197,19 @@ def test_08_skip_codex_without_mock(repo_root, fixtures_dir, gate_ps1):
         str(fixtures_dir / "sample.diff"),
         "-SkipCodex",
         script=gate_ps1,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+
+
+def test_08c_live_codex_process_error_exit_3(repo_root, fixtures_dir, gate_ps1):
+    mock_fail = fixtures_dir / "mock_codex_fail.py"
+    env = _gate_env(AGENT_LOOP_CODEX_BIN=str(mock_fail))
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
     )
     assert proc.returncode == 3, proc.stdout + proc.stderr
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
@@ -385,6 +426,23 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     assert "--ask-for-approval" in argv_text
     assert "never" in argv_text
     assert "--ignore-user-config" in argv_text
+
+    # Allowlisted review workspace should exist with manifest + instruction.
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    short = head[:12]
+    ws = repo_root / ".agent-loop" / "tmp" / f"review-workspace-{short}"
+    assert ws.is_dir(), f"expected review workspace at {ws}"
+    assert (ws / "workspace-manifest.json").is_file()
+    assert (ws / "codex-instruction.txt").is_file()
+    instr = (ws / "codex-instruction.txt").read_text(encoding="utf-8")
+    assert "ONLY read files inside this review workspace" in instr
+    assert ".env" in instr or "HARD SCOPE" in instr
 
     after = subprocess.run(
         ["git", "status", "--porcelain"],

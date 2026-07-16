@@ -44,8 +44,14 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-review-loop.ps1 -BaseRe
 |------|---------|
 | **0** | `APPROVED` |
 | **2** | `CHANGES_REQUIRED` |
-| **3** | `REVIEW_FAILED` (empty diff, secrets in diff, missing Codex, invalid/unusable result, git state failure) |
+| **3** | `REVIEW_FAILED` (empty diff, secrets in diff, missing Codex, Codex process error, invalid/unusable result, git state failure) |
 | **4** | Stale/wrong review (`reviewed_head` / `reviewed_base` / `reviewed_diff_hash` mismatch) |
+
+### BaseRef resolution
+
+`-BaseRef` defaults to `origin/main`. The gate resolves refs in order: explicit `-BaseRef`, then `origin/main`, `main`, `master`. If none resolve and you did **not** pass `-DiffFile`, the gate fails with a clear error (common on shallow GitHub Actions checkouts that lack `origin/main`).
+
+**DiffFile offline mode:** when `-DiffFile` is set and BaseRef (or merge-base) cannot be resolved, the gate sets `reviewed_base = reviewed_head`, skips the merge-base requirement, and continues with the provided patch. Pytest `run_gate()` auto-passes `-BaseRef HEAD` for DiffFile tests so shallow CI stays green.
 
 ## Result JSON (schema 1.0)
 
@@ -99,7 +105,9 @@ The gate could not produce a trustworthy approve/changes verdict. Common causes:
 - Empty diff versus merge-base (nothing to review)
 - Secret-like patterns in the diff (Codex is **not** invoked)
 - Codex CLI unavailable without a mock
+- Codex process exited non-zero (gate exit `3`, verdict `REVIEW_FAILED`)
 - Result JSON missing, unparseable, or failing schema/verdict rules (non-stale)
+- BaseRef unresolved without `-DiffFile` (shallow clone / missing `origin/main`)
 
 Fix the underlying problem and re-run. Exit code `3`.
 
@@ -121,6 +129,7 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 - CLI stderr reports **pattern name + line number only** — never secret values or line previews.
 - Patterns cover common DB URLs (including SQLAlchemy `postgresql+psycopg://…`), `RAILWAY_TOKEN` / `SESSION_SECRET` / credentialed `DATABASE_URL` assignments, plus API keys and tokens.
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
+- **Allowlist review workspace:** live Codex runs inside `.agent-loop/tmp/review-workspace-<shortsha>/` built by `build_review_workspace.py`. Only the prompt, schema, patch, optional `AGENTS.md`, and non-denied files referenced by the diff are copied. `.env`, `.codex/**`, `*secret*`, credentials, and private-key paths are never copied. Instruction + `CODEX_HOME` are scoped to that workspace; Codex must not read parent-repo secrets.
 - Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
 - Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
@@ -137,11 +146,11 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
   -MockResultPath tests/agent_loop/fixtures/approved.json
 ```
 
-- `-MockResultPath` ? use a fixture JSON as the Codex output (implies skip live Codex).
-- `-SkipCodex` ? do not invoke Codex; requires `-MockResultPath` for a usable result path.
+- `-MockResultPath` — use a fixture JSON as the Codex output (implies skip live Codex).
+- `-SkipCodex` — do not invoke Codex; requires `-MockResultPath` for a usable result path.
 - By default, when a mock is used, `reviewed_base` / `reviewed_head` / `reviewed_diff_hash` are overlaid with the actual run values (placeholders like `WILL_BE_SET`, or when `AGENT_LOOP_OVERLAY_REFS=1`). Use `-PreserveMockRefs` for stale-head / wrong-hash tests.
-- `-DiffFile` ? supply a precomputed patch instead of `git diff` (tests).
-- `-AllowEmptyDiff` ? tests only; default is to fail empty diffs.
+- `-DiffFile` — supply a precomputed patch instead of `git diff` (tests / offline). If BaseRef cannot be resolved, uses reviewed_base=reviewed_head.
+- `-AllowEmptyDiff` — tests only; default is to fail empty diffs.
 
 ## Scripts reference
 
@@ -149,6 +158,7 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 |------|------|
 | `run-codex-review.ps1` | Main gate orchestration |
 | `run-review-loop.ps1` | Alias wrapper |
+| `build_review_workspace.py` | Allowlisted Codex workspace (secret isolation) |
 | `codex-review-prompt.md` | Codex instructions |
 | `codex-review-schema.json` | JSON Schema draft-07 |
 | `secret_scan.py` | Pre-Codex secret patterns |

@@ -33,7 +33,7 @@
   (for stale-head / wrong-hash tests).
 
 .PARAMETER CodexBin
-  Optional path/name of the Codex executable (tests: fake recorder). 
+  Optional path/name of the Codex executable (tests: fake recorder).
   Overrides env AGENT_LOOP_CODEX_BIN when set.
 
 .NOTES
@@ -118,6 +118,58 @@ function Resolve-RepoRoot {
         throw "Unable to resolve git toplevel (run inside a git worktree or pass -RepoRoot)."
     }
     return $top.Trim()
+}
+
+function Resolve-BaseRefOrFallback {
+    <#
+    .SYNOPSIS
+      Resolve a usable base git ref for merge-base / reviewed_base.
+    .DESCRIPTION
+      Tries the explicit -BaseRef first, then origin/main, main, master.
+      Returns a hashtable: Resolved (bool), Ref, Sha, Tried (string[]).
+      When nothing resolves, Resolved=$false (caller may use DiffFile offline mode).
+    #>
+    param([Parameter(Mandatory = $true)][string]$Preferred)
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($Preferred)) {
+        $candidates.Add($Preferred.Trim()) | Out-Null
+    }
+    foreach ($c in @("origin/main", "main", "master")) {
+        # Tests may set AGENT_LOOP_BASE_REF_ONLY=1 to skip fallbacks and exercise DiffFile offline mode.
+        if ($env:AGENT_LOOP_BASE_REF_ONLY -eq "1") {
+            break
+        }
+        if ($candidates -notcontains $c) {
+            $candidates.Add($c) | Out-Null
+        }
+    }
+    $tried = [System.Collections.Generic.List[string]]::new()
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        foreach ($ref in $candidates) {
+            $tried.Add($ref) | Out-Null
+            # Native git may write "fatal:" to stderr; do not let that abort fallbacks.
+            $resolved = & git rev-parse $ref 2>$null
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($resolved)) {
+                return @{
+                    Resolved = $true
+                    Ref      = $ref
+                    Sha      = $resolved.Trim()
+                    Tried    = @($tried)
+                }
+            }
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prevEap
+    }
+    return @{
+        Resolved = $false
+        Ref      = $Preferred
+        Sha      = $null
+        Tried    = @($tried)
+    }
 }
 
 function Resolve-CodexBin {
@@ -421,17 +473,44 @@ try {
         $reviewedHead = $reviewedHead.Trim()
     }
 
-    $baseResolved = (& git rev-parse $BaseRef 2>$null)
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($baseResolved)) {
-        throw "Cannot resolve -BaseRef '$BaseRef'."
-    }
-    $baseResolved = $baseResolved.Trim()
+    $baseInfo = Resolve-BaseRefOrFallback -Preferred $BaseRef
+    $hasDiffFile = -not [string]::IsNullOrWhiteSpace($DiffFile)
 
-    $mergeBase = (& git merge-base $BaseRef $reviewedHead 2>$null)
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($mergeBase)) {
-        throw "Cannot compute merge-base of '$BaseRef' and '$reviewedHead'."
+    if (-not $baseInfo.Resolved) {
+        if ($hasDiffFile) {
+            # Documented test/offline mode: shallow CI or missing base refs with -DiffFile.
+            # Skip merge-base; set reviewed_base = reviewed_head and continue with DiffFile bytes.
+            $offlineMsg = ("BaseRef could not be resolved (tried: {0}). " +
+                "-DiffFile offline mode: reviewed_base=reviewed_head.") -f ($baseInfo.Tried -join ", ")
+            Write-Warning $offlineMsg
+            $reviewedBase = $reviewedHead
+            $BaseRef = "(diff-file-offline)"
+        }
+        else {
+            throw ("Cannot resolve -BaseRef. Tried: {0}. " +
+                "Fetch origin/main (or pass -BaseRef / use -DiffFile for offline tests).") -f (
+                $baseInfo.Tried -join ", ")
+        }
     }
-    $reviewedBase = $mergeBase.Trim()
+    else {
+        $BaseRef = $baseInfo.Ref
+        $mergeBase = (& git merge-base $baseInfo.Ref $reviewedHead 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($mergeBase)) {
+            if ($hasDiffFile) {
+                $mbMsg = ("Cannot compute merge-base of '{0}' and '{1}'. " +
+                    "-DiffFile offline mode: reviewed_base=reviewed_head.") -f $baseInfo.Ref, $reviewedHead
+                Write-Warning $mbMsg
+                $reviewedBase = $reviewedHead
+                $BaseRef = "(diff-file-offline)"
+            }
+            else {
+                throw "Cannot compute merge-base of '$($baseInfo.Ref)' and '$reviewedHead'."
+            }
+        }
+        else {
+            $reviewedBase = $mergeBase.Trim()
+        }
+    }
 
     $diffPath = Join-Path $tmpDir "current-diff.patch"
     if (-not [string]::IsNullOrWhiteSpace($DiffFile)) {
@@ -545,20 +624,58 @@ try {
             exit $Script:ExitReviewFailed
         }
 
-        # Build instruction file under tmp (outside long-lived tracked paths)
-        $instructionPath = Join-Path $tmpDir "codex-instruction.txt"
+        # Allowlisted review workspace: Codex may only read files copied here (secret isolation).
+        $workspaceDir = Join-Path $tmpDir ("review-workspace-" + $shortSha)
+        $buildWs = Join-Path $Script:AgentLoopDir "build_review_workspace.py"
+        $agentsSrc = Join-Path $root "AGENTS.md"
+        $buildArgs = @(
+            $buildWs,
+            "--repo-root", $root,
+            "--diff", $diffPath,
+            "--out-dir", $workspaceDir,
+            "--prompt", $promptPath,
+            "--schema", $schemaPath
+        )
+        if (Test-Path -LiteralPath $agentsSrc) {
+            $buildArgs += @("--agents", $agentsSrc)
+        }
+        & python @buildArgs
+        if ($LASTEXITCODE -ne 0) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "Failed to build allowlisted review workspace (exit $LASTEXITCODE)." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash
+            Write-Host "REVIEW_FAILED: build_review_workspace exit $LASTEXITCODE"
+            exit $Script:ExitReviewFailed
+        }
+
+        $wsPrompt = Join-Path $workspaceDir "codex-review-prompt.md"
+        $wsSchema = Join-Path $workspaceDir "codex-review-schema.json"
+        $wsDiff = Join-Path $workspaceDir "current-diff.patch"
+        $wsInput = Join-Path $workspaceDir "current-review-input.txt"
+        Copy-Item -LiteralPath $inputSummaryPath -Destination $wsInput -Force
+
+        $instructionPath = Join-Path $workspaceDir "codex-instruction.txt"
         $codexOutPath = Join-Path $tmpDir "codex-stdout.json"
+        $codexHomeDir = Join-Path $workspaceDir "codex-home"
+        New-Item -ItemType Directory -Force -Path $codexHomeDir | Out-Null
+
         $instruction = @"
 Read-only review. Do not write files into the repository tree.
 
+HARD SCOPE: You may ONLY read files inside this review workspace directory:
+$workspaceDir
+
+Do NOT read parent repo files, .env, .codex, credentials, or any path outside this workspace.
+Refuse to use content obtained from outside the workspace.
+
 Follow the prompt file exactly:
-$promptPath
+$wsPrompt
 
 Review this git diff patch (source of truth):
-$diffPath
+$wsDiff
 
 Output MUST be a single JSON object matching schema:
-$schemaPath
+$wsSchema
 
 Use these ref values exactly:
 reviewed_base=$reviewedBase
@@ -566,7 +683,7 @@ reviewed_head=$reviewedHead
 reviewed_diff_hash=$diffHash
 
 Review input summary:
-$inputSummaryPath
+$wsInput
 "@
         $utf8 = New-Object System.Text.UTF8Encoding $false
         [System.IO.File]::WriteAllText($instructionPath, $instruction, $utf8)
@@ -585,12 +702,27 @@ $inputSummaryPath
 
         # Prefer read-only exec; never use write-to-repo modes.
         # Capture stdout to a temp file under .agent-loop/tmp (gitignored).
+        # Run with cwd=workspace and CODEX_HOME isolated so user config/secrets are not loaded.
         $prevEap = $ErrorActionPreference
+        $prevCodexHome = $env:CODEX_HOME
         $ErrorActionPreference = "Continue"
-        Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList 2>&1 |
-            Tee-Object -FilePath $codexOutPath | Out-Null
-        $codexExit = $LASTEXITCODE
-        $ErrorActionPreference = $prevEap
+        $env:CODEX_HOME = $codexHomeDir
+        Push-Location -LiteralPath $workspaceDir
+        try {
+            Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList 2>&1 |
+                Tee-Object -FilePath $codexOutPath | Out-Null
+            $codexExit = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+            if ($null -eq $prevCodexHome -or $prevCodexHome -eq "") {
+                Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:CODEX_HOME = $prevCodexHome
+            }
+            $ErrorActionPreference = $prevEap
+        }
 
         if ($codexExit -ne 0) {
             Write-ReviewFailedResult -ResultPath $resultPath `
