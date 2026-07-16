@@ -23,7 +23,7 @@ Versioned research experiment contract for comparable, reproducible paper runs.
 | `random_seed` | Optional reproducibility seed |
 | `expected_artifacts` / `notes` / `owner` | Run bookkeeping |
 
-The full `DatasetManifest` is **not** embedded — only a reference (id/path + hash). See `services/market_data/manifest.py`.
+The full `DatasetManifest` is **not** embedded ÔÇö only a reference (id/path + hash). See `services/market_data/manifest.py`.
 
 ## Dataset binding at run time (#163)
 
@@ -32,7 +32,7 @@ Before a complete run or registry entry:
 1. `dataset_manifest_ref.manifest_path` is **required**
 2. P3 `DatasetManifest` is loaded; `INVALID` / `DISCONNECTED` are quarantined;
    `STALE` / `INCOMPLETE` require `allow_quality_warnings=true`
-3. Spec `dataset_id` / `content_hash` / symbols / `time_range` ⊆ manifest window
+3. Spec `dataset_id` / `content_hash` / symbols / `time_range` Ôèå manifest window
 4. Bundle candles for experiment symbols must lie inside the **manifest** window
 5. `content_hash` is verified against candles in the **manifest** window (full
    published dataset identity). Funding events are **not** part of this hash.
@@ -43,9 +43,9 @@ Implementation: `services/research/dataset_binding.py` (called from `runner.run_
 ## Rules
 
 - Unknown fields are **rejected** (`extra=forbid`).
-- Credential-like keys (`api_key`, `password`, `secret`, `token`, …) are **rejected**.
+- Credential-like keys (`api_key`, `password`, `secret`, `token`, ÔÇª) are **rejected**.
 - Serialization is deterministic (stable key order, decimal strings, UTC timestamps).
-- Paper/research only — no live trading keys in specs.
+- Paper/research only ÔÇö no live trading keys in specs.
 
 ## Usage
 

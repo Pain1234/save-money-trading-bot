@@ -85,16 +85,27 @@ def align_spec_to_bundle(
     *,
     symbols: list[str] | None = None,
     time_range: TimeRange | None = None,
+    experiment_time_range: TimeRange | None = None,
     price_note: str = "",
+    quality_status: str = "VALID",
+    allow_quality_warnings: bool = False,
 ) -> ExperimentSpec:
-    """Write a matching DatasetManifest and return Spec bound to it."""
+    """Write a matching DatasetManifest and return Spec bound to it.
+
+    ``time_range`` (default: research fixture window) is the **manifest**
+    dataset window used for ``content_hash``. ``experiment_time_range`` may be
+    a subset for the Spec research window (defaults to the manifest window).
+    """
     symbols = symbols or ["BTC"]
-    tr = time_range or research_time_range()
+    manifest_tr = time_range or research_time_range()
+    exp_tr = experiment_time_range or manifest_tr
     manifest_path = tmp_path / f"dataset_manifest{price_note}.json"
     payload = build_manifest_dict_for_bundle(
         bundle=bundle,
         symbols=tuple(symbols),
-        time_range=tr,
+        time_range=manifest_tr,
+        quality_status=quality_status,
+        allow_quality_warnings=allow_quality_warnings,
     )
     manifest_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -103,8 +114,8 @@ def align_spec_to_bundle(
     data = deepcopy(json.loads(EXAMPLE_JSON.read_text(encoding="utf-8")))
     data["symbols"] = symbols
     data["time_range"] = {
-        "start": tr.start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-        "end": tr.end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "start": exp_tr.start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        "end": exp_tr.end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
     }
     data["dataset_manifest_ref"] = {
         "dataset_id": payload["dataset_id"],
@@ -113,7 +124,6 @@ def align_spec_to_bundle(
         if manifest_path.is_relative_to(REPO_ROOT)
         else str(manifest_path),
     }
-    # Prefer absolute path for tmp manifests outside repo.
     if not manifest_path.is_relative_to(REPO_ROOT):
         data["dataset_manifest_ref"]["manifest_path"] = str(manifest_path)
     data["benchmark"] = f"buy_and_hold_{symbols[0]}"
