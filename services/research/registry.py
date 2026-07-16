@@ -8,6 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from research.artifacts import load_checksums, verify_checksums
+
 Status = Literal["complete", "failed", "invalidated"]
 
 
@@ -33,6 +35,7 @@ class ExperimentRegistry:
         self.root = root
         self.path = root / "artifacts" / "research" / "registry.jsonl"
         self.invalidation_dir = root / "artifacts" / "research" / "invalidations"
+        self.artifacts_root = root / "artifacts" / "research"
 
     def _append(self, record: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +58,7 @@ class ExperimentRegistry:
         if any(e.run_id == run_id and e.status == "complete" for e in self.list_entries()):
             msg = f"duplicate complete run_id forbidden: {run_id}"
             raise ValueError(msg)
+        verify_checksums(Path(artifact_path))
         self._append(
             {
                 "experiment_id": experiment_id,
@@ -96,9 +100,18 @@ class ExperimentRegistry:
             )
         return entries
 
-    def show(self, run_id: str) -> RegistryEntry:
+    def _verify_entry_artifacts(self, entry: RegistryEntry) -> None:
+        path = Path(entry.artifact_path)
+        if not path.is_dir():
+            msg = f"missing or deleted artifacts for {entry.run_id}: {path}"
+            raise FileNotFoundError(msg)
+        verify_checksums(path)
+
+    def show(self, run_id: str, *, verify: bool = True) -> RegistryEntry:
         for entry in reversed(self.list_entries()):
             if entry.run_id == run_id:
+                if verify and entry.status == "complete":
+                    self._verify_entry_artifacts(entry)
                 return entry
         msg = f"run_id not found: {run_id}"
         raise KeyError(msg)
@@ -112,7 +125,7 @@ class ExperimentRegistry:
         replacement_run_id: str | None = None,
     ) -> Path:
         """Append-only invalidation sidecar; does not mutate RunManifest."""
-        entry = self.show(run_id)
+        entry = self.show(run_id, verify=False)
         if entry.status == "invalidated":
             msg = f"run already invalidated: {run_id}"
             raise ValueError(msg)
@@ -133,18 +146,16 @@ class ExperimentRegistry:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
         self._append(
             {
-                **{
-                    "experiment_id": entry.experiment_id,
-                    "run_id": entry.run_id,
-                    "attempt_id": entry.attempt_id,
-                    "strategy_version": entry.strategy_version,
-                    "dataset_version": entry.dataset_version,
-                    "cost_model_version": entry.cost_model_version,
-                    "benchmark_ref": entry.benchmark_ref,
-                    "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-                    "artifact_path": entry.artifact_path,
-                    "checksums": entry.checksums,
-                },
+                "experiment_id": entry.experiment_id,
+                "run_id": entry.run_id,
+                "attempt_id": entry.attempt_id,
+                "strategy_version": entry.strategy_version,
+                "dataset_version": entry.dataset_version,
+                "cost_model_version": entry.cost_model_version,
+                "benchmark_ref": entry.benchmark_ref,
+                "created_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "artifact_path": entry.artifact_path,
+                "checksums": entry.checksums,
                 "status": "invalidated",
                 "invalidation_reason": reason,
                 "replacement_run_id": replacement_run_id,
@@ -153,8 +164,8 @@ class ExperimentRegistry:
         return sidecar
 
     def compare(self, run_a: str, run_b: str) -> dict[str, Any]:
-        a = self.show(run_a)
-        b = self.show(run_b)
+        a = self.show(run_a, verify=True)
+        b = self.show(run_b, verify=True)
         compatible = (
             a.strategy_version == b.strategy_version
             and a.dataset_version == b.dataset_version
@@ -175,3 +186,54 @@ class ExperimentRegistry:
                 "status": [a.status, b.status],
             },
         }
+
+    def reconstruct_from_artifacts(self) -> list[RegistryEntry]:
+        """Rebuild registry entries by scanning artifact directories.
+
+        Does not mutate existing registry.jsonl; returns reconstructed complete runs.
+        """
+        if not self.artifacts_root.is_dir():
+            return []
+        rebuilt: list[RegistryEntry] = []
+        for exp_dir in sorted(self.artifacts_root.iterdir()):
+            if not exp_dir.is_dir() or exp_dir.name in {"invalidations"}:
+                continue
+            if exp_dir.name.endswith(".jsonl"):
+                continue
+            for run_dir in sorted(exp_dir.iterdir()):
+                if not run_dir.is_dir():
+                    continue
+                manifest_path = run_dir / "run_manifest.json"
+                if not manifest_path.is_file():
+                    continue
+                try:
+                    verify_checksums(run_dir)
+                except (FileNotFoundError, ValueError):
+                    continue
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                experiment = json.loads((run_dir / "experiment.json").read_text(encoding="utf-8"))
+                costs_path = run_dir / "costs.json"
+                cost_ver = "1.0"
+                if costs_path.is_file():
+                    costs = json.loads(costs_path.read_text(encoding="utf-8"))
+                    cost_ver = str(costs.get("cost_model_version", "1.0"))
+                rebuilt.append(
+                    RegistryEntry(
+                        experiment_id=str(manifest["experiment_id"]),
+                        run_id=str(manifest["run_id"]),
+                        attempt_id=str(manifest["attempt_id"]),
+                        status="complete"
+                        if manifest.get("status") == "complete"
+                        else "failed",
+                        strategy_version=str(manifest.get("strategy_version", "")),
+                        dataset_version=str(
+                            experiment.get("dataset_manifest_ref", {}).get("dataset_id", "")
+                        ),
+                        cost_model_version=cost_ver,
+                        benchmark_ref=str(experiment.get("benchmark", "")),
+                        created_at=str(manifest.get("created_at_utc", "")),
+                        artifact_path=str(run_dir),
+                        checksums=load_checksums(run_dir),
+                    )
+                )
+        return rebuilt
