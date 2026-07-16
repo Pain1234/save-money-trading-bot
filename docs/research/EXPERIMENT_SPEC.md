@@ -25,6 +25,21 @@ Versioned research experiment contract for comparable, reproducible paper runs.
 
 The full `DatasetManifest` is **not** embedded — only a reference (id/path + hash). See `services/market_data/manifest.py`.
 
+## Dataset binding at run time (#163)
+
+Before a complete run or registry entry:
+
+1. `dataset_manifest_ref.manifest_path` is **required**
+2. P3 `DatasetManifest` is loaded; `INVALID` / `DISCONNECTED` are quarantined;
+   `STALE` / `INCOMPLETE` require `allow_quality_warnings=true`
+3. Spec `dataset_id` / `content_hash` / symbols / `time_range` ⊆ manifest window
+4. Bundle candles for experiment symbols must lie inside the **manifest** window
+5. `content_hash` is verified against candles in the **manifest** window (full
+   published dataset identity). Funding events are **not** part of this hash.
+6. `ExperimentSpec.time_range` is then applied (filter) for the research run
+
+Implementation: `services/research/dataset_binding.py` (called from `runner.run_experiment`).
+
 ## Rules
 
 - Unknown fields are **rejected** (`extra=forbid`).
