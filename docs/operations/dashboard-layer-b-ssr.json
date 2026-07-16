@@ -1,0 +1,102 @@
+{
+  "measurement": "layer_b_nextjs_ssr",
+  "issue": 101,
+  "status": "MEASURED",
+  "measured_at": "2026-07-16T12:51:02.348281+00:00",
+  "base_url_host_only": "bot.save-money.xyz",
+  "warm_runs": 10,
+  "cold_runs": 2,
+  "auth_marker": "Paper Trading Monitor",
+  "routes": [
+    {
+      "name": "overview",
+      "path": "/dashboard",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 106.17910000291886,
+      "warm_total_p95_ms": 113.90060000121593,
+      "html_bytes_p50": 12963,
+      "html_bytes_max": 12963,
+      "final_url": "https://bot.save-money.xyz/dashboard",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    },
+    {
+      "name": "status",
+      "path": "/dashboard/status",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 108.84490000171354,
+      "warm_total_p95_ms": 144.16289999644505,
+      "html_bytes_p50": 17052,
+      "html_bytes_max": 17052,
+      "final_url": "https://bot.save-money.xyz/dashboard/status",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    },
+    {
+      "name": "positions",
+      "path": "/dashboard/positions",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 116.4708999931463,
+      "warm_total_p95_ms": 122.29939999815542,
+      "html_bytes_p50": 12459,
+      "html_bytes_max": 12459,
+      "final_url": "https://bot.save-money.xyz/dashboard/positions",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    },
+    {
+      "name": "orders",
+      "path": "/dashboard/orders",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 116.21020000166027,
+      "warm_total_p95_ms": 124.28860000363784,
+      "html_bytes_p50": 12438,
+      "html_bytes_max": 12438,
+      "final_url": "https://bot.save-money.xyz/dashboard/orders",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    },
+    {
+      "name": "fills",
+      "path": "/dashboard/fills",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 112.70479999802774,
+      "warm_total_p95_ms": 121.69279999943683,
+      "html_bytes_p50": 12431,
+      "html_bytes_max": 12431,
+      "final_url": "https://bot.save-money.xyz/dashboard/fills",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    },
+    {
+      "name": "equity",
+      "path": "/dashboard/equity",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 118.08100000052946,
+      "warm_total_p95_ms": 139.31490000686608,
+      "html_bytes_p50": 16610,
+      "html_bytes_max": 16610,
+      "final_url": "https://bot.save-money.xyz/dashboard/equity",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    },
+    {
+      "name": "incidents",
+      "path": "/dashboard/incidents",
+      "status": "MEASURED",
+      "warm_ttfb_p95_ms": 134.6285000036005,
+      "warm_total_p95_ms": 160.10370000003604,
+      "html_bytes_p50": 26160,
+      "html_bytes_max": 26160,
+      "final_url": "https://bot.save-money.xyz/dashboard/incidents",
+      "authenticated": true,
+      "note": "TTFB approximates headers-ready; full HTML includes SSR + server-side FastAPI fetches for this route."
+    }
+  ],
+  "layers": [
+    "Browser \u2192 Next.js (this script)",
+    "Next.js SSR + server fetches to FastAPI (included in TTFB/total)",
+    "FastAPI \u2192 PostgreSQL (see Layer C / D)",
+    "Browser rendering (see Layer A Playwright)"
+  ]
+}

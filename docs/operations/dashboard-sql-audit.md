@@ -1,6 +1,6 @@
 # Dashboard Performance Audit Protocol (P2.5 / Issue #101)
 
-**Status:** Harnesses landed (#119). Railway Layer C/D recorded; authenticated A/B still `NOT_MEASURED`. Issue **#121** region experiment **CONFIRMED**: moving `paper-trading-api` `sfo` → `europe-west4-drams3a` cut residual p95 from ~2.13 s to ~49–54 ms (`dashboard-fastapi-residual-121.md`). Remaining ~50 ms + per-request engine = `FOLLOW_UP_REQUIRED`. Full pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
+**Status:** Layers A–D **MEASURED** on Railway/public URL (2026-07-16). Authenticated Layer A (`dashboard-layer-a-browser.json`) usable content max **869 ms** (Status soft_nav); hard-nav LCP non-null; all routes under the **1.5 s** roadmap budget. Authenticated Layer B (`dashboard-layer-b-ssr.json`) warm TTFB p95 **~106–135 ms**. Issue **#121** region experiment **CONFIRMED** (residual ~2.13 s → ~49–54 ms). Remaining ~50 ms + per-request engine = `FOLLOW_UP_REQUIRED` (H2, not a #101 close blocker). Indexes remain `NO_ACTION`. Full pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
 
 **PR lineage:** Checklist #117; harnesses #119; duplicate #110 closed. This document
 is the continuation of Issue #101 (not a new issue).
@@ -177,17 +177,17 @@ final candidate).
 
 ### Results
 
-| Route | Mode | Browser usable p95 | Skeleton | Skeleton→Daten | LCP | Status |
-|-------|------|-------------------:|---------:|---------------:|----:|--------|
-| Overview | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
-| Status | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
-| Positions | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
-| Orders | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
-| Fills | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
-| Equity | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
-| Incidents | cold/warm/soft | — | — | — | — | `NOT_MEASURED` |
+| Route | Mode | Browser usable (ms) | Skeleton (ms) | Skeleton→Daten (ms) | LCP (ms) | Status |
+|-------|------|--------------------:|--------------:|--------------------:|---------:|--------|
+| Overview | cold/warm/soft | 90 / 51 / 125 | — / — / — | — / — / — | 84 / 52 / — | `MEASURED` |
+| Status | cold/warm/soft | 82 / 372 / **869** | — / 68 / 84 | — / 304 / 785 | 76 / 48 / — | `MEASURED` |
+| Positions | cold/warm/soft | 82 / 61 / 119 | — / — / 85 | — / — / 34 | 76 / 56 / — | `MEASURED` |
+| Orders | cold/warm/soft | 76 / 50 / 116 | — / — / 86 | — / — / 30 | 68 / 56 / — | `MEASURED` |
+| Fills | cold/warm/soft | 71 / 48 / 130 | — / — / 85 | — / — / 45 | 68 / 56 / — | `MEASURED` |
+| Equity | cold/warm/soft | 64 / 47 / 125 | — / — / 84 | — / — / 41 | 64 / 40 / — | `MEASURED` |
+| Incidents | cold/warm/soft | 86 / 56 / 124 | — / — / 85 | — / — / 39 | 80 / 64 / — | `MEASURED` |
 
-Populate only from `dashboard-layer-a-browser.json`. Never invent timings.
+Source: `dashboard-layer-a-browser.json` (n=1 per route×mode; values are the measured sample, not multi-run p95). Hard-nav LCP non-null on all routes. Skeletons usually absent on hard nav (`force-dynamic`); soft_nav more often shows skeleton. Worst usable **869 ms** (Status soft_nav) is still **under** the 1.5 s budget.
 
 ---
 
@@ -217,20 +217,19 @@ Separate server-timings headers are not required for the first pass; if Next.js
 
 ### Results
 
-Authenticated dashboard routes: `NOT_MEASURED` (credentials required).
-
-Public `/login` only (`dashboard-layer-b-ssr-railway-login-partial.json`, warm n=8):
+Authenticated dashboard routes (`dashboard-layer-b-ssr.json`, warm n=10, 2026-07-16):
 
 | Route | TTFB p95 | HTML total p95 | HTML bytes p50 | Status |
 |-------|---------:|---------------:|---------------:|--------|
-| /login (public) | **187.4 ms** | — | **6222** | `PARTIAL` |
-| Overview | — | — | — | `NOT_MEASURED` |
-| Status | — | — | — | `NOT_MEASURED` |
-| Positions | — | — | — | `NOT_MEASURED` |
-| Orders | — | — | — | `NOT_MEASURED` |
-| Fills | — | — | — | `NOT_MEASURED` |
-| Equity | — | — | — | `NOT_MEASURED` |
-| Incidents | — | — | — | `NOT_MEASURED` |
+| Overview | **106.2 ms** | 113.9 ms | 12963 | `MEASURED` |
+| Status | **108.8 ms** | 144.2 ms | 17052 | `MEASURED` |
+| Positions | **116.5 ms** | 122.3 ms | 12459 | `MEASURED` |
+| Orders | **116.2 ms** | 124.3 ms | 12438 | `MEASURED` |
+| Fills | **112.7 ms** | 121.7 ms | 12431 | `MEASURED` |
+| Equity | **118.1 ms** | 139.3 ms | 16610 | `MEASURED` |
+| Incidents | **134.6 ms** | 160.1 ms | 26160 | `MEASURED` |
+
+Public `/login` only (historical `dashboard-layer-b-ssr-railway-login-partial.json`, warm n=8): TTFB p95 **187.4 ms**, HTML bytes p50 **6222** (`PARTIAL`).
 
 ---
 
@@ -271,7 +270,10 @@ python scripts/measure_dashboard_layer_c_api.py --warm-runs 20 \
 warm **20** / warmup **3**. Artifact: `dashboard-layer-c-api-railway.json`.
 All routes HTTP **200** with finite `X-Perf-*` and retained correlation IDs.
 Unattr./hop are **p95 of per-sample deltas** (not p95(a)-p95(b)).
-Browser/TTFB/skeleton columns stay `NOT_MEASURED` until Layer A/B authenticated runs.
+Table below is the **pre-#121** sfo placement snapshot (historical). Post-co-location
+Layer C for status/summary/wallet is in `dashboard-layer-c-after-121.json`
+(residual p95 ≈ 49–54 ms). Authenticated Layer A/B (2026-07-16) are `MEASURED`
+in §§5–6 — usable content under the 1.5 s budget.
 
 | Route | Client hop p95 | API total p95 | DB p95 | Unattr. p95 | Hop p95 | Queries | Bytes p50 | Hauptursache |
 | ----- | -------------: | ------------: | -----: | ----------: | ------: | ------: | --------: | ------------ |
@@ -444,19 +446,20 @@ OR (timestamp = :timestamp AND id < :id)
 
 ## 10. Route-für-Route-Ergebnisse
 
-Composite roll-up (fill after Layers A–D on the **same** environment):
+Composite roll-up (Layers A/B 2026-07-16 + Layer C after-#121 where re-probed).
+Browser column = warm hard-nav `usable_content_ms` (n=1). Soft-nav max noted in Ursache.
 
-| Route | Browser p95 | TTFB | Skeleton→Daten | API p95 | DB p95 | Queries | Bytes | Hauptursache |
-| ----- | ----------: | ---: | -------------: | ------: | -----: | ------: | ----: | ------------ |
-| Overview | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| Status | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| Positions | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| Orders | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| Fills | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| Equity | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
-| Incidents | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | `NOT_MEASURED` | pending |
+| Route | Browser warm | TTFB p95 | Skeleton→Daten | API total p95 | DB p95 | Queries | Bytes | Hauptursache |
+| ----- | -----------: | -------: | -------------: | ------------: | -----: | ------: | ----: | ------------ |
+| Overview | **51 ms** | **106 ms** | — (no skel hard) | **71 ms** | 15.7 | 6 | 1174 | UX under budget; heaviest multi-query API |
+| Status | **372 ms** | **109 ms** | 304 warm / 785 soft | **66 ms** | 14.2 | 4 | 638 | soft usable **869 ms** still under 1.5 s |
+| Positions | **61 ms** | **117 ms** | 34 soft | wallet-class ~54 ms (#121) | ~5 | 1 | 42 | A/B MEASURED; thin API not re-probed post-#121 |
+| Orders | **50 ms** | **116 ms** | 30 soft | wallet-class ~54 ms (#121) | ~5 | 1 | 42 | A/B MEASURED; thin API not re-probed post-#121 |
+| Fills | **48 ms** | **113 ms** | 45 soft | wallet-class ~54 ms (#121) | ~5 | 1 | 42 | A/B MEASURED; thin API not re-probed post-#121 |
+| Equity | **47 ms** | **118 ms** | 41 soft | not re-probed post-#121 | — | — | 16610 HTML | A/B MEASURED; UX under budget |
+| Incidents | **56 ms** | **135 ms** | 39 soft | not re-probed post-#121 | — | — | 26160 HTML | A/B MEASURED; payload size ≠ UX bottleneck |
 
-Empty cells are **not** completed results.
+API totals for Overview/Status from `dashboard-layer-c-after-121.json`. Thin-list API class cited from wallet after-#121. Equity/Incidents API hop not in the #121 three-route probe; browser/SSR prove UX.
 
 ---
 
@@ -517,19 +520,20 @@ Prioritize with a scored blend of:
 - Call frequency (overview/status > rare history drills)
 - Table growth potential
 
-**Current Top-3 (Layer C/D; #121 region experiment CONFIRMED; Layer A still pending):**
+**Current Top-3 (Layers A–D; #121 CONFIRMED; UX budget met):**
 
 ```text
 1. WAS ~2.13 s FastAPI residual — CONFIRMED as API region sfo vs EU Postgres/Dashboard
    (#121): after API → europe-west4 residual p95 ≈ 49–54 ms (see dashboard-fastapi-residual-121.md)
-2. Remaining ~50 ms residual + per-request engine/dispose — FOLLOW_UP_REQUIRED (H2)
-3. GET /api/v1/dashboard-summary — still heaviest multi-query route after co-location
+2. Remaining ~50 ms residual + per-request engine/dispose — FOLLOW_UP_REQUIRED (H2; separate issue)
+3. GET /api/v1/dashboard-summary — still heaviest multi-query API route after co-location
+   (Layer A usable content still << 1.5 s budget on all pages)
 ```
 
 Large history JSON (`/events`, `/scheduler-runs`) is **`OPTIMIZATION_CANDIDATE` only**:
 API totals match thin routes despite 15–17 KB bodies. Not a data-backed Top-3 item.
-Hypothesis “Incidents slow mainly due to payload_json” is **not supported** by Layer C.
-Layer A authentication still required before treating Top-3 as UX-final.
+Hypothesis “Incidents slow mainly due to payload_json” is **not supported** by Layer C;
+Layer A Incidents usable ≤124 ms. Layer A confirms UX is within the 1.5 s budget post-#121.
 
 ---
 
@@ -583,17 +587,17 @@ per-request engine disposal is `FOLLOW_UP_REQUIRED` — not an Alembic migration
 
 | Item | Status |
 |------|--------|
-| Layer A Playwright against Railway public URL | `NOT_MEASURED` (needs dashboard password) |
-| Layer B authenticated SSR TTFB | `NOT_MEASURED` (needs dashboard password) |
-| Layer B public `/login` SSR | `PARTIAL` / `MEASURED` |
-| Layer C via Railway **private** API hop | `MEASURED` (warm 20/3; HTTP-validated) |
+| Layer A Playwright against Railway public URL | `MEASURED` (`dashboard-layer-a-browser.json`) |
+| Layer B authenticated SSR TTFB | `MEASURED` (`dashboard-layer-b-ssr.json`) |
+| Layer B public `/login` SSR | `PARTIAL` (historical) |
+| Layer C via Railway **private** API hop | `MEASURED` (warm 20/3; HTTP-validated; #121 after for 3 routes) |
 | Layer D EXPLAIN on empty local `paper_trading_test` | `MEASURED` (first page only) |
 | Layer D EXPLAIN on Railway (+ cursor where rows allow) | `MEASURED` |
-| Top-3 from Layer C/D data | `MEASURED` (pending A UX confirmation) |
+| Top-3 from Layer A–D data | `MEASURED` (UX within 1.5 s after #121) |
 | Events payload byte share on Railway | `MEASURED` (~17%) |
-| Index before/after packages | not started / not justified yet |
+| Index before/after packages | not started / not justified (`NO_ACTION`) |
 | Co-location before/after for ~2.13 s residual (#121) | `CONFIRMED` / `MEASURED` |
-| Remaining ~50 ms residual / process-scoped engine | `FOLLOW_UP_REQUIRED` |
+| Remaining ~50 ms residual / process-scoped engine | `FOLLOW_UP_REQUIRED` (out of #101 close scope) |
 
 ---
 
@@ -653,19 +657,19 @@ Keep soft for now (`tests/perf` reporting / artifacts). Propose a hard gate only
 
 ## Acceptance checklist for closing Issue #101
 
-- [x] Browser, SSR, API, and DB measurements documented separately (A/auth-B still open)
-- [ ] Navigation → skeleton and → real data measured (Layer A)
-- [ ] Next.js authenticated TTFB measured (Layer B); public `/login` done
+- [x] Browser, SSR, API, and DB measurements documented separately
+- [x] Navigation → skeleton and → real data measured (Layer A)
+- [x] Next.js authenticated TTFB measured (Layer B); public `/login` historical PARTIAL kept
 - [x] API exposes/logs `total_ms`, `db_ms`, `query_count`, `response_bytes`
 - [x] Railway measurement path documented correctly
-- [x] Top-3 chosen from real Layer C/D data (confirm with A when credentials available)
+- [x] Top-3 chosen from real Layer A–D data (UX within 1.5 s after #121)
 - [x] `/events` + `payload_json` analyzed with sizes (~17% share)
 - [x] History first + cursor pages have `EXPLAIN` where rows allow (empty tables noted)
 - [x] Existing indexes considered
 - [x] No index recommended solely because of Seq Scan
-- [x] Index candidates: no before/after required yet — gate not met (`NO_ACTION`)
+- [x] Index candidates: no before/after required — gate not met (`NO_ACTION`)
 - [x] Index migrations still separate
-- [x] Cache recommendations derived from measurements only
-- [x] Remaining Railway steps marked `NOT_MEASURED` honestly (A + auth B)
+- [x] Cache recommendations derived from measurements only (#99 still deferred)
+- [x] Honest status labels (A/B MEASURED; empty cursor EXPLAIN still noted)
 - [x] Duplicate PR #110 closed; #117 recognized as checklist merge
-- [ ] Authenticated A/B artifacts attached (or owner waiver) before close
+- [x] Authenticated A/B artifacts attached (`dashboard-layer-a-browser.json`, `dashboard-layer-b-ssr.json`)
