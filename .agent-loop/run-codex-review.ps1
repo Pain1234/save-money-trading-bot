@@ -624,8 +624,31 @@ try {
             exit $Script:ExitReviewFailed
         }
 
-        # Allowlisted review workspace: Codex may only read files copied here (secret isolation).
-        $workspaceDir = Join-Path $tmpDir ("review-workspace-" + $shortSha)
+        # Allowlisted review workspace outside the repo (git blobs only; secret isolation).
+        $workspaceDir = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "codex-review-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+        )
+        $rootFull = [System.IO.Path]::GetFullPath($root).TrimEnd('\', '/')
+        $wsFull = [System.IO.Path]::GetFullPath($workspaceDir).TrimEnd('\', '/')
+        $underRepo = $false
+        if ($wsFull.Length -ge $rootFull.Length) {
+            $prefix = $wsFull.Substring(0, $rootFull.Length)
+            if ($prefix.Equals($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $next = if ($wsFull.Length -gt $rootFull.Length) { $wsFull[$rootFull.Length] } else { [char]0 }
+                if ($wsFull.Length -eq $rootFull.Length -or $next -eq '\' -or $next -eq '/') {
+                    $underRepo = $true
+                }
+            }
+        }
+        if ($underRepo) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "Review workspace must not be under the repository root." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @("workspace=$workspaceDir", "repo=$root")
+            Write-Host "REVIEW_FAILED: workspace under repo root"
+            exit $Script:ExitReviewFailed
+        }
+
         $buildWs = Join-Path $Script:AgentLoopDir "build_review_workspace.py"
         $agentsSrc = Join-Path $root "AGENTS.md"
         $buildArgs = @(
@@ -634,17 +657,27 @@ try {
             "--diff", $diffPath,
             "--out-dir", $workspaceDir,
             "--prompt", $promptPath,
-            "--schema", $schemaPath
+            "--schema", $schemaPath,
+            "--git-rev", $reviewedHead
         )
         if (Test-Path -LiteralPath $agentsSrc) {
             $buildArgs += @("--agents", $agentsSrc)
         }
         & python @buildArgs
-        if ($LASTEXITCODE -ne 0) {
+        $buildCode = $LASTEXITCODE
+        if ($buildCode -eq 1) {
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "Failed to build allowlisted review workspace (exit $LASTEXITCODE)." `
+                -Summary "Deny-listed path(s) in diff; refusing to build Codex workspace (fail-closed)." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @("build_review_workspace.py exited 1")
+            Write-Host "REVIEW_FAILED: deny-listed path in diff (build exit 1)"
+            exit $Script:ExitReviewFailed
+        }
+        if ($buildCode -ne 0) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "Failed to build allowlisted review workspace (exit $buildCode)." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash
-            Write-Host "REVIEW_FAILED: build_review_workspace exit $LASTEXITCODE"
+            Write-Host "REVIEW_FAILED: build_review_workspace exit $buildCode"
             exit $Script:ExitReviewFailed
         }
 
@@ -655,7 +688,10 @@ try {
         Copy-Item -LiteralPath $inputSummaryPath -Destination $wsInput -Force
 
         $instructionPath = Join-Path $workspaceDir "codex-instruction.txt"
-        $codexOutPath = Join-Path $tmpDir "codex-stdout.json"
+        # stdout must live outside the repo: OS isolation may chmod 000 the tree.
+        $codexOutPath = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "codex-stdout-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".json"
+        )
         $codexHomeDir = Join-Path $workspaceDir "codex-home"
         New-Item -ItemType Directory -Force -Path $codexHomeDir | Out-Null
 
@@ -664,6 +700,9 @@ Read-only review. Do not write files into the repository tree.
 
 HARD SCOPE: You may ONLY read files inside this review workspace directory:
 $workspaceDir
+
+The repository tree is intentionally unreadable during this review. Only files
+materialized in this workspace (git blobs + review artifacts) are in scope.
 
 Do NOT read parent repo files, .env, .codex, credentials, or any path outside this workspace.
 Refuse to use content obtained from outside the workspace.
@@ -701,20 +740,126 @@ $wsInput
         }
 
         # Prefer read-only exec; never use write-to-repo modes.
-        # Capture stdout to a temp file under .agent-loop/tmp (gitignored).
         # Run with cwd=workspace and CODEX_HOME isolated so user config/secrets are not loaded.
         $prevEap = $ErrorActionPreference
         $prevCodexHome = $env:CODEX_HOME
+        $repoModeSaved = $null
+        $repoLocked = $false
+        $isolationFailSummary = $null
+        $skipOsIsolation = ($env:AGENT_LOOP_SKIP_OS_ISOLATION -eq "1")
+        $isUnix = $false
+        if ($skipOsIsolation) {
+            # Tests / mocks may skip chmod isolation.
+        }
+        elseif ($PSVersionTable.PSVersion.Major -ge 6 -and ($IsLinux -or $IsMacOS)) {
+            $isUnix = $true
+        }
+        else {
+            $prevUnameEap = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            $unameOut = & uname 2>$null
+            $ErrorActionPreference = $prevUnameEap
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$unameOut)) {
+                $isUnix = $true
+            }
+        }
+
+        if (-not $skipOsIsolation -and -not $isUnix) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "OS isolation not available on this platform." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @("Set AGENT_LOOP_SKIP_OS_ISOLATION=1 only for tests/mocks.")
+            Write-Host "REVIEW_FAILED: OS isolation not available on this platform"
+            exit $Script:ExitReviewFailed
+        }
+
+        # Seed auth.json only into isolated CODEX_HOME (no other user Codex config).
+        $authDest = Join-Path $codexHomeDir "auth.json"
+        $authCopied = $false
+        $authCandidates = [System.Collections.Generic.List[string]]::new()
+        # Test/override source first (file-based login path without reading full user config).
+        if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_AUTH_JSON_SOURCE)) {
+            $authCandidates.Add($env:AGENT_LOOP_AUTH_JSON_SOURCE.Trim()) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($prevCodexHome)) {
+            $authCandidates.Add((Join-Path $prevCodexHome "auth.json")) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+            $authCandidates.Add((Join-Path $env:HOME ".codex/auth.json")) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+            $authCandidates.Add((Join-Path $env:USERPROFILE ".codex\auth.json")) | Out-Null
+        }
+        foreach ($cand in $authCandidates) {
+            if (Test-Path -LiteralPath $cand) {
+                Copy-Item -LiteralPath $cand -Destination $authDest -Force
+                $authCopied = $true
+                break
+            }
+        }
+        $isPyMockBin = ($resolvedCodexBin -match '\.py$')
+        $requireAuth = (-not $isPyMockBin) -or ($env:AGENT_LOOP_REQUIRE_AUTH -eq "1")
+        if ($requireAuth -and -not $authCopied) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "Codex auth.json not found; cannot run live review with isolated CODEX_HOME." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @("Expected auth under prior CODEX_HOME or ~/.codex/auth.json")
+            Write-Host "REVIEW_FAILED: missing Codex auth.json"
+            exit $Script:ExitReviewFailed
+        }
+
         $ErrorActionPreference = "Continue"
         $env:CODEX_HOME = $codexHomeDir
-        Push-Location -LiteralPath $workspaceDir
+        $codexExit = -1
         try {
-            Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList 2>&1 |
-                Tee-Object -FilePath $codexOutPath | Out-Null
-            $codexExit = $LASTEXITCODE
+            if (-not $skipOsIsolation -and $isUnix) {
+                $repoModeSaved = (& stat -c '%a' $root 2>$null)
+                if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$repoModeSaved)) {
+                    $isolationFailSummary = "Failed to read repository mode for OS isolation."
+                }
+                else {
+                    $repoModeSaved = ([string]$repoModeSaved).Trim()
+                    & chmod 000 $root
+                    if ($LASTEXITCODE -ne 0) {
+                        $isolationFailSummary = "Failed to lock repository (chmod 000) for OS isolation."
+                    }
+                    else {
+                        $repoLocked = $true
+                        $stillReadable = $false
+                        try {
+                            Get-ChildItem -LiteralPath $root -ErrorAction Stop | Out-Null
+                            $stillReadable = $true
+                        }
+                        catch {
+                            $stillReadable = $false
+                        }
+                        if ($stillReadable) {
+                            $isolationFailSummary = "OS isolation failed: repository remained readable after chmod 000."
+                        }
+                    }
+                }
+            }
+
+            if ([string]::IsNullOrWhiteSpace($isolationFailSummary)) {
+                Push-Location -LiteralPath $workspaceDir
+                try {
+                    Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList 2>&1 |
+                        Tee-Object -FilePath $codexOutPath | Out-Null
+                    $codexExit = $LASTEXITCODE
+                }
+                finally {
+                    Pop-Location
+                }
+            }
         }
         finally {
-            Pop-Location
+            if ($repoLocked -and -not [string]::IsNullOrWhiteSpace([string]$repoModeSaved)) {
+                $prevRestoreEap = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                & chmod $repoModeSaved $root 2>$null | Out-Null
+                $ErrorActionPreference = $prevRestoreEap
+                $repoLocked = $false
+            }
             if ($null -eq $prevCodexHome -or $prevCodexHome -eq "") {
                 Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
             }
@@ -722,6 +867,29 @@ $wsInput
                 $env:CODEX_HOME = $prevCodexHome
             }
             $ErrorActionPreference = $prevEap
+            # Best-effort cleanup of temp workspace (OK to leave under temp).
+            # Tests may set AGENT_LOOP_KEEP_WORKSPACE=1 to inspect CODEX_HOME / manifest.
+            $keepWorkspace = ($env:AGENT_LOOP_KEEP_WORKSPACE -eq "1")
+            if (
+                -not $keepWorkspace -and
+                -not [string]::IsNullOrWhiteSpace($workspaceDir) -and
+                (Test-Path -LiteralPath $workspaceDir)
+            ) {
+                try {
+                    Remove-Item -LiteralPath $workspaceDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                catch {
+                    # leave under temp
+                }
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($isolationFailSummary)) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary $isolationFailSummary `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash
+            Write-Host "REVIEW_FAILED: $isolationFailSummary"
+            exit $Script:ExitReviewFailed
         }
 
         if ($codexExit -ne 0) {

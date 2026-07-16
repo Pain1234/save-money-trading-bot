@@ -129,10 +129,12 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 - CLI stderr reports **pattern name + line number only** — never secret values or line previews.
 - Patterns cover common DB URLs (including SQLAlchemy `postgresql+psycopg://…`), `RAILWAY_TOKEN` / `SESSION_SECRET` / credentialed `DATABASE_URL` assignments, plus API keys and tokens.
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
-- **Allowlist review workspace:** live Codex runs inside `.agent-loop/tmp/review-workspace-<shortsha>/` built by `build_review_workspace.py`. Only the prompt, schema, patch, optional `AGENTS.md`, and non-denied files referenced by the diff are copied. `.env`, `.codex/**`, `*secret*`, credentials, and private-key paths are never copied. Instruction + `CODEX_HOME` are scoped to that workspace; Codex must not read parent-repo secrets.
+- **Allowlist review workspace (fail-closed):** live Codex runs in a **temp directory outside the repo** built by `build_review_workspace.py --git-rev <reviewed_head>`. Diff paths are materialized from **git blobs** (`git show <rev>:<path>`), never copied from the worktree. Symlinks (`120000`) are rejected. If any deny-listed path appears in the diff (`.env`, `.codex/**`, `*secret*`, credentials, private keys, etc.), the builder exits `1` and the gate returns `REVIEW_FAILED` — no usable workspace. Prompt, schema, patch, and optional `AGENTS.md` are still copied as review artifacts. Manifest lists allowlisted / skipped_missing / git_rev / out_dir_name only (no absolute `repo_root`).
+- **OS isolation:** on Linux/Unix the gate `chmod 000`s the repo root during Codex (then restores). Set `AGENT_LOOP_SKIP_OS_ISOLATION=1` only for tests/mocks. Other platforms → `REVIEW_FAILED` unless that skip is set.
+- **Auth isolation:** only `auth.json` is copied into workspace `CODEX_HOME`; real Codex without auth → `REVIEW_FAILED`.
 - Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
-- Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
+- Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_SKIP_OS_ISOLATION=1`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.
 
 ## Mock mode (tests)

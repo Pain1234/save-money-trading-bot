@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
-from conftest import discover_powershell, run_gate
+from gate_helpers import discover_powershell, run_gate
 
 
 def _result_path(repo_root: Path) -> Path:
@@ -52,7 +53,7 @@ def test_discover_powershell_prefers_pwsh(monkeypatch):
 
 
 def test_run_gate_uses_discovered_powershell(monkeypatch, fixtures_dir, gate_ps1):
-    import conftest as gate_conf
+    import gate_helpers as gate_conf
 
     captured: dict[str, object] = {}
 
@@ -204,7 +205,10 @@ def test_08_skip_codex_without_mock(repo_root, fixtures_dir, gate_ps1):
 
 def test_08c_live_codex_process_error_exit_3(repo_root, fixtures_dir, gate_ps1):
     mock_fail = fixtures_dir / "mock_codex_fail.py"
-    env = _gate_env(AGENT_LOOP_CODEX_BIN=str(mock_fail))
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_fail),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+    )
     proc = run_gate(
         "-DiffFile",
         str(fixtures_dir / "sample.diff"),
@@ -398,6 +402,8 @@ def test_14_working_tree_no_tracked_source_mods(repo_root, fixtures_dir, gate_ps
 
 def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, tmp_path):
     argv_file = tmp_path / "codex-argv.txt"
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
     before = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -410,6 +416,8 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
     )
     proc = run_gate(
         "-DiffFile",
@@ -426,23 +434,6 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     assert "--ask-for-approval" in argv_text
     assert "never" in argv_text
     assert "--ignore-user-config" in argv_text
-
-    # Allowlisted review workspace should exist with manifest + instruction.
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    short = head[:12]
-    ws = repo_root / ".agent-loop" / "tmp" / f"review-workspace-{short}"
-    assert ws.is_dir(), f"expected review workspace at {ws}"
-    assert (ws / "workspace-manifest.json").is_file()
-    assert (ws / "codex-instruction.txt").is_file()
-    instr = (ws / "codex-instruction.txt").read_text(encoding="utf-8")
-    assert "ONLY read files inside this review workspace" in instr
-    assert ".env" in instr or "HARD SCOPE" in instr
 
     after = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -469,12 +460,59 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     assert not unexpected, f"unexpected tracked modifications: {unexpected}"
 
 
+def test_14b_live_codex_workspace_outside_repo_and_auth(
+    repo_root, fixtures_dir, gate_ps1, tmp_path
+):
+    argv_file = tmp_path / "codex-argv.txt"
+    home_file = tmp_path / "codex-home.txt"
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
+        AGENT_LOOP_CODEX_HOME_FILE=str(home_file),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_REQUIRE_AUTH="1",
+        AGENT_LOOP_KEEP_WORKSPACE="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert home_file.is_file(), "mock should record CODEX_HOME"
+    codex_home = Path(home_file.read_text(encoding="utf-8").strip())
+    assert codex_home.is_dir()
+    assert (codex_home / "auth.json").is_file()
+    workspace = codex_home.parent
+    repo_resolved = repo_root.resolve()
+    try:
+        workspace.resolve().relative_to(repo_resolved)
+        outside = False
+    except ValueError:
+        outside = True
+    assert outside, f"workspace {workspace} must be outside repo {repo_resolved}"
+    assert (workspace / "workspace-manifest.json").is_file()
+    manifest = json.loads(
+        (workspace / "workspace-manifest.json").read_text(encoding="utf-8")
+    )
+    assert "repo_root" not in manifest
+    assert "git_rev" in manifest
+    # Best-effort cleanup of kept temp workspace after assertions.
+    shutil.rmtree(workspace, ignore_errors=True)
+
+
 def test_14c_post_codex_head_mismatch_exit_4(repo_root, fixtures_dir, gate_ps1, tmp_path):
     mock_codex = fixtures_dir / "mock_codex.py"
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ARGV_FILE=str(tmp_path / "argv.txt"),
         AGENT_LOOP_POST_CODEX_HEAD="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
     )
     proc = run_gate(
         "-DiffFile",
@@ -483,6 +521,34 @@ def test_14c_post_codex_head_mismatch_exit_4(repo_root, fixtures_dir, gate_ps1, 
         env=env,
     )
     assert proc.returncode == 4, proc.stdout + proc.stderr
+
+
+def test_08d_deny_path_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """Deny-listed path in the reviewed patch must abort before Codex."""
+    env_diff = tmp_path / "env_in_patch.diff"
+    env_diff.write_text(
+        "diff --git a/.env b/.env\n"
+        "--- a/.env\n"
+        "+++ b/.env\n"
+        "@@ -0,0 +1 @@\n"
+        "+SECRET=leak\n",
+        encoding="utf-8",
+    )
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(env_diff),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "SECRET=leak" not in combined
 
 
 def test_15_script_works_from_subdirectory(repo_root, fixtures_dir, gate_ps1):

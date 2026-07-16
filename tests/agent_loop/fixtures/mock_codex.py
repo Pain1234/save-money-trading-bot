@@ -38,6 +38,10 @@ def main(argv: list[str]) -> int:
     if argv_file:
         Path(argv_file).write_text("\n".join(argv) + "\n", encoding="utf-8")
 
+    home_file = os.environ.get("AGENT_LOOP_CODEX_HOME_FILE", "").strip()
+    if home_file:
+        Path(home_file).write_text(os.environ.get("CODEX_HOME", "") + "\n", encoding="utf-8")
+
     if len(argv) >= 2 and argv[0] == "exec" and "--help" in argv:
         print(HELP_TEXT)
         return 0
@@ -45,6 +49,13 @@ def main(argv: list[str]) -> int:
     if not argv or argv[0] != "exec":
         print("mock_codex: expected 'exec' subcommand", file=sys.stderr)
         return 2
+
+    if os.environ.get("AGENT_LOOP_REQUIRE_AUTH", "").strip() == "1":
+        codex_home = os.environ.get("CODEX_HOME", "").strip()
+        auth = Path(codex_home) / "auth.json" if codex_home else None
+        if auth is None or not auth.is_file():
+            print("mock_codex: auth.json missing under CODEX_HOME", file=sys.stderr)
+            return 3
 
     instruction = Path(argv[-1])
     if not instruction.is_file():

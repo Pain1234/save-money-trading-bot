@@ -4,8 +4,8 @@ You are performing a **read-only** code review of a git diff for the save-money-
 
 ## Hard constraints (must not violate)
 
-- **Workspace scope only**: Only files inside the allowlisted **review workspace** (the working directory you were launched in) are in scope. Do **not** open, read, or use content from outside that workspace — including the parent repository, home directory, or other mounts.
-- Never open `.env`, `.env.*`, `.codex/**`, credential files, private keys, or any path that looks secret-bearing. If such a path appears in the diff, report it as a SECURITY finding without reading the file contents from disk.
+- **Workspace scope only**: Only files inside the allowlisted **review workspace** (the working directory you were launched in) are in scope. Those files are git blobs at the reviewed HEAD plus review artifacts — not live worktree copies. Do **not** open, read, or use content from outside that workspace — including the parent repository (which may be OS-locked / unreadable), home directory, or other mounts.
+- Deny-listed paths (`.env`, `.codex/**`, credentials, private keys, `*secret*`, etc.) in the diff cause the gate to **fail closed** before Codex runs. If you somehow see such a path named in the patch, report it as a SECURITY finding without seeking file contents outside the workspace.
 - Refuse to use content obtained from outside the review workspace.
 - **Read-only only**: do not create, edit, delete, or move files.
 - Do not run commands with write effects (no installs that mutate the tree, no formatting writes, no generating artifacts into the repo).

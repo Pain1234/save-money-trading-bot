@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Build an allowlisted review workspace for Codex (secret isolation).
 
-Copies only prompt/schema/diff/AGENTS.md and non-denied files referenced by the
-diff into a clean out-dir. Never copies .env, .codex, credentials, or secret-like
-paths. Writes workspace-manifest.json listing allowlisted paths.
+Loads reviewed-head blobs via `git show` into an out-dir (never copies from the
+worktree). Copies only prompt/schema/diff/optional AGENTS.md as file artifacts.
+Deny-listed paths in the diff fail closed (exit 1) — no usable workspace.
 
 Exit codes:
   0 - success
-  1 - deny-listed path requested / copy refused
+  1 - deny-listed path / symlink rejected
   2 - usage / I/O error
 """
 
@@ -17,6 +17,7 @@ import argparse
 import json
 import re
 import shutil
+import subprocess
 import sys
 from fnmatch import fnmatch
 from pathlib import Path
@@ -98,6 +99,42 @@ def safe_copy_file(src: Path, dest: Path) -> None:
     shutil.copy2(src, dest)
 
 
+def _git(
+    repo_root: Path,
+    args: list[str],
+    *,
+    check: bool = False,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(repo_root),
+        capture_output=True,
+        check=check,
+    )
+
+
+def git_ls_tree_mode(repo_root: Path, git_rev: str, rel: str) -> str | None:
+    """Return tree entry mode for path at rev, or None if missing."""
+    proc = _git(repo_root, ["ls-tree", git_rev, "--", rel], check=False)
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.decode("utf-8", errors="replace").strip()
+    if not out:
+        return None
+    # Format: <mode> <type> <object>\t<file>
+    first = out.splitlines()[0]
+    mode = first.split(None, 1)[0]
+    return mode
+
+
+def git_show_blob(repo_root: Path, git_rev: str, rel: str) -> bytes | None:
+    """Load blob bytes at rev:path. None if missing / failed."""
+    proc = _git(repo_root, ["show", f"{git_rev}:{rel}"], check=False)
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
 def build_workspace(
     *,
     repo_root: Path,
@@ -106,19 +143,27 @@ def build_workspace(
     prompt_path: Path,
     schema_path: Path,
     agents_path: Path | None,
+    git_rev: str,
 ) -> dict:
-    if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     raw = diff_path.read_bytes()
     if raw.startswith(b"\xef\xbb\xbf"):
         raw = raw[3:]
     diff_text = raw.decode("utf-8", errors="replace")
 
+    diff_paths = paths_from_diff(diff_text)
+    denied_in_diff = [rel for rel in diff_paths if is_denied(rel)]
+    if denied_in_diff:
+        names = ", ".join(sorted(set(denied_in_diff)))
+        raise PermissionError(
+            f"deny-listed path(s) in diff (fail-closed): {names}"
+        )
+
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     allowlisted: list[str] = []
     skipped_missing: list[str] = []
-    denied_in_diff: list[str] = []
 
     # Always copy core review artifacts (names fixed inside workspace).
     core_copies = [
@@ -140,32 +185,36 @@ def build_workspace(
         safe_copy_file(agents_path, out_dir / "AGENTS.md")
         allowlisted.append("AGENTS.md")
 
-    for rel in paths_from_diff(diff_text):
+    for rel in diff_paths:
+        # Denied already fail-closed above; keep guard for defense in depth.
         if is_denied(rel):
-            denied_in_diff.append(rel)
-            continue
-        src = repo_root / rel
-        if not src.is_file():
-            skipped_missing.append(rel)
-            continue
-        # Defense in depth: never copy deny paths even if logic above missed.
-        if is_denied(rel):
-            raise PermissionError(f"refuse to copy deny-listed path: {rel}")
+            raise PermissionError(f"refuse to materialize deny-listed path: {rel}")
+
         dest = out_dir / rel
-        # Prevent path escape
         try:
             dest.resolve().relative_to(out_dir.resolve())
         except ValueError as exc:
             raise PermissionError(f"path escapes workspace: {rel}") from exc
-        safe_copy_file(src, dest)
+
+        mode = git_ls_tree_mode(repo_root, git_rev, rel)
+        if mode == "120000":
+            raise PermissionError(f"symlink rejected at {git_rev}: {rel}")
+
+        blob = git_show_blob(repo_root, git_rev, rel)
+        if blob is None:
+            skipped_missing.append(rel)
+            continue
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(blob)
         allowlisted.append(rel)
 
     manifest = {
         "allowlisted": sorted(set(allowlisted)),
         "skipped_missing": sorted(set(skipped_missing)),
-        "denied": sorted(set(denied_in_diff)),
-        "repo_root": str(repo_root),
-        "out_dir": str(out_dir),
+        "denied": [],  # empty on success; deny fails before workspace build
+        "git_rev": git_rev,
+        "out_dir_name": out_dir.name,
     }
     manifest_path = out_dir / "workspace-manifest.json"
     manifest_path.write_text(
@@ -183,19 +232,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--prompt", required=True, type=Path)
     parser.add_argument("--schema", required=True, type=Path)
+    parser.add_argument(
+        "--git-rev",
+        required=True,
+        help="Reviewed HEAD SHA/ref; blobs loaded via git show <rev>:<path>.",
+    )
     parser.add_argument("--agents", type=Path, default=None)
     args = parser.parse_args(argv)
 
+    git_rev = args.git_rev.strip()
+    if not git_rev:
+        print("build_review_workspace: error: --git-rev is required", file=sys.stderr)
+        return 2
+
+    out_dir = args.out_dir.resolve()
     try:
         build_workspace(
             repo_root=args.repo_root.resolve(),
             diff_path=args.diff.resolve(),
-            out_dir=args.out_dir.resolve(),
+            out_dir=out_dir,
             prompt_path=args.prompt.resolve(),
             schema_path=args.schema.resolve(),
             agents_path=args.agents.resolve() if args.agents else None,
+            git_rev=git_rev,
         )
     except PermissionError as exc:
+        # Do not leave a usable workspace for Codex after deny/symlink rejection.
+        if out_dir.exists():
+            shutil.rmtree(out_dir, ignore_errors=True)
         print(f"build_review_workspace: DENIED: {exc}", file=sys.stderr)
         return 1
     except (OSError, ValueError, FileNotFoundError) as exc:
