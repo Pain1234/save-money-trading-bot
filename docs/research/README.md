@@ -16,9 +16,10 @@ P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 →
 | `identity` / `run_manifest` | experiment_id / run_id / attempt_id (#142) |
 | `strategy_resolver` | Strategy interface + Trend V1 resolver (#148) |
 | `costs` | Cost field enforcement + backtester mapping (#49) |
-| `metrics_contract` | metrics.json + report.md + benchmark (#144) |
+| `metrics_contract` / `benchmark` | metrics.json + report.md + buy-and-hold (#144) |
 | `runner` / `artifacts` | CLI runner + atomic layout (#143) |
 | `registry` | Index + compare + invalidation sidecar (#145) |
+| `repro` | Semantic double-run compare (#146) |
 
 ## CLI
 
@@ -33,6 +34,7 @@ python -m research list|show|compare|invalidate ...
 
 - [EXPERIMENT_SPEC.md](EXPERIMENT_SPEC.md)
 - [IDENTITY.md](IDENTITY.md)
+- [STRATEGY_INTERFACE.md](STRATEGY_INTERFACE.md)
 - [ARTIFACT_FORMAT.md](ARTIFACT_FORMAT.md)
 - [METRICS_DEFINITIONS.md](METRICS_DEFINITIONS.md)
 - [REPRODUCIBILITY.md](REPRODUCIBILITY.md)
