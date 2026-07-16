@@ -251,8 +251,131 @@ def test_is_denied_helpers():
     assert mod.is_denied("nested/auth.json")
     assert mod.is_denied("id_ed25519")
     assert mod.is_denied("id_ed25519.pub")
+    assert mod.is_denied("id_ed25519_backup")
+    assert mod.is_denied("id_rsa.old")
+    assert mod.is_denied("ID_ED25519_BACKUP")
+    assert mod.is_denied("keys/id_dsa_2025")
+    assert mod.is_denied(r"keys\id_rsa_backup")
     assert mod.is_denied("foo.keystore")
+    assert mod.is_denied("tls.pem")
     assert not mod.is_denied("src/ok.py")
+
+
+def test_private_key_basename_and_rename_denylist(tmp_path):
+    """id_ed25519_backup / id_rsa.old / case / rename from&to all fail closed."""
+    repo = tmp_path / "repo"
+    sha = _git_init_with_file(repo, "ok.py", "x=1\n")
+    cases = [
+        (
+            "backup.diff",
+            "diff --git a/id_ed25519_backup b/id_ed25519_backup\n"
+            "--- a/id_ed25519_backup\n"
+            "+++ b/id_ed25519_backup\n"
+            "@@ -0,0 +1 @@\n"
+            "+ssh-key\n",
+        ),
+        (
+            "rsa_old.diff",
+            "diff --git a/id_rsa.old b/id_rsa.old\n"
+            "--- a/id_rsa.old\n"
+            "+++ b/id_rsa.old\n"
+            "@@ -0,0 +1 @@\n"
+            "+ssh-key\n",
+        ),
+        (
+            "case.diff",
+            "diff --git a/ID_ED25519_BACKUP b/ID_ED25519_BACKUP\n"
+            "--- a/ID_ED25519_BACKUP\n"
+            "+++ b/ID_ED25519_BACKUP\n"
+            "@@ -0,0 +1 @@\n"
+            "+ssh-key\n",
+        ),
+        (
+            "rename_to.diff",
+            "diff --git a/ok.py b/id_ed25519_backup\n"
+            "similarity index 100%\n"
+            "rename from ok.py\n"
+            "rename to id_ed25519_backup\n",
+        ),
+        (
+            "rename_from.diff",
+            "diff --git a/id_rsa.old b/ok.py\n"
+            "similarity index 100%\n"
+            "rename from id_rsa.old\n"
+            "rename to ok.py\n",
+        ),
+    ]
+    for name, body in cases:
+        diff = tmp_path / name
+        diff.write_text(body, encoding="utf-8")
+        out = tmp_path / f"ws-{name}"
+        proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+        assert proc.returncode == 1, name + (proc.stdout or "") + (proc.stderr or "")
+        assert "deny-listed" in (proc.stderr or "").lower() or "DENIED" in (proc.stderr or "")
+
+
+def test_private_key_header_in_diff_and_blob_fail_closed(tmp_path):
+    """PEM private key header in diff/blob → PermissionError; no key body in logs."""
+    repo = tmp_path / "repo"
+    key_body = (
+        "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+        "SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG\n"
+        "-----END OPENSSH PRIVATE KEY-----\n"
+    )
+    sha = _git_init_with_file(repo, "notes.txt", key_body)
+    diff = tmp_path / "pem.diff"
+    diff.write_text(
+        "diff --git a/notes.txt b/notes.txt\n"
+        "--- a/notes.txt\n"
+        "+++ b/notes.txt\n"
+        "@@ -0,0 +1,3 @@\n"
+        "+-----BEGIN OPENSSH PRIVATE KEY-----\n"
+        "+SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG\n"
+        "+-----END OPENSSH PRIVATE KEY-----\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "ws"
+    proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    err = proc.stderr or ""
+    assert "private key header" in err.lower() or "DENIED" in err
+    assert "SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG" not in err
+    assert "SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG" not in (proc.stdout or "")
+
+
+def test_private_key_header_in_blob_only(tmp_path):
+    """Committed blob with PEM header fails even if diff hunk omits the header line."""
+    repo = tmp_path / "repo"
+    key_body = (
+        "-----BEGIN RSA PRIVATE KEY-----\n"
+        "BLOB_SECRET_MATERIAL\n"
+        "-----END RSA PRIVATE KEY-----\n"
+    )
+    sha = _git_init_with_file(repo, "legacy.txt", key_body)
+    diff = tmp_path / "touch.diff"
+    # Diff mentions the path but added lines have no header (still load blob).
+    diff.write_text(
+        "diff --git a/legacy.txt b/legacy.txt\n"
+        "--- a/legacy.txt\n"
+        "+++ b/legacy.txt\n"
+        "@@ -1,3 +1,3 @@\n"
+        " -----BEGIN RSA PRIVATE KEY-----\n"
+        "-BLOB_SECRET_MATERIAL\n"
+        "+BLOB_SECRET_MATERIAL\n"
+        " -----END RSA PRIVATE KEY-----\n",
+        encoding="utf-8",
+    )
+    # The + line is not a header; context lines are not scanned as additions.
+    # Blob load must still catch the header.
+    out = tmp_path / "ws"
+    proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    err = proc.stderr or ""
+    assert (
+        "private key header detected in path" in err.lower()
+        or "private key header" in err.lower()
+    )
+    assert "BLOB_SECRET_MATERIAL" not in err
 
 
 def test_paths_from_diff_extracts_c_quoted_paths():

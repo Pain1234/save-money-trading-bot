@@ -51,15 +51,27 @@ DENY_PATTERNS: tuple[str, ...] = (
     "auth.json",
     "*/auth.json",
     "**/auth.json",
-    "*.pem",
+)
+
+# Basename prefixes (case-insensitive): id_rsa_backup, id_ed25519.old, ID_DSA, …
+PRIVATE_KEY_BASENAME_PREFIXES: tuple[str, ...] = (
     "id_rsa",
-    "id_rsa.*",
+    "id_dsa",
+    "id_ecdsa",
     "id_ed25519",
-    "id_ed25519.*",
-    "*.key",
-    "*.p12",
-    "*.pfx",
-    "*.keystore",
+)
+PRIVATE_KEY_EXTENSIONS: tuple[str, ...] = (
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".keystore",
+)
+PRIVATE_KEY_HEADER_RE = re.compile(
+    rb"-----BEGIN [A-Z0-9 \-]*PRIVATE KEY-----"
+)
+PRIVATE_KEY_HEADER_TEXT_RE = re.compile(
+    r"-----BEGIN [A-Z0-9 \-]*PRIVATE KEY-----"
 )
 
 
@@ -193,7 +205,7 @@ def _strip_ab_prefix(path: str) -> str:
 
 
 def is_denied(rel_path: str) -> bool:
-    rel = normalize_rel(rel_path)
+    rel = normalize_rel(rel_path).replace("\\", "/")
     if not rel or rel == "/dev/null":
         return False
     parts = rel.split("/")
@@ -202,15 +214,37 @@ def is_denied(rel_path: str) -> bool:
         return True
     # .env or .env.* at any depth (basename)
     base = parts[-1]
-    if base == ".env" or fnmatch(base, ".env.*"):
+    base_lower = base.lower()
+    if base == ".env" or fnmatch(base, ".env.*") or fnmatch(base_lower, ".env.*"):
         return True
+    # Private key basenames: id_rsa*, id_dsa*, id_ecdsa*, id_ed25519* (any suffix/case)
+    for prefix in PRIVATE_KEY_BASENAME_PREFIXES:
+        if base_lower.startswith(prefix):
+            return True
+    for ext in PRIVATE_KEY_EXTENSIONS:
+        if base_lower.endswith(ext):
+            return True
     for pattern in DENY_PATTERNS:
-        if fnmatch(rel, pattern) or fnmatch(base, pattern):
+        if fnmatch(rel, pattern) or fnmatch(base, pattern) or fnmatch(base_lower, pattern.lower()):
             return True
         # Also match patterns against each path suffix (e.g. foo/credentials.json)
         for i in range(len(parts)):
             suffix = "/".join(parts[i:])
-            if fnmatch(suffix, pattern):
+            if fnmatch(suffix, pattern) or fnmatch(suffix.lower(), pattern.lower()):
+                return True
+    return False
+
+
+def contains_private_key_header(data: bytes) -> bool:
+    """True if blob/diff bytes contain a PEM private key header."""
+    return PRIVATE_KEY_HEADER_RE.search(data) is not None
+
+
+def diff_has_private_key_header(diff_text: str) -> bool:
+    """Scan added diff lines for PEM private key headers (no key body logged)."""
+    for line in diff_text.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            if PRIVATE_KEY_HEADER_TEXT_RE.search(line):
                 return True
     return False
 
@@ -327,6 +361,10 @@ def build_workspace(
         raise PermissionError(
             f"deny-listed path(s) in diff (fail-closed): {names}"
         )
+    if diff_has_private_key_header(diff_text):
+        raise PermissionError(
+            "private key header detected in diff (fail-closed; content omitted)"
+        )
 
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -376,6 +414,11 @@ def build_workspace(
         if blob is None:
             skipped_missing.append(rel)
             continue
+
+        if contains_private_key_header(blob):
+            raise PermissionError(
+                f"private key header detected in path {rel}"
+            )
 
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(blob)

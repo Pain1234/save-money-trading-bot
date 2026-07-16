@@ -75,10 +75,16 @@ def run_gate(
         args = ["-BaseRef", "HEAD", *args]
 
     merged = dict(os.environ) if env is None else dict(env)
-    # DiffFile is test/offline only in production unless explicitly allowed.
+    # DiffFile is mock/test-only: require TEST_MODE + MockResultPath.
+    # AGENT_LOOP_ALLOW_DIFF_FILE alone is insufficient.
     if has_diff_file:
-        merged.setdefault("AGENT_LOOP_ALLOW_DIFF_FILE", "1")
         merged.setdefault("AGENT_LOOP_TEST_MODE", "1")
+        # Demoted: may still be set for older callers but is not sufficient alone.
+        merged.setdefault("AGENT_LOOP_ALLOW_DIFF_FILE", "1")
+        has_mock = any(str(a).lower() == "-mockresultpath" for a in args)
+        if not has_mock:
+            # Leave unset MockResultPath so the gate fails closed as intended.
+            pass
 
     cmd = [
         exe,

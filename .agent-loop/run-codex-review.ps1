@@ -23,7 +23,8 @@
   Optional explicit repo root. Default: git rev-parse --show-toplevel.
 
 .PARAMETER DiffFile
-  Optional precomputed patch path (tests). Skips git diff generation.
+  Optional precomputed patch path (tests only). Requires AGENT_LOOP_TEST_MODE=1
+  and a non-empty -MockResultPath. Never starts a live Codex process.
 
 .PARAMETER AllowEmptyDiff
   Tests only: allow empty diffs. Default fails empty diffs as REVIEW_FAILED.
@@ -35,6 +36,9 @@
 .PARAMETER CodexBin
   Optional path/name of the Codex executable (tests: fake recorder).
   Overrides env AGENT_LOOP_CODEX_BIN when set.
+
+.PARAMETER TimeoutSec
+  Codex process timeout in seconds (default: env AGENT_LOOP_CODEX_TIMEOUT_SEC or 600).
 
 .NOTES
   Exit codes: 0 APPROVED, 2 CHANGES_REQUIRED, 3 REVIEW_FAILED, 4 stale/wrong.
@@ -49,7 +53,8 @@ param(
     [string]$DiffFile = "",
     [switch]$AllowEmptyDiff,
     [switch]$PreserveMockRefs,
-    [string]$CodexBin = ""
+    [string]$CodexBin = "",
+    [int]$TimeoutSec = 0
 )
 
 Set-StrictMode -Version Latest
@@ -199,34 +204,42 @@ function Test-CodexAvailable {
 
 function Get-CodexChildEnvironment {
     <#
-      Build a scrubbed env hashtable for the Codex child process.
-      Allowlist only — never pass DATABASE_URL, PASSWORD, OPENAI_API_KEY,
-      RAILWAY_*, SESSION_SECRET, *SECRET*, *TOKEN* (except CODEX_*), etc.
+      Build a NEW env dictionary from an allowlist ONLY.
+      Never copy parent env wholesale. Never fall back to blocklist stripping.
+      Auth keys (CODEX_ACCESS_TOKEN / CODEX_API_KEY) come from -Extra only,
+      and at most one auth key is retained (prefer ACCESS_TOKEN).
     #>
     param(
         [hashtable]$Extra = @{}
     )
     $allow = @(
-        "PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "windir",
-        "HOME", "USERPROFILE", "USERNAME", "USER", "LOGNAME",
+        "PATH", "PATHEXT", "SystemRoot", "SYSTEMROOT", "windir", "WINDIR",
+        "HOME", "USERPROFILE", "USERNAME",
         "TMP", "TEMP", "TMPDIR",
-        "LANG", "LC_ALL", "LC_CTYPE", "TERM",
-        "ComSpec", "COMSPEC", "SystemDrive", "PROCESSOR_ARCHITECTURE",
-        "NUMBER_OF_PROCESSORS", "OS",
-        "CODEX_HOME", "CODEX_ACCESS_TOKEN", "CODEX_API_KEY",
+        "LANG", "LC_ALL", "TERM",
+        "ComSpec", "COMSPEC",
+        "CODEX_HOME",
         "PYTHONPATH", "PYTHONHOME", "PYTHONUTF8", "PYTHONIOENCODING",
         "PYTHONDONTWRITEBYTECODE", "VIRTUAL_ENV"
     )
-    $sideChannels = @(
-        "AGENT_LOOP_CODEX_ARGV_FILE",
-        "AGENT_LOOP_CODEX_HOME_FILE",
-        "AGENT_LOOP_CODEX_STDIN_FILE",
-        "AGENT_LOOP_CODEX_ENV_KEYS_FILE",
-        "AGENT_LOOP_REQUIRE_AUTH",
-        "AGENT_LOOP_MOCK_AUTH_OK",
-        "AGENT_LOOP_AUTH_ENV_SEEN_FILE",
-        "AGENT_LOOP_MOCK_STDERR_NOISE"
-    )
+    # Auth keys are applied via -Extra only (not copied from parent).
+    $testMode = ($env:AGENT_LOOP_TEST_MODE -eq "1")
+    $sideChannels = @()
+    if ($testMode) {
+        $sideChannels = @(
+            "AGENT_LOOP_CODEX_ARGV_FILE",
+            "AGENT_LOOP_CODEX_HOME_FILE",
+            "AGENT_LOOP_CODEX_STDIN_FILE",
+            "AGENT_LOOP_CODEX_ENV_KEYS_FILE",
+            "AGENT_LOOP_REQUIRE_AUTH",
+            "AGENT_LOOP_MOCK_AUTH_OK",
+            "AGENT_LOOP_AUTH_ENV_SEEN_FILE",
+            "AGENT_LOOP_MOCK_STDERR_NOISE",
+            "AGENT_LOOP_CODEX_STDERR_NOISE",
+            "AGENT_LOOP_MOCK_FLOOD_STREAMS",
+            "AGENT_LOOP_MOCK_PARTIAL_HANG"
+        )
+    }
 
     $child = @{}
     foreach ($name in $allow) {
@@ -244,21 +257,64 @@ function Get-CodexChildEnvironment {
     if ($null -ne $Extra) {
         foreach ($key in $Extra.Keys) {
             if ($null -eq $Extra[$key]) { continue }
-            $child[[string]$key] = [string]$Extra[$key]
+            $k = [string]$key
+            # Never allow OPENAI_API_KEY or other non-allowlisted secrets via Extra
+            # except CODEX_* auth / CODEX_HOME and test side-channels already gated.
+            if ($k -eq "OPENAI_API_KEY") { continue }
+            $child[$k] = [string]$Extra[$key]
         }
     }
-    # Hard deny: never pass OPENAI_API_KEY into the child.
+    # At most one Codex auth key for this run (prefer ACCESS_TOKEN).
+    $hasAccess = $child.ContainsKey("CODEX_ACCESS_TOKEN") -and -not [string]::IsNullOrEmpty([string]$child["CODEX_ACCESS_TOKEN"])
+    $hasApi = $child.ContainsKey("CODEX_API_KEY") -and -not [string]::IsNullOrEmpty([string]$child["CODEX_API_KEY"])
+    if ($hasAccess -and $hasApi) {
+        $child.Remove("CODEX_API_KEY")
+    }
     if ($child.ContainsKey("OPENAI_API_KEY")) {
         $child.Remove("OPENAI_API_KEY")
     }
     return $child
 }
 
+function Stop-CodexProcessTree {
+    param([Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process)
+    $pidToKill = $null
+    try { $pidToKill = $Process.Id } catch { return }
+    if ($null -eq $pidToKill -or $pidToKill -le 0) { return }
+    try {
+        Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+    }
+    catch { }
+    $isWin = $false
+    try {
+        if ($PSVersionTable.PSVersion.Major -ge 6) {
+            $isWin = [bool]$IsWindows
+        }
+        else {
+            $isWin = $true
+        }
+    }
+    catch {
+        $isWin = ($env:OS -like "*Windows*")
+    }
+    if ($isWin) {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & taskkill.exe /PID $pidToKill /T /F 2>$null | Out-Null
+        }
+        catch { }
+        finally {
+            $ErrorActionPreference = $prevEap
+        }
+    }
+}
+
 function Invoke-CodexCommand {
     <#
       Launch Codex (or mock) with a scrubbed environment via ProcessStartInfo.
-      Captures stdout and stderr SEPARATELY. Returns a hashtable:
-        ExitCode, StdOut, StdErr
+      Reads stdout and stderr in parallel (ReadToEndAsync + Task.WhenAll).
+      Returns: ExitCode, StdOut, StdErr, TimedOut
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Bin,
@@ -266,8 +322,18 @@ function Invoke-CodexCommand {
         [string]$StdinText = "",
         [string]$StdinPath = "",
         [hashtable]$Environment = $null,
-        [string]$WorkingDirectory = ""
+        [string]$WorkingDirectory = "",
+        [int]$TimeoutSec = 0
     )
+    if ($TimeoutSec -le 0) {
+        if ($env:AGENT_LOOP_CODEX_TIMEOUT_SEC -match '^\d+$' -and [int]$env:AGENT_LOOP_CODEX_TIMEOUT_SEC -gt 0) {
+            $TimeoutSec = [int]$env:AGENT_LOOP_CODEX_TIMEOUT_SEC
+        }
+        else {
+            $TimeoutSec = 600
+        }
+    }
+
     $stdinContent = $null
     if (-not [string]::IsNullOrEmpty($StdinPath)) {
         $stdinContent = [System.IO.File]::ReadAllText($StdinPath)
@@ -326,45 +392,55 @@ function Invoke-CodexCommand {
     }
 
     $envMap = if ($null -ne $Environment) { $Environment } else { Get-CodexChildEnvironment }
-    $cleared = $false
+
+    # Fail-closed: require a clearable env collection; never blocklist-strip parent env.
+    if (
+        $env:AGENT_LOOP_TEST_MODE -eq "1" -and
+        $env:AGENT_LOOP_SIMULATE_ENV_CLEAR_FAIL -eq "1"
+    ) {
+        throw "Cannot create scrubbed child environment (simulated Clear failure)."
+    }
+
+    $envColl = $null
     try {
-        if ($null -ne $psi.Environment) {
-            $psi.Environment.Clear()
-            $cleared = $true
-            foreach ($key in $envMap.Keys) {
-                $psi.Environment[[string]$key] = [string]$envMap[$key]
-            }
+        if ($null -ne $psi.PSObject.Properties["Environment"] -and $null -ne $psi.Environment) {
+            $envColl = $psi.Environment
         }
     }
     catch {
-        $cleared = $false
+        $envColl = $null
     }
-    if (-not $cleared) {
-        # .NET Framework fallback: start from inherited env, strip secrets, apply allowlist overlay.
-        $denyExact = @(
-            "OPENAI_API_KEY", "DATABASE_URL", "PASSWORD", "SESSION_SECRET",
-            "RAILWAY_TOKEN", "RAILWAY_API_TOKEN"
-        )
-        foreach ($k in @($psi.EnvironmentVariables.Keys)) {
-            $ks = [string]$k
-            $upper = $ks.ToUpperInvariant()
-            $drop = $false
-            if ($denyExact -contains $ks) { $drop = $true }
-            elseif ($upper -like "RAILWAY_*") { $drop = $true }
-            elseif ($upper -like "*SECRET*") { $drop = $true }
-            elseif ($upper -like "*PASSWORD*") { $drop = $true }
-            elseif ($upper -like "*TOKEN*" -and $ks -ne "CODEX_ACCESS_TOKEN" -and $ks -ne "CODEX_API_KEY") {
-                $drop = $true
-            }
-            elseif ($upper -like "PAPER_*") { $drop = $true }
-            if ($drop) {
-                try { $psi.EnvironmentVariables.Remove($ks) } catch { }
-            }
+    if ($null -eq $envColl) {
+        try {
+            $envColl = $psi.EnvironmentVariables
         }
-        foreach ($key in $envMap.Keys) {
-            $psi.EnvironmentVariables[[string]$key] = [string]$envMap[$key]
+        catch {
+            throw "Cannot create scrubbed child environment: ProcessStartInfo has no Environment collection."
         }
-        try { $psi.EnvironmentVariables.Remove("OPENAI_API_KEY") } catch { }
+    }
+    if ($null -eq $envColl) {
+        throw "Cannot create scrubbed child environment: ProcessStartInfo environment is null."
+    }
+    try {
+        $envColl.Clear()
+    }
+    catch {
+        throw ("Cannot create scrubbed child environment (Environment.Clear failed, fail-closed): {0}" -f $_.Exception.Message)
+    }
+    # Verify clear actually emptied (some hosts may no-op).
+    try {
+        if ($envColl.Count -gt 0) {
+            throw "Cannot create scrubbed child environment: Environment.Clear left residual entries."
+        }
+    }
+    catch [System.Management.Automation.RuntimeException] {
+        throw
+    }
+    catch {
+        # Count may be unavailable on some collections; proceed after Clear().
+    }
+    foreach ($key in $envMap.Keys) {
+        $envColl[[string]$key] = [string]$envMap[$key]
     }
 
     $proc = New-Object System.Diagnostics.Process
@@ -374,9 +450,41 @@ function Invoke-CodexCommand {
         $proc.StandardInput.Write($stdinContent)
     }
     $proc.StandardInput.Close()
-    $stdOut = $proc.StandardOutput.ReadToEnd()
-    $stdErr = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
+
+    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+    $stderrTask = $proc.StandardError.ReadToEndAsync()
+    $timeoutMs = [Math]::Max(1, $TimeoutSec) * 1000
+    $completed = [System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask), $timeoutMs)
+
+    if (-not $completed) {
+        Stop-CodexProcessTree -Process $proc
+        try { $null = $proc.WaitForExit(5000) } catch { }
+        try { $proc.Dispose() } catch { }
+        return @{
+            ExitCode = -1
+            StdOut   = ""
+            StdErr   = ""
+            TimedOut = $true
+        }
+    }
+
+    # Drain completed tasks then wait for process exit.
+    $stdOut = [string]$stdoutTask.Result
+    $stdErr = [string]$stderrTask.Result
+    if (-not $proc.HasExited) {
+        $null = $proc.WaitForExit($timeoutMs)
+        if (-not $proc.HasExited) {
+            Stop-CodexProcessTree -Process $proc
+            try { $null = $proc.WaitForExit(5000) } catch { }
+            try { $proc.Dispose() } catch { }
+            return @{
+                ExitCode = -1
+                StdOut   = ""
+                StdErr   = ""
+                TimedOut = $true
+            }
+        }
+    }
     $exitCode = $proc.ExitCode
     $proc.Dispose()
 
@@ -384,7 +492,81 @@ function Invoke-CodexCommand {
         ExitCode = $exitCode
         StdOut   = $stdOut
         StdErr   = $stdErr
+        TimedOut = $false
     }
+}
+
+function Write-GitBinaryDiffToFile {
+    <#
+      Write `git diff --binary <base>..<head>` bytes to Path (exact stdout bytes).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseSha,
+        [Parameter(Mandatory = $true)][string]$HeadSha,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "git"
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $range = "${BaseSha}..${HeadSha}"
+    $gitArgs = @("diff", "--binary", "--no-ext-diff", $range)
+    $usedArgList = $false
+    try {
+        if ($null -ne $psi.ArgumentList) {
+            foreach ($a in $gitArgs) { $psi.ArgumentList.Add($a) | Out-Null }
+            $usedArgList = $true
+        }
+    }
+    catch { $usedArgList = $false }
+    if (-not $usedArgList) {
+        $psi.Arguments = "diff --binary --no-ext-diff $range"
+    }
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+    # Read all stdout bytes (BaseStream preserves binary patch content).
+    $ms = New-Object System.IO.MemoryStream
+    $buf = New-Object byte[] 8192
+    $stdout = $proc.StandardOutput.BaseStream
+    while ($true) {
+        $n = $stdout.Read($buf, 0, $buf.Length)
+        if ($n -le 0) { break }
+        $ms.Write($buf, 0, $n)
+    }
+    $errText = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    $gitExit = $proc.ExitCode
+    $bytes = $ms.ToArray()
+    $proc.Dispose()
+    if ($gitExit -ne 0 -and $gitExit -ne 1) {
+        # git diff exits 0 (same) or 1 (different); other codes are errors.
+        throw ("git diff --binary failed (exit {0}): {1}" -f $gitExit, $errText)
+    }
+    # LF-normalize only when content is valid UTF-8 text without NULs (keep binary patches intact).
+    $hasNul = $false
+    foreach ($b in $bytes) {
+        if ($b -eq 0) { $hasNul = $true; break }
+    }
+    if (-not $hasNul -and $bytes.Length -gt 0) {
+        try {
+            $utf8Strict = New-Object System.Text.UTF8Encoding $false, $true
+            $text = $utf8Strict.GetString($bytes)
+            $norm = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+            if ($norm.Length -gt 0 -and -not $norm.EndsWith("`n")) {
+                $norm = $norm + "`n"
+            }
+            $utf8 = New-Object System.Text.UTF8Encoding $false
+            [System.IO.File]::WriteAllText($Path, $norm, $utf8)
+            return
+        }
+        catch {
+            # Not strict UTF-8 — write raw bytes.
+        }
+    }
+    [System.IO.File]::WriteAllBytes($Path, $bytes)
 }
 
 function Get-CodexExecHelpText {
@@ -513,22 +695,8 @@ function Assert-PostCodexHeadFresh {
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($reMerge)) {
             throw "Post-Codex recheck: cannot recompute merge-base."
         }
-        $reDiffText = & git diff --no-ext-diff "$($reMerge.Trim())...$currentHead"
-        if ($null -eq $reDiffText) { $reDiffText = "" }
-        if ($reDiffText -is [System.Array]) {
-            $reDiffText = ($reDiffText -join "`n")
-        }
-        $reDiffText = [string]$reDiffText
-        if ($reDiffText.Length -gt 0 -and -not $reDiffText.EndsWith("`n")) {
-            $reDiffText = $reDiffText + "`n"
-        }
-        $utf8 = New-Object System.Text.UTF8Encoding $false
         $rePath = Join-Path (Join-Path $Script:AgentLoopDir "tmp") "post-codex-recheck.patch"
-        [System.IO.File]::WriteAllText(
-            $rePath,
-            $reDiffText.Replace("`r`n", "`n").Replace("`r", "`n"),
-            $utf8
-        )
+        Write-GitBinaryDiffToFile -BaseSha $reMerge.Trim() -HeadSha $currentHead -Path $rePath
         $reHash = Get-Sha256NoBom -Path $rePath
         if ($reHash -ne $DiffHash) {
             Write-Host "STALE: diff hash changed during review."
@@ -670,17 +838,24 @@ try {
 
     $baseInfo = Resolve-BaseRefOrFallback -Preferred $BaseRef
     $hasDiffFile = -not [string]::IsNullOrWhiteSpace($DiffFile)
+    $hasMockResult = -not [string]::IsNullOrWhiteSpace($MockResultPath)
+    $testModeOn = ($env:AGENT_LOOP_TEST_MODE -eq "1")
 
-    if ($hasDiffFile -and ($env:AGENT_LOOP_ALLOW_DIFF_FILE -ne "1")) {
-        Write-ReviewFailedResult -ResultPath $resultPath `
-            -Summary "-DiffFile is test/offline only; set AGENT_LOOP_ALLOW_DIFF_FILE=1 to enable." `
-            -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
-            -ReviewNotes @(
-                "Production reviews must use git diff versus BaseRef.",
-                "Pytest run_gate() sets AGENT_LOOP_ALLOW_DIFF_FILE=1 automatically."
-            )
-        Write-Host "REVIEW_FAILED: -DiffFile requires AGENT_LOOP_ALLOW_DIFF_FILE=1"
-        exit $Script:ExitReviewFailed
+    if ($hasDiffFile) {
+        # DiffFile is mock/test-only: require TEST_MODE + MockResultPath.
+        # AGENT_LOOP_ALLOW_DIFF_FILE alone is insufficient and does not unlock live Codex.
+        if (-not $testModeOn -or -not $hasMockResult) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "-DiffFile requires AGENT_LOOP_TEST_MODE=1 and -MockResultPath (mock only; no live Codex)." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @(
+                    "Production reviews must use git diff --binary versus merge-base..HEAD.",
+                    "AGENT_LOOP_ALLOW_DIFF_FILE alone is not sufficient.",
+                    "DiffFile never starts a live Codex process."
+                )
+            Write-Host "REVIEW_FAILED: -DiffFile requires TEST_MODE=1 and MockResultPath"
+            exit $Script:ExitReviewFailed
+        }
     }
 
     if (-not $baseInfo.Resolved) {
@@ -730,18 +905,7 @@ try {
         [System.IO.File]::WriteAllBytes($diffPath, $raw)
     }
     else {
-        $diffText = & git diff --no-ext-diff "$reviewedBase...$reviewedHead"
-        if ($null -eq $diffText) { $diffText = "" }
-        if ($diffText -is [System.Array]) {
-            $diffText = ($diffText -join "`n")
-        }
-        # Normalize to LF UTF-8 no BOM for stable hashing
-        $diffText = [string]$diffText
-        if ($diffText.Length -gt 0 -and -not $diffText.EndsWith("`n")) {
-            $diffText = $diffText + "`n"
-        }
-        $utf8 = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($diffPath, $diffText.Replace("`r`n", "`n").Replace("`r", "`n"), $utf8)
+        Write-GitBinaryDiffToFile -BaseSha $reviewedBase -HeadSha $reviewedHead -Path $diffPath
     }
 
     $diffHash = Get-Sha256NoBom -Path $diffPath
@@ -1103,8 +1267,14 @@ $wsInput
         $childExtra = @{
             CODEX_HOME = $authHomeDir
         }
-        foreach ($ak in $childAuth.Keys) {
-            $childExtra[$ak] = $childAuth[$ak]
+        # Pass at most one auth key into the child (prefer ACCESS_TOKEN).
+        if ($childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -and
+            -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_ACCESS_TOKEN"])) {
+            $childExtra["CODEX_ACCESS_TOKEN"] = $childAuth["CODEX_ACCESS_TOKEN"]
+        }
+        elseif ($childAuth.ContainsKey("CODEX_API_KEY") -and
+            -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_API_KEY"])) {
+            $childExtra["CODEX_API_KEY"] = $childAuth["CODEX_API_KEY"]
         }
         $codexChildEnv = Get-CodexChildEnvironment -Extra $childExtra
 
@@ -1156,13 +1326,29 @@ $wsInput
             }
 
             if ([string]::IsNullOrWhiteSpace($isolationFailSummary)) {
+                $codexTimeout = $TimeoutSec
+                if ($codexTimeout -le 0 -and $env:AGENT_LOOP_CODEX_TIMEOUT_SEC -match '^\d+$') {
+                    $codexTimeout = [int]$env:AGENT_LOOP_CODEX_TIMEOUT_SEC
+                }
                 $codexResult = Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList `
                     -StdinText $instructionText `
                     -Environment $codexChildEnv `
-                    -WorkingDirectory $workspaceDir
-                $codexExit = [int]$codexResult.ExitCode
-                [System.IO.File]::WriteAllText($codexOutPath, [string]$codexResult.StdOut, $utf8)
-                [System.IO.File]::WriteAllText($codexErrPath, [string]$codexResult.StdErr, $utf8)
+                    -WorkingDirectory $workspaceDir `
+                    -TimeoutSec $codexTimeout
+                if ($codexResult.TimedOut) {
+                    $codexExit = -1
+                    $script:CodexTimedOut = $true
+                    $script:CodexStderrBytes = 0
+                }
+                else {
+                    $codexExit = [int]$codexResult.ExitCode
+                    $script:CodexTimedOut = $false
+                    $stderrStr = [string]$codexResult.StdErr
+                    $script:CodexStderrBytes = [System.Text.Encoding]::UTF8.GetByteCount($stderrStr)
+                    [System.IO.File]::WriteAllText($codexOutPath, [string]$codexResult.StdOut, $utf8)
+                    # Persist stderr to temp only (never into review JSON).
+                    [System.IO.File]::WriteAllText($codexErrPath, $stderrStr, $utf8)
+                }
             }
         }
         finally {
@@ -1243,11 +1429,25 @@ $wsInput
                     }
                 }
             }
+            $timedOut = $false
+            try { $timedOut = [bool]$script:CodexTimedOut } catch { $timedOut = $false }
+            $errBytes = 0
+            try { $errBytes = [int]$script:CodexStderrBytes } catch { $errBytes = 0 }
+            $failSummary = if ($timedOut) {
+                "Codex exec timed out; process tree killed. Partial output is not a valid approval."
+            }
+            else {
+                "Codex exec failed with exit code $codexExit."
+            }
+            $notes = @(
+                ("stderr_bytes={0}" -f $errBytes)
+                ("timeout={0}" -f $(if ($timedOut) { "true" } else { "false" }))
+            )
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "Codex exec failed with exit code $codexExit." `
+                -Summary $failSummary `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
-                -ReviewNotes @("Codex stderr captured separately from stdout (see gate logs / KEEP_CODEX_OUTPUT).")
-            Write-Host "REVIEW_FAILED: codex exec exit $codexExit"
+                -ReviewNotes $notes
+            Write-Host "REVIEW_FAILED: $failSummary"
             exit $Script:ExitReviewFailed
         }
 

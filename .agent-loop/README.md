@@ -53,7 +53,9 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-review-loop.ps1 -BaseRe
 
 **DiffFile offline mode:** when `-DiffFile` is set and BaseRef (or merge-base) cannot be resolved, the gate sets `reviewed_base = reviewed_head`, skips the merge-base requirement, and continues with the provided patch.
 
-**DiffFile is gated:** production runs must not pass `-DiffFile` unless `AGENT_LOOP_ALLOW_DIFF_FILE=1`. Without that env var the gate writes `REVIEW_FAILED` and exits `3`. Pytest `run_gate()` / `_gate_env()` set `AGENT_LOOP_ALLOW_DIFF_FILE=1` (and `AGENT_LOOP_TEST_MODE=1`) automatically when DiffFile is used.
+**DiffFile is gated (mock/test only):** `-DiffFile` is accepted only when **both** `AGENT_LOOP_TEST_MODE=1` **and** a non-empty `-MockResultPath` are set. `AGENT_LOOP_ALLOW_DIFF_FILE` alone is **not** sufficient. DiffFile never starts a live Codex process. Production reviews always build `git diff --binary <merge-base>..<reviewed-head>`.
+
+Pytest `run_gate()` sets `AGENT_LOOP_TEST_MODE=1` automatically when DiffFile is used; tests must still pass `-MockResultPath`.
 
 ## Result JSON (schema 1.0)
 

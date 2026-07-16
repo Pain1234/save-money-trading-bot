@@ -97,6 +97,23 @@ def main(argv: list[str]) -> int:
     if os.environ.get("AGENT_LOOP_MOCK_STDERR_NOISE", "").strip() == "1":
         print("{progress}", file=sys.stderr)
 
+    if os.environ.get("AGENT_LOOP_MOCK_FLOOD_STREAMS", "").strip() == "1":
+        # 1 MiB on each stream to exercise parallel ReadToEndAsync (no deadlock).
+        chunk = "x" * (1024 * 1024)
+        sys.stdout.write(chunk)
+        sys.stdout.flush()
+        sys.stderr.write("y" * (1024 * 1024))
+        sys.stderr.flush()
+
+    if os.environ.get("AGENT_LOOP_MOCK_PARTIAL_HANG", "").strip() == "1":
+        # Emit incomplete JSON then hang past the gate timeout.
+        sys.stdout.write('{"verdict":"APPROVED","schema_version":"1.0"')
+        sys.stdout.flush()
+        import time
+
+        time.sleep(3600)
+        return 1
+
     refs = _parse_refs(instruction_text)
     payload = {
         "schema_version": "1.0",

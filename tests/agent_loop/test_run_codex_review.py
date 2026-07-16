@@ -39,6 +39,64 @@ def _gate_env(**extra: str) -> dict[str, str]:
     return env
 
 
+def _init_clean_live_repo(tmp_path: Path) -> Path:
+    """Tiny git repo with a non-secret HEAD..HEAD~1 diff for live Codex path tests.
+
+    The real project branch diff includes secret_scan fixtures, so productive-path
+    tests must not use the main worktree merge-base range.
+    """
+    repo = tmp_path
+    repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "gate-test@example.com"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Gate Test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "app.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / "app.py").write_text("print('head')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "app.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "head"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    return repo
+
+
+def _run_live_gate(
+    *,
+    gate_ps1: Path,
+    live_repo: Path,
+    env: dict[str, str],
+    extra_args: list[str] | None = None,
+):
+    """Invoke the gate against a clean temp repo (productive path, no DiffFile)."""
+    args = [
+        "-RepoRoot",
+        str(live_repo),
+        "-BaseRef",
+        "HEAD~1",
+        *(extra_args or []),
+    ]
+    return run_gate(*args, script=gate_ps1, env=env, cwd=live_repo)
+
+
 def test_discover_powershell_prefers_pwsh(monkeypatch):
     import shutil as shutil_mod
 
@@ -206,18 +264,14 @@ def test_08_skip_codex_without_mock(repo_root, fixtures_dir, gate_ps1):
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
 
 
-def test_08c_live_codex_process_error_exit_3(repo_root, fixtures_dir, gate_ps1):
+def test_08c_live_codex_process_error_exit_3(repo_root, fixtures_dir, gate_ps1, tmp_path):
     mock_fail = fixtures_dir / "mock_codex_fail.py"
+    live_repo = _init_clean_live_repo(tmp_path)
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_fail),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 3, proc.stdout + proc.stderr
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
 
@@ -409,6 +463,7 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "readonly")
     before = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=str(repo_root),
@@ -424,12 +479,7 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
         AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert _read_verdict(repo_root) == "APPROVED"
     assert argv_file.is_file(), "mock Codex should record argv"
@@ -480,6 +530,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "wsauth")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
@@ -492,12 +543,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
         AGENT_LOOP_KEEP_WORKSPACE="1",
         AGENT_LOOP_KEEP_AUTH="1",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert home_file.is_file(), "mock should record CODEX_HOME"
     codex_home = Path(home_file.read_text(encoding="utf-8").strip())
@@ -528,7 +574,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
         auth_under_ws = False
     assert not auth_under_ws, f"auth home {codex_home} must not be under workspace {workspace}"
 
-    repo_resolved = repo_root.resolve()
+    repo_resolved = live_repo.resolve()
     try:
         workspace.resolve().relative_to(repo_resolved)
         outside = False
@@ -554,6 +600,7 @@ def test_14b_keep_workspace_does_not_keep_auth(
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "keepws")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_HOME_FILE=str(home_file),
@@ -563,12 +610,7 @@ def test_14b_keep_workspace_does_not_keep_auth(
         AGENT_LOOP_REQUIRE_AUTH="1",
         AGENT_LOOP_KEEP_WORKSPACE="1",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     codex_home = Path(home_file.read_text(encoding="utf-8").strip())
     assert not codex_home.exists(), "auth home must be deleted when KEEP_AUTH is unset"
@@ -585,31 +627,50 @@ def test_14b_keep_workspace_does_not_keep_auth(
 
 def test_14c_post_codex_head_mismatch_exit_4(repo_root, fixtures_dir, gate_ps1, tmp_path):
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "stale")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ARGV_FILE=str(tmp_path / "argv.txt"),
         AGENT_LOOP_POST_CODEX_HEAD="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 4, proc.stdout + proc.stderr
 
 
 def test_08d_deny_path_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
-    """Deny-listed path in the reviewed patch must abort before Codex."""
-    env_diff = tmp_path / "env_in_patch.diff"
-    env_diff.write_text(
-        "diff --git a/.env b/.env\n"
-        "--- a/.env\n"
-        "+++ b/.env\n"
-        "@@ -0,0 +1 @@\n"
-        "+SECRET=leak\n",
-        encoding="utf-8",
+    """Deny-listed path in reviewed patch aborts on productive (non-DiffFile) path."""
+    # DiffFile cannot take the live Codex/build path; use a tiny temp repo instead.
+    repo = tmp_path / "denyrepo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@example.com"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / "ok.py").write_text("x=1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "ok.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / ".env").write_text("SECRET=leak\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".env"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "bad"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
     )
     mock_codex = fixtures_dir / "mock_codex.py"
     env = _gate_env(
@@ -617,19 +678,24 @@ def test_08d_deny_path_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tm
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
     )
     proc = run_gate(
-        "-DiffFile",
-        str(env_diff),
+        "-RepoRoot",
+        str(repo),
+        "-BaseRef",
+        "HEAD~1",
         script=gate_ps1,
         env=env,
+        cwd=repo,
     )
     assert proc.returncode == 3, proc.stdout + proc.stderr
+    # Result is written under the script's .agent-loop (main repo), not temp repo.
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
     combined = (proc.stdout or "") + (proc.stderr or "")
     assert "SECRET=leak" not in combined
 
 
 def test_08e_quoted_deny_path_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
-    """C-quoted deny path with spaces must fail closed before Codex."""
+    """C-quoted deny path covered by DiffFile rejection when live Codex is requested."""
+    # DiffFile + live bin without MockResultPath must fail closed before Codex.
     quoted_diff = tmp_path / "quoted_secret.diff"
     quoted_diff.write_text(
         'diff --git "a/foo secret/token.txt" "b/foo secret/token.txt"\n'
@@ -685,14 +751,13 @@ def test_run_review_loop_wrapper(repo_root, fixtures_dir, loop_ps1):
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_difffile_requires_allow_env(repo_root, fixtures_dir, gate_ps1):
-    """Production must not accept -DiffFile without AGENT_LOOP_ALLOW_DIFF_FILE=1."""
-    env = dict(os.environ)
-    env["AGENT_LOOP_ALLOW_DIFF_FILE"] = "0"
-    env["AGENT_LOOP_TEST_MODE"] = "1"
-    # Bypass run_gate auto-allow by calling subprocess directly.
+def test_difffile_without_test_mode_rejected(repo_root, fixtures_dir, gate_ps1):
+    """1. DiffFile without TEST_MODE → REVIEW_FAILED (no live Codex)."""
     from gate_helpers import AGENT_LOOP, discover_powershell
 
+    env = dict(os.environ)
+    env["AGENT_LOOP_TEST_MODE"] = "0"
+    env["AGENT_LOOP_ALLOW_DIFF_FILE"] = "1"
     exe = discover_powershell()
     cmd = [
         exe,
@@ -720,12 +785,132 @@ def test_difffile_requires_allow_env(repo_root, fixtures_dir, gate_ps1):
     assert proc.returncode == 3, proc.stdout + proc.stderr
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
     combined = (proc.stdout or "") + (proc.stderr or "")
-    assert "ALLOW_DIFF_FILE" in combined or "DiffFile" in combined
+    assert "TEST_MODE" in combined or "MockResultPath" in combined or "DiffFile" in combined
 
 
-def test_skip_os_isolation_requires_test_mode(repo_root, fixtures_dir, gate_ps1):
+def test_difffile_test_mode_without_mock_rejected(repo_root, fixtures_dir, gate_ps1):
+    """2. DiffFile + TEST_MODE without MockResultPath → REVIEW_FAILED even if ALLOW_DIFF_FILE=1."""
+    from gate_helpers import AGENT_LOOP, discover_powershell
+
+    env = dict(os.environ)
+    env["AGENT_LOOP_TEST_MODE"] = "1"
+    env["AGENT_LOOP_ALLOW_DIFF_FILE"] = "1"
+    env["AGENT_LOOP_CODEX_BIN"] = str(fixtures_dir / "mock_codex.py")
+    env["AGENT_LOOP_SKIP_OS_ISOLATION"] = "1"
+    exe = discover_powershell()
+    cmd = [
+        exe,
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(AGENT_LOOP / "run-codex-review.ps1"),
+        "-BaseRef",
+        "HEAD",
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+    ]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+    data = json.loads(_result_path(repo_root).read_text(encoding="utf-8"))
+    assert data["verdict"] == "REVIEW_FAILED"
+    # Must not be a valid approval history path for DiffFile misuse (REVIEW_FAILED is OK).
+    assert data["verdict"] != "APPROVED"
+
+
+def test_difffile_live_codex_bin_without_mock_rejected(repo_root, fixtures_dir, gate_ps1):
+    """3. DiffFile + live Codex bin without MockResultPath → REVIEW_FAILED (no Codex start)."""
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_ALLOW_DIFF_FILE="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+
+
+def test_allow_diff_file_alone_insufficient(repo_root, fixtures_dir, gate_ps1):
+    """4. AGENT_LOOP_ALLOW_DIFF_FILE alone must not unlock DiffFile."""
+    from gate_helpers import AGENT_LOOP, discover_powershell
+
+    env = dict(os.environ)
+    env.pop("AGENT_LOOP_TEST_MODE", None)
+    env["AGENT_LOOP_ALLOW_DIFF_FILE"] = "1"
+    env["AGENT_LOOP_TEST_MODE"] = "0"
+    exe = discover_powershell()
+    cmd = [
+        exe,
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(AGENT_LOOP / "run-codex-review.ps1"),
+        "-BaseRef",
+        "HEAD",
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        "-SkipCodex",
+        "-MockResultPath",
+        str(fixtures_dir / "approved_template.json"),
+    ]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+
+
+def test_productive_diff_uses_binary_two_dot_range(repo_root, gate_ps1, fixtures_dir, tmp_path):
+    """5. Productive path (no DiffFile) runs git diff --binary merge-base..head via mock Codex."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"tokens":{"access_token":"tok-bin"}}\n', encoding="utf-8")
+    live_repo = _init_clean_live_repo(tmp_path / "binary")
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_REQUIRE_AUTH="1",
+    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "APPROVED"
+    # Script must document --binary two-dot productive diff.
+    ps1 = (repo_root / ".agent-loop" / "run-codex-review.ps1").read_text(encoding="utf-8")
+    assert "Write-GitBinaryDiffToFile" in ps1
+    assert "--binary" in ps1
+    assert "${BaseSha}..${HeadSha}" in ps1
+
+
+def test_difffile_requires_allow_env(repo_root, fixtures_dir, gate_ps1):
+    """Backward-compatible name: DiffFile without TEST_MODE+Mock is rejected."""
+    test_difffile_without_test_mode_rejected(repo_root, fixtures_dir, gate_ps1)
+
+
+def test_skip_os_isolation_requires_test_mode(repo_root, fixtures_dir, gate_ps1, tmp_path):
     """SKIP_OS_ISOLATION alone must not unlock production on non-Unix."""
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "osiso")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
@@ -733,12 +918,7 @@ def test_skip_os_isolation_requires_test_mode(repo_root, fixtures_dir, gate_ps1)
     )
     # Force TEST_MODE off even if _gate_env setdefault ran first.
     env["AGENT_LOOP_TEST_MODE"] = "0"
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 3, proc.stdout + proc.stderr
     combined = (proc.stdout or "") + (proc.stderr or "")
     assert "TEST_MODE" in combined or "OS isolation" in combined
@@ -750,6 +930,7 @@ def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"tok-scrub"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "scrub")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ENV_KEYS_FILE=str(env_keys),
@@ -760,21 +941,109 @@ def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1
         DATABASE_URL="evil-db",
         PASSWORD="evil-password",
         OPENAI_API_KEY="should-not-pass",
+        CUSTOM_CREDENTIAL="parent-secret",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    parent_custom = env.get("CUSTOM_CREDENTIAL")
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert env_keys.is_file(), "mock should record child env keys"
     keys = set(env_keys.read_text(encoding="utf-8").splitlines())
     assert "DATABASE_URL" not in keys
     assert "PASSWORD" not in keys
     assert "OPENAI_API_KEY" not in keys
+    assert "CUSTOM_CREDENTIAL" not in keys
     assert "CODEX_ACCESS_TOKEN" in keys or "CODEX_API_KEY" in keys
     assert "CODEX_HOME" in keys
+    assert "PATH" in keys
+    assert ("TEMP" in keys) or ("TMP" in keys) or ("TMPDIR" in keys)
+    # Parent env must remain unchanged by the child scrub.
+    assert parent_custom == "parent-secret"
+
+
+def test_live_codex_only_one_auth_key(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """Child must receive at most one of CODEX_ACCESS_TOKEN / CODEX_API_KEY."""
+    env_keys = tmp_path / "env-keys.txt"
+    mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "onekey")
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_ENV_KEYS_FILE=str(env_keys),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_REQUIRE_AUTH="1",
+        CODEX_ACCESS_TOKEN="access-only",
+        CODEX_API_KEY="api-also-set",
+    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    keys = set(env_keys.read_text(encoding="utf-8").splitlines())
+    has_access = "CODEX_ACCESS_TOKEN" in keys
+    has_api = "CODEX_API_KEY" in keys
+    assert has_access ^ has_api, (
+        f"expected exactly one auth key, got access={has_access} api={has_api}"
+    )
+
+
+def test_env_clear_failure_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """Simulated Environment.Clear failure → REVIEW_FAILED exit 3 (no blocklist fallback)."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"tokens":{"access_token":"tok"}}\n', encoding="utf-8")
+    live_repo = _init_clean_live_repo(tmp_path / "clearfail")
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_SIMULATE_ENV_CLEAR_FAIL="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+
+
+def test_live_codex_parallel_streams_no_deadlock(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """1 MiB stdout + 1 MiB stderr must not deadlock Invoke-CodexCommand."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"CODEX_API_KEY":"sk-test"}\n', encoding="utf-8")
+    live_repo = _init_clean_live_repo(tmp_path / "flood")
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_MOCK_FLOOD_STREAMS="1",
+        AGENT_LOOP_CODEX_TIMEOUT_SEC="120",
+    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "APPROVED"
+
+
+def test_live_codex_timeout_kills_hung_and_rejects_partial(
+    repo_root, fixtures_dir, gate_ps1, tmp_path
+):
+    """Hung Codex past timeout → kill tree, REVIEW_FAILED; partial JSON not APPROVED."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"CODEX_API_KEY":"sk-test"}\n', encoding="utf-8")
+    live_repo = _init_clean_live_repo(tmp_path / "hang")
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_MOCK_PARTIAL_HANG="1",
+        AGENT_LOOP_CODEX_TIMEOUT_SEC="2",
+    )
+    started = time.time()
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    elapsed = time.time() - started
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert elapsed < 60, f"timeout kill took too long: {elapsed}s"
+    data = json.loads(_result_path(repo_root).read_text(encoding="utf-8"))
+    assert data["verdict"] == "REVIEW_FAILED"
+    notes = " ".join(data.get("review_notes") or [])
+    assert "timeout=true" in notes
+    assert "APPROVED" not in data.get("summary", "")
 
 
 def test_live_codex_stderr_noise_still_approved(repo_root, fixtures_dir, gate_ps1, tmp_path):
@@ -782,6 +1051,7 @@ def test_live_codex_stderr_noise_still_approved(repo_root, fixtures_dir, gate_ps
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"CODEX_API_KEY":"sk-test"}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "stderr")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
@@ -789,26 +1059,45 @@ def test_live_codex_stderr_noise_still_approved(repo_root, fixtures_dir, gate_ps
         AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
         AGENT_LOOP_MOCK_STDERR_NOISE="1",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(fixtures_dir / "sample.diff"),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert _read_verdict(repo_root) == "APPROVED"
 
 
 def test_auth_json_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
-    """auth.json in the reviewed patch must abort before Codex."""
-    auth_diff = tmp_path / "auth_in_patch.diff"
-    auth_diff.write_text(
-        "diff --git a/auth.json b/auth.json\n"
-        "--- a/auth.json\n"
-        "+++ b/auth.json\n"
-        "@@ -0,0 +1 @@\n"
-        '+{"tokens":{"access_token":"leak"}}\n',
-        encoding="utf-8",
+    """auth.json in the reviewed patch must abort before Codex (productive path)."""
+    repo = tmp_path / "authrepo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@example.com"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "t"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / "ok.py").write_text("x=1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "ok.py"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    (repo / "auth.json").write_text(
+        '{"tokens":{"access_token":"leak"}}\n', encoding="utf-8"
+    )
+    subprocess.run(["git", "add", "auth.json"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "auth"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
     )
     mock_codex = fixtures_dir / "mock_codex.py"
     env = _gate_env(
@@ -816,12 +1105,7 @@ def test_auth_json_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_pa
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
         AGENT_LOOP_TEST_MODE="1",
     )
-    proc = run_gate(
-        "-DiffFile",
-        str(auth_diff),
-        script=gate_ps1,
-        env=env,
-    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=repo, env=env)
     assert proc.returncode == 3, proc.stdout + proc.stderr
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
     combined = (proc.stdout or "") + (proc.stderr or "")
