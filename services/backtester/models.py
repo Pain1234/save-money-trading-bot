@@ -60,6 +60,7 @@ class FundingModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = False
+    assumed_rate: Decimal | None = None
 
 
 class BacktestConfig(BaseModel):
