@@ -24,3 +24,11 @@ test-results/
 # Local restore drill artifacts (Issue #11)
 paper_backup.dump
 restore_drill_snapshot.json
+# Codex review gate (Issue #149)
+.agent-loop/codex-review-result.json
+.agent-loop/current-review-input.txt
+.agent-loop/*.log
+.agent-loop/tmp/
+.agent-loop/review-history/*
+!.agent-loop/review-history/.gitkeep
+.codex/

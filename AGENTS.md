@@ -159,6 +159,14 @@ Link the GitHub issue and PR. Do not rely on chat-only documentation for decisio
 
 ---
 
+## Codex review gate
+
+Independent read-only Codex review for feature diffs lives under `.agent-loop/` (see `.agent-loop/README.md`). Cursor may run at most **3** automatic review rounds addressing confirmed BLOCKER/MAJOR findings; after that, stop and escalate. The gate never auto-merges.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 -BaseRef origin/main
+```
+
 ## Quick references
 
 | Task | Command / path |

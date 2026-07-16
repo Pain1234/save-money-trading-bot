@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "verdict": "APPROVED",
+  "reviewed_base": "WILL_BE_SET",
+  "reviewed_head": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "reviewed_diff_hash": "WILL_BE_SET",
+  "summary": "Small comment-only change looks fine.",
+  "findings": [
+    {
+      "id": "F-MINOR-1",
+      "severity": "MINOR",
+      "category": "DOCUMENTATION",
+      "file": "fake_module.py",
+      "line_start": 1,
+      "line_end": 1,
+      "problem": "Comment could be clearer.",
+      "evidence": "Added comment line.",
+      "required_fix": "Optional wording tweak."
+    }
+  ],
+  "required_tests": [
+    "pytest tests/agent_loop/ -q"
+  ],
+  "review_notes": [
+    "No blocking issues."
+  ]
+}
