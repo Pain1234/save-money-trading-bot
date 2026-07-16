@@ -1,0 +1,28 @@
+{
+  "supported_symbols": [
+    "BTC",
+    "ETH",
+    "SOL"
+  ],
+  "execution_mode": "paper_only",
+  "live_execution": false,
+  "inputs_to_freeze": [
+    "Historical candle bundles used by tests/backtester/test_backtest_e2e_reference.py (synthetic BTC breakout series)",
+    "StrategyParameters / RiskParameters defaults from strategy_engine and risk_engine at freeze commit",
+    "Fee/slippage models exercised by tests/paper_trading/test_backtester_parity.py",
+    "Dashboard performance baseline JSON (ops reference, non-trading)"
+  ],
+  "outputs_to_freeze": [
+    "Backtest trade entry/exit fills, stops, gross/net PnL assertions in test_backtest_e2e_reference.py",
+    "Determinism fingerprints from test_backtest_determinism.py / test_determinism.py / test_risk_determinism.py",
+    "Parity equalities between backtester execution helpers and paper_lifecycle accounting"
+  ],
+  "reference_tests": [
+    "tests/backtester/test_backtest_e2e_reference.py",
+    "tests/backtester/test_backtest_determinism.py",
+    "tests/paper_trading/test_backtester_parity.py",
+    "tests/strategy_engine/test_determinism.py",
+    "tests/risk_engine/test_risk_determinism.py",
+    "tests/fixtures/perf/baseline-sample.json"
+  ]
+}

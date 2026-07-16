@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-07-15T17:05:31.405468+00:00",
+  "base_url": "http://127.0.0.1:8088",
+  "environment_notes": {
+    "railway_region": "local/unset",
+    "python": "3.14.5"
+  },
+  "methodology": {
+    "cold_runs": 3,
+    "warm_runs": 5,
+    "optimization_applied": false,
+    "include_dashboard_summary": false,
+    "measured_against": "main"
+  },
+  "p25_budgets_ms": {
+    "overview_warm_p95": 1500,
+    "status_p95": 250,
+    "wallet_p95": 250,
+    "table_endpoints_p95": 500
+  },
+  "measured_local_warm_p95_ms": {
+    "status": 96.0,
+    "wallet": 70.2,
+    "dashboard_summary_after_98": 56.4
+  },
+  "endpoints": [
+    {
+      "name": "status",
+      "path": "/api/v1/status",
+      "cold": {"p50_ms": 54.4, "p95_ms": 65.4, "max_ms": 65.4, "samples": 3},
+      "warm": {"p50_ms": 56.7, "p95_ms": 96.0, "max_ms": 96.0, "samples": 5}
+    }
+  ]
+}

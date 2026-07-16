@@ -1,0 +1,98 @@
+{
+  "schema": "p2.5-golden-master-fixtures-v1",
+  "freeze_commit": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+  "tag": "p2.5-production-baseline",
+  "files": [
+    {
+      "path": "tests/backtester/test_backtest_e2e_reference.py",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\tests__backtester__test_backtest_e2e_reference.py",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "54778022c6fce9c0a3892eef073e2649fb189975",
+      "sha256": "7d67e82b88ab3b5921c75019fe09aae4bf81f948c11cb911015473740657e21c",
+      "bytes": 3680,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "tests/backtester/test_backtest_determinism.py",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\tests__backtester__test_backtest_determinism.py",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "7175c02556c5d283c56e992f3288bf9cf8ac9a29",
+      "sha256": "c7de027a98a5fbd573390710d1051c32db2dd85bdad862a3c02ee2b7e39e3051",
+      "bytes": 3815,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "tests/paper_trading/test_backtester_parity.py",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\tests__paper_trading__test_backtester_parity.py",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "6f8dd2a0bc9a9f3203c48a61a3d2e337c18b4ed8",
+      "sha256": "98196a5a4ac85b6c666c522f60e635e5a92953d3cb5a8cc1ef0b2cdd70421ed0",
+      "bytes": 3395,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "tests/strategy_engine/test_determinism.py",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\tests__strategy_engine__test_determinism.py",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "9897632d447af877acefcebe594969475f58d4b6",
+      "sha256": "df071f6bdf8f3b698bcff43579bb32f0e9b026091e7e76eea5323324f5a6614e",
+      "bytes": 2648,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "tests/risk_engine/test_risk_determinism.py",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\tests__risk_engine__test_risk_determinism.py",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "5b15ab20bf1a13fd1d41923bb3813097515397d1",
+      "sha256": "905daff1b2707cff8d0fe3e59eebd632d6d9e16e775997277e9ed55fe800d9d1",
+      "bytes": 1827,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "tests/fixtures/perf/baseline-sample.json",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\tests__fixtures__perf__baseline-sample.json",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "32cb241c413e9a3e68c5455619514a58f0dfd479",
+      "sha256": "e628723ce5dc41161fba39f78ec08acff182cfe5431b80c5c38647b2e778f618",
+      "bytes": 854,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "docs/operations/dashboard-performance-baseline.json",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\docs__operations__dashboard-performance-baseline.json",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "be6b4b553744517a16f5d209f048fcf009e1b5e8",
+      "sha256": "54b96d543e91f7604a571bbdedc2e4aaea40a979058093f36341697f520870ab",
+      "bytes": 4937,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "docs/operations/dashboard-production-acceptance.md",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\docs__operations__dashboard-production-acceptance.md",
+      "source_ref": "origin/main",
+      "git_blob_sha": "a2ca0478a58386837910a96eaefe018e6ae48656",
+      "sha256": "bc245915e8701338bfc8775fa6c98eddbffc84bedfca2e7c6f6a2b8e93f405e7",
+      "bytes": 4509,
+      "note": "captured_from_origin_main_post_freeze_doc"
+    },
+    {
+      "path": "docs/baseline-paper-v1.md",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\docs__baseline-paper-v1.md",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "cb740e305e6444bf88958b57a97690cda2f11805",
+      "sha256": "3e6977cc4430d1d1973077a754566a699243e7116643cc6b2f8851f9403acd41",
+      "bytes": 13198,
+      "note": "captured_from_freeze_commit"
+    },
+    {
+      "path": "docs/railway-paper-trading-dashboard-v1.md",
+      "fixture_copy": "tests\\fixtures\\golden_master\\p2.5\\sources\\docs__railway-paper-trading-dashboard-v1.md",
+      "source_ref": "13a62f18d516dc50cbe0d1d3ba8764ed346311e1",
+      "git_blob_sha": "de2b80f0cb170b54601538f43fbf8d65ef39748f",
+      "sha256": "d66d4ebc17dd5fb62d34d1a94974eb2cf1b9b98bda98834aff3e5ffadc60e6ea",
+      "bytes": 12298,
+      "note": "captured_from_freeze_commit"
+    }
+  ],
+  "expected_io_inventory": "tests/fixtures/golden_master/p2.5/expected-io-inventory.json"
+}
