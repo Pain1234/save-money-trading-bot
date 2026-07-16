@@ -202,3 +202,6 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 | `codex-review-schema.json` | JSON Schema draft-07 |
 | `secret_scan.py` | Pre-Codex secret patterns |
 | `validate-review-result.py` | Schema + verdict + expected refs |
+
+<!-- ci-trigger -->
+
