@@ -21,6 +21,7 @@ from research.costs import (
     cost_models_from_spec,
     require_cost_fields,
 )
+from research.dataset_binding import bind_dataset_to_bundle
 from research.experiment_spec import (
     ExperimentSpec,
     dumps_canonical,
@@ -137,9 +138,42 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     require_cost_fields(spec)
     resolved = resolve_strategy(spec)
     attempt_id = new_attempt_id()
+
+    try:
+        _manifest, filtered_bundle, verified_hash = bind_dataset_to_bundle(
+            spec,
+            request.bundle,
+            repo_root=request.repo_root,
+        )
+    except Exception as bind_exc:  # noqa: BLE001 — fail closed before artifacts
+        # Identity still computable from Spec pins for diagnostics.
+        inputs = RunIdentityInputs(
+            git_commit=_git_commit(request.repo_root),
+            dataset_content_hash=spec.dataset_manifest_ref.content_hash,
+            strategy_version=spec.strategy_version,
+            cost_model_version=COST_MODEL_VERSION,
+            metrics_schema_version=METRICS_SCHEMA_VERSION,
+            environment_fingerprint=_environment_fingerprint(),
+        )
+        draft = build_run_manifest(
+            spec,
+            inputs=inputs,
+            attempt_id=attempt_id,
+            created_at_utc=datetime.now(UTC),
+            status="incomplete",
+        )
+        return RunOutcome(
+            experiment_id=draft.experiment_id,
+            run_id=draft.run_id,
+            attempt_id=attempt_id,
+            artifact_path=None,
+            status="failed",
+            error=str(bind_exc),
+        )
+
     inputs = RunIdentityInputs(
         git_commit=_git_commit(request.repo_root),
-        dataset_content_hash=spec.dataset_manifest_ref.content_hash,
+        dataset_content_hash=verified_hash,
         strategy_version=spec.strategy_version,
         cost_model_version=COST_MODEL_VERSION,
         metrics_schema_version=METRICS_SCHEMA_VERSION,
@@ -170,8 +204,8 @@ def run_experiment(request: RunRequest) -> RunOutcome:
             assert writer.work_dir is not None
             writer.write_bytes("experiment.json", dumps_canonical(spec) + b"\n")
             config = _config_from_spec(spec, resolved.parameters)
-            result = BacktestEngine().run(request.bundle, config)
-            metrics = _metrics_from_result(spec, result, request.bundle)
+            result = BacktestEngine().run(filtered_bundle, config)
+            metrics = _metrics_from_result(spec, result, filtered_bundle)
             complete = build_run_manifest(
                 spec,
                 inputs=inputs,

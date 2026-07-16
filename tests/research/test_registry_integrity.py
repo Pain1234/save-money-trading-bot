@@ -9,24 +9,23 @@ from research.artifacts import load_checksums
 from research.registry import ExperimentRegistry
 from research.runner import RunRequest, run_experiment
 
-from tests.research.test_runner_registry import _btc_spec, _bundle_btc
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.research.fixtures import REPO_ROOT, align_spec_to_bundle, btc_bundle
 
 
 def _complete_run(tmp_path: Path):
-    spec = _btc_spec()
+    bundle = btc_bundle()
+    spec = align_spec_to_bundle(tmp_path, bundle)
     outcome = run_experiment(
         RunRequest(
             spec=spec,
-            bundle=_bundle_btc(),
-            artifacts_root=tmp_path,
+            bundle=bundle,
+            artifacts_root=tmp_path / "artifacts_root",
             repo_root=REPO_ROOT,
         )
     )
     assert outcome.status == "complete", outcome.error
     assert outcome.artifact_path is not None
-    registry = ExperimentRegistry(tmp_path)
+    registry = ExperimentRegistry(tmp_path / "artifacts_root")
     registry.register_complete(
         experiment_id=outcome.experiment_id,
         run_id=outcome.run_id,
@@ -59,7 +58,6 @@ def test_duplicate_complete_run_id_rejected(tmp_path: Path) -> None:
 
 def test_compare_incompatible_inputs(tmp_path: Path) -> None:
     registry, outcome, spec = _complete_run(tmp_path)
-    # Second run with different strategy_version pin in registry only
     registry._append(  # noqa: SLF001 — test injects incompatible sibling
         {
             "experiment_id": outcome.experiment_id,
