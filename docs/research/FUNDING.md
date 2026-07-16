@@ -19,3 +19,13 @@ gross_pnl = net_pnl + fees + slippage_costs + funding_costs
 
 `funding_costs` is machine-readable on `metrics.json` and listed in `report.md`.
 `costs.json` records `funding_assumed_rate`, `funding_semantics`, and the gross identity string.
+
+## Contract versions (#169)
+
+| Constant | Version | Meaning |
+|----------|---------|---------|
+| `METRICS_SCHEMA_VERSION` | `1.1` | Requires `funding_costs`; complete reports enforce gross identity |
+| `COST_MODEL_VERSION` | `1.1` | Documents assumed_rate-per-daily-candle semantics |
+
+Legacy `1.0` artifacts remain readable where schema fields allow; new runs emit `1.1`.
+Do not treat `1.0` and `1.1` research results as the same contract.
