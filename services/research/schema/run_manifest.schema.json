@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://save-money-trading-bot.local/schemas/run_manifest.schema.json",
+  "title": "RunManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "run_id",
+    "attempt_id",
+    "git_commit",
+    "dataset_id",
+    "dataset_content_hash",
+    "strategy_version",
+    "cost_model_version",
+    "metrics_schema_version",
+    "environment_fingerprint",
+    "identity_hash_algorithm",
+    "created_at_utc",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "experiment_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "attempt_id": { "type": "string", "minLength": 1 },
+    "git_commit": { "type": "string", "minLength": 1 },
+    "dataset_id": { "type": "string", "minLength": 1 },
+    "dataset_content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "strategy_version": { "type": "string", "minLength": 1 },
+    "cost_model_version": { "type": "string", "minLength": 1 },
+    "metrics_schema_version": { "type": "string", "minLength": 1 },
+    "environment_fingerprint": { "type": "string", "minLength": 1 },
+    "identity_hash_algorithm": { "type": "string", "const": "sha256" },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "failed", "incomplete"]
+    }
+  }
+}
