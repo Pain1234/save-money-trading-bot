@@ -186,25 +186,99 @@ class ExperimentRegistry:
     def compare(self, run_a: str, run_b: str) -> dict[str, Any]:
         a = self.show(run_a, verify=True)
         b = self.show(run_b, verify=True)
+        diffs: dict[str, list[Any]] = {}
+
+        def note(key: str, left: Any, right: Any) -> None:
+            if left != right:
+                diffs[key] = [left, right]
+
+        note("status", a.status, b.status)
+        note("strategy_version", a.strategy_version, b.strategy_version)
+        note("dataset_version", a.dataset_version, b.dataset_version)
+        note("cost_model_version", a.cost_model_version, b.cost_model_version)
+        note("benchmark_ref", a.benchmark_ref, b.benchmark_ref)
+
+        # Semantic Spec + RunManifest identity fields from artifacts.
+        try:
+            exp_a = json.loads(
+                (Path(a.artifact_path) / "experiment.json").read_text(encoding="utf-8")
+            )
+            exp_b = json.loads(
+                (Path(b.artifact_path) / "experiment.json").read_text(encoding="utf-8")
+            )
+            man_a = json.loads(
+                (Path(a.artifact_path) / "run_manifest.json").read_text(encoding="utf-8")
+            )
+            man_b = json.loads(
+                (Path(b.artifact_path) / "run_manifest.json").read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError, TypeError) as exc:
+            return {
+                "compatible": False,
+                "a": a,
+                "b": b,
+                "diffs": {"artifact_load_error": [str(exc), None]},
+            }
+
+        note("parameters", exp_a.get("parameters"), exp_b.get("parameters"))
+        note(
+            "strategy_id",
+            (exp_a.get("parameters") or {}).get("strategy_id", "trend_v1"),
+            (exp_b.get("parameters") or {}).get("strategy_id", "trend_v1"),
+        )
+        note(
+            "dataset_content_hash",
+            (exp_a.get("dataset_manifest_ref") or {}).get("content_hash"),
+            (exp_b.get("dataset_manifest_ref") or {}).get("content_hash"),
+        )
+        note("git_commit", man_a.get("git_commit"), man_b.get("git_commit"))
+        note(
+            "metrics_schema_version",
+            man_a.get("metrics_schema_version"),
+            man_b.get("metrics_schema_version"),
+        )
+        note(
+            "environment_fingerprint",
+            man_a.get("environment_fingerprint"),
+            man_b.get("environment_fingerprint"),
+        )
+        note(
+            "manifest_cost_model_version",
+            man_a.get("cost_model_version"),
+            man_b.get("cost_model_version"),
+        )
+        note(
+            "manifest_strategy_version",
+            man_a.get("strategy_version"),
+            man_b.get("strategy_version"),
+        )
+        note("benchmark", exp_a.get("benchmark"), exp_b.get("benchmark"))
+        note(
+            "fee_model_version",
+            (exp_a.get("fee_assumption") or {}).get("model_version"),
+            (exp_b.get("fee_assumption") or {}).get("model_version"),
+        )
+        note(
+            "slippage_model_version",
+            (exp_a.get("slippage_assumption") or {}).get("model_version"),
+            (exp_b.get("slippage_assumption") or {}).get("model_version"),
+        )
+        note(
+            "funding_model_version",
+            (exp_a.get("funding_assumption") or {}).get("model_version"),
+            (exp_b.get("funding_assumption") or {}).get("model_version"),
+        )
+
         compatible = (
-            a.strategy_version == b.strategy_version
-            and a.dataset_version == b.dataset_version
-            and a.cost_model_version == b.cost_model_version
-            and a.benchmark_ref == b.benchmark_ref
-            and a.status == "complete"
+            a.status == "complete"
             and b.status == "complete"
+            and not diffs
         )
         return {
             "compatible": compatible,
             "a": a,
             "b": b,
-            "diffs": {
-                "strategy_version": [a.strategy_version, b.strategy_version],
-                "dataset_version": [a.dataset_version, b.dataset_version],
-                "cost_model_version": [a.cost_model_version, b.cost_model_version],
-                "benchmark_ref": [a.benchmark_ref, b.benchmark_ref],
-                "status": [a.status, b.status],
-            },
+            "diffs": diffs,
         }
 
     def reconstruct_from_artifacts(self) -> list[RegistryEntry]:
