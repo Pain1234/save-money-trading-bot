@@ -11,6 +11,7 @@ import * as path from "node:path";
  * Optional:
  *   LAYER_A_WARM_REPEATS — warm_goto + soft_nav sample count (default 5; p95 needs n>=5)
  *   LAYER_A_COLD_REPEATS — cold_goto sample count (default 1; each cold = fresh login)
+ *   LAYER_A_COLD_LOGIN_GAP_MS — pause between cold logins (default 7000; rate limit 10/min)
  *
  * Soft gate: writes JSON artifact; does not fail on latency budgets.
  *
@@ -29,6 +30,11 @@ const canRun = missingEnv.length === 0;
 
 const warmRepeats = Math.max(1, Number(process.env.LAYER_A_WARM_REPEATS ?? "5") || 5);
 const coldRepeats = Math.max(1, Number(process.env.LAYER_A_COLD_REPEATS ?? "1") || 1);
+/** Gap between cold logins to stay under dashboard rate limit (10/min/IP). */
+const coldLoginGapMs = Math.max(
+  0,
+  Number(process.env.LAYER_A_COLD_LOGIN_GAP_MS ?? "7000") || 7000,
+);
 
 /** Exact success headings — must NOT match ErrorPanel titles like "Positions unavailable". */
 const routes: ReadonlyArray<{
@@ -332,6 +338,8 @@ test.describe("Issue #101/#124 Layer A browser timings", () => {
   test.skip(!canRun, `Set ${requiredEnv.join(", ")} to run Layer A timings`);
 
   test("measure cold/warm/soft navigation to visible content", async ({ browser }) => {
+    // Cold repeats with login gaps can take many minutes (rate-limit spacing).
+    test.setTimeout(20 * 60 * 1000);
     const timings: RouteTiming[] = [];
 
     // Warm context: login once, reuse for warm_goto + soft_nav.
@@ -342,6 +350,10 @@ test.describe("Issue #101/#124 Layer A browser timings", () => {
 
     for (const route of routes) {
       for (let i = 0; i < coldRepeats; i += 1) {
+        if (i > 0 || timings.some((t) => t.mode === "cold_goto")) {
+          // Space cold logins across routes/samples (dashboard auth rate limit).
+          await new Promise((resolve) => setTimeout(resolve, coldLoginGapMs));
+        }
         timings.push(await measureColdGoto(browser, route, i));
       }
       for (let i = 0; i < warmRepeats; i += 1) {
@@ -388,7 +400,12 @@ test.describe("Issue #101/#124 Layer A browser timings", () => {
         all_observed_samples_under_budget: underBudget,
         p95_claim_allowed: anyP95,
       },
-      repeats: { cold_goto: coldRepeats, warm_goto: warmRepeats, soft_nav: warmRepeats },
+      repeats: {
+        cold_goto: coldRepeats,
+        warm_goto: warmRepeats,
+        soft_nav: warmRepeats,
+        cold_login_gap_ms: coldLoginGapMs,
+      },
       methodology: {
         cold_goto:
           "Fresh authenticated context per sample (new browser.newContext() + login). " +

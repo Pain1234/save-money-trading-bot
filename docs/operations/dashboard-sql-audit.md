@@ -1,6 +1,6 @@
 # Dashboard Performance Audit Protocol (P2.5 / Issue #101)
 
-**Status:** Layers A–D measured (2026-07-16; Layer A/B hardened in **#124**). Layer A uses exact success headings + rejects `unavailable` / `dashboard-error-panel`. Warm/soft usable **p95** (n=5): max **877 ms** (Status soft_nav); cold usable remains **single-sample** (`p95 NOT_MEASURED`, n=1). All **77** observed Layer A samples were **under 1.5 s** (max 877 ms) — that is an observation check, not a cold-p95 proof. Layer B warm TTFB p95 **~103–122 ms**; cold TTFB p95 **recorded separately** (n=2). Issue **#121** residual CONFIRMED. H2 (~50 ms engine) = `FOLLOW_UP_REQUIRED`. Indexes `NO_ACTION`. Pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
+**Status:** Layers A–D measured (2026-07-16; Layer A/B hardened in **#124**). Layer A uses exact success headings + rejects `unavailable` / `dashboard-error-panel`. Usable **p95** (n=5) for cold/warm/soft: max **871 ms** (Status soft_nav); all modes `MEASURED`. All **105** observed samples were **under 1.5 s**. Layer B warm TTFB p95 **~103–122 ms**; cold TTFB recorded separately. Issue **#121** residual CONFIRMED. H2 (~50 ms engine) = `FOLLOW_UP_REQUIRED`. Indexes `NO_ACTION`. Pack: [`dashboard-railway-performance-evidence.md`](dashboard-railway-performance-evidence.md).
 
 **PR lineage:** Checklist #117; harnesses #119; duplicate #110 closed. This document
 is the continuation of Issue #101 (not a new issue).
@@ -154,7 +154,8 @@ Roadmap budget: **visible/usable content p95 < 1.5 s** — not API-only latency.
 export PAPER_DASHBOARD_BASE_URL=https://bot.save-money.xyz
 export PAPER_DASHBOARD_USER=...
 export PAPER_DASHBOARD_PASSWORD=...
-# Optional: LAYER_A_WARM_REPEATS=5 (default), LAYER_A_COLD_REPEATS=1 (default)
+# Optional: LAYER_A_WARM_REPEATS=5, LAYER_A_COLD_REPEATS=5,
+# LAYER_A_COLD_LOGIN_GAP_MS=7000 (rate-limit spacing between cold logins)
 npm run test:dashboard-perf -- tests/e2e/dashboard-layer-a-perf.spec.ts
 ```
 
@@ -170,34 +171,33 @@ Captures per route (cold hard navigation, warm hard navigation, soft nav):
 **Cold vs warm:** Cold uses a **fresh authenticated** `browser.newContext()` per
 sample (login may already warm shared assets — not a zero-cache claim). Warm
 reuses one authenticated context. Overview soft-nav starts from `/dashboard/status`.
+Cold logins are spaced by `LAYER_A_COLD_LOGIN_GAP_MS` (default 7000) for the
+dashboard auth rate limit (10/min/IP).
 
 **p95 rule:** `usable_content_p95_ms` is only `MEASURED` when **n ≥ 5** for that
-route×mode. With default `LAYER_A_COLD_REPEATS=1`, cold **p95 stays `NOT_MEASURED`**.
-Warm/soft defaults to n=5 so their p95 can be reported. Never treat a single sample
-as roadmap p95.
+route×mode. Defaults: warm/soft n=5; set `LAYER_A_COLD_REPEATS=5` for cold p95.
 
 **Caveat:** `src/app/dashboard/layout.tsx` sets `dynamic = "force-dynamic"`. Hard
 navigations often skip the loading UI because the server holds the response until
 SSR finishes. Soft navigations are more likely to expose skeletons.
 
-### Results (#124 remeasure, 2026-07-16)
+### Results (#124 cold p95 remeasure, 2026-07-16)
 
-Usable-content **p95** where n≥5; cold column is the **single sample** (p95 N/A):
+Usable-content **p95** with n=5 for cold/warm/soft (`LAYER_A_COLD_REPEATS=5`):
 
-| Route | Cold (n=1) | Warm p95 (n=5) | Soft p95 (n=5) | Cold p95 | Status |
-|-------|-----------:|---------------:|---------------:|----------|--------|
-| Overview | 121 | **64** | **124** | `NOT_MEASURED` | samples `MEASURED` |
-| Status | 442 | **420** | **877** | `NOT_MEASURED` | samples `MEASURED` |
-| Positions | 446 | **62** | **138** | `NOT_MEASURED` | samples `MEASURED` |
-| Orders | 436 | **80** | **140** | `NOT_MEASURED` | samples `MEASURED` |
-| Fills | 445 | **68** | **140** | `NOT_MEASURED` | samples `MEASURED` |
-| Equity | 455 | **73** | **127** | `NOT_MEASURED` | samples `MEASURED` |
-| Incidents | 478 | **66** | **140** | `NOT_MEASURED` | samples `MEASURED` |
+| Route | Cold p95 | Warm p95 | Soft p95 | Status |
+|-------|---------:|---------:|---------:|--------|
+| Overview | **91** | **70** | **141** | `MEASURED` |
+| Status | **395** | **389** | **871** | `MEASURED` |
+| Positions | **375** | **67** | **140** | `MEASURED` |
+| Orders | **390** | **64** | **145** | `MEASURED` |
+| Fills | **370** | **75** | **138** | `MEASURED` |
+| Equity | **96** | **62** | **135** | `MEASURED` |
+| Incidents | **443** | **72** | **139** | `MEASURED` |
 
-Source: `dashboard-layer-a-browser.json` (issue **#124**). Observation check: all **77**
-samples < 1.5 s (max **877 ms**). Roadmap **p95 < 1.5 s** is supported for warm/soft
-modes with n=5; **cold p95 remains `NOT_MEASURED`**. Success marker: exact heading
-(+ ready testid when present); error pages rejected.
+Source: `dashboard-layer-a-browser.json`. Observation: all **105** samples < 1.5 s
+(max **871 ms**). Roadmap **p95 < 1.5 s** holds for cold/warm/soft. Success marker:
+exact heading (+ ready testid when present); error pages rejected.
 
 ---
 
@@ -286,7 +286,7 @@ Unattr./hop are **p95 of per-sample deltas** (not p95(a)-p95(b)).
 Table below is the **pre-#121** sfo placement snapshot (historical). Post-co-location
 Layer C for status/summary/wallet is in `dashboard-layer-c-after-121.json`
 (residual p95 ≈ 49–54 ms). Authenticated Layer A/B (#124) are in §§5–6 —
-warm/soft usable p95 under 1.5 s; cold p95 `NOT_MEASURED`.
+cold/warm/soft usable p95 under 1.5 s (n=5).
 
 | Route | Client hop p95 | API total p95 | DB p95 | Unattr. p95 | Hop p95 | Queries | Bytes p50 | Hauptursache |
 | ----- | -------------: | ------------: | -----: | ----------: | ------: | ------: | --------: | ------------ |
@@ -459,20 +459,19 @@ OR (timestamp = :timestamp AND id < :id)
 
 ## 10. Route-für-Route-Ergebnisse
 
-Composite roll-up (#124 Layer A/B + Layer C after-#121 where re-probed).
-Browser column = warm usable **p95** (n=5). Soft p95 noted in Ursache.
+Composite roll-up (#124 Layer A cold/warm/soft p95 n=5 + Layer C after-#121 where re-probed).
 
-| Route | Browser warm p95 | TTFB warm p95 | Soft usable p95 | API total p95 | DB p95 | Queries | Bytes | Hauptursache |
-| ----- | ---------------: | ------------: | --------------: | ------------: | -----: | ------: | ----: | ------------ |
-| Overview | **64 ms** | **115 ms** | **124 ms** | **71 ms** | 15.7 | 6 | 1174 | warm/soft p95 under 1.5 s; heaviest multi-query API |
-| Status | **420 ms** | **111 ms** | **877 ms** | **66 ms** | 14.2 | 4 | 638 | soft p95 highest observed; still under 1.5 s |
-| Positions | **62 ms** | **103 ms** | **138 ms** | wallet-class ~54 ms (#121) | ~5 | 1 | 42 | thin API not re-probed post-#121 |
-| Orders | **80 ms** | **122 ms** | **140 ms** | wallet-class ~54 ms (#121) | ~5 | 1 | 42 | thin API not re-probed post-#121 |
-| Fills | **68 ms** | **107 ms** | **140 ms** | wallet-class ~54 ms (#121) | ~5 | 1 | 42 | thin API not re-probed post-#121 |
-| Equity | **73 ms** | **103 ms** | **127 ms** | not re-probed post-#121 | — | — | 16610 HTML | warm/soft p95 under 1.5 s |
-| Incidents | **66 ms** | **120 ms** | **140 ms** | not re-probed post-#121 | — | — | 26160 HTML | payload size ≠ UX bottleneck |
+| Route | Cold p95 | Warm p95 | Soft p95 | TTFB warm p95 | API total p95 | Hauptursache |
+| ----- | -------: | -------: | -------: | ------------: | ------------: | ------------ |
+| Overview | **91** | **70** | **141** | **115** | **71** | all modes under 1.5 s; heaviest multi-query API |
+| Status | **395** | **389** | **871** | **111** | **66** | soft p95 highest; still under 1.5 s |
+| Positions | **375** | **67** | **140** | **103** | wallet-class ~54 | thin API not re-probed post-#121 |
+| Orders | **390** | **64** | **145** | **122** | wallet-class ~54 | thin API not re-probed post-#121 |
+| Fills | **370** | **75** | **138** | **107** | wallet-class ~54 | thin API not re-probed post-#121 |
+| Equity | **96** | **62** | **135** | **103** | not re-probed | under 1.5 s |
+| Incidents | **443** | **72** | **139** | **120** | not re-probed | payload size ≠ UX bottleneck |
 
-Cold Layer A p95 remains `NOT_MEASURED` (n=1). API totals for Overview/Status from `dashboard-layer-c-after-121.json`.
+Layer A cold/warm/soft p95 all `MEASURED` (n=5). API totals for Overview/Status from `dashboard-layer-c-after-121.json`.
 
 ---
 
@@ -533,21 +532,21 @@ Prioritize with a scored blend of:
 - Call frequency (overview/status > rare history drills)
 - Table growth potential
 
-**Current Top-3 (Layers A–D; #121 CONFIRMED; warm/soft Layer A p95 under 1.5 s):**
+**Current Top-3 (Layers A–D; #121 CONFIRMED; Layer A cold/warm/soft p95 under 1.5 s):**
 
 ```text
 1. WAS ~2.13 s FastAPI residual — CONFIRMED as API region sfo vs EU Postgres/Dashboard
    (#121): after API → europe-west4 residual p95 ≈ 49–54 ms (see dashboard-fastapi-residual-121.md)
 2. Remaining ~50 ms residual + per-request engine/dispose — FOLLOW_UP_REQUIRED (H2; separate issue)
 3. GET /api/v1/dashboard-summary — still heaviest multi-query API route after co-location
-   (Layer A warm/soft usable p95 still << 1.5 s; cold p95 NOT_MEASURED n=1)
+   (Layer A usable p95 cold/warm/soft all << 1.5 s; max soft 871 ms)
 ```
 
 Large history JSON (`/events`, `/scheduler-runs`) is **`OPTIMIZATION_CANDIDATE` only**:
 API totals match thin routes despite 15–17 KB bodies. Not a data-backed Top-3 item.
 Hypothesis “Incidents slow mainly due to payload_json” is **not supported** by Layer C;
-Layer A Incidents soft usable p95 **140 ms**. Warm/soft Layer A p95 supports the 1.5 s
-roadmap target; cold p95 is still `NOT_MEASURED` until `LAYER_A_COLD_REPEATS≥5`.
+Layer A Incidents soft usable p95 **139 ms**. Cold/warm/soft Layer A p95 (n=5) all support
+the 1.5 s roadmap target.
 
 ---
 

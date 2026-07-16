@@ -227,6 +227,9 @@ def test_layer_a_source_avoids_skeleton_timeout_before_heading() -> None:
     assert "unavailable" in source
     assert "p95 NOT_MEASURED" in source
     assert "usable_content_p95_ms" in source
+    assert "LAYER_A_COLD_LOGIN_GAP_MS" in source
+    assert "coldLoginGapMs" in source
+    assert "setTimeout(20 * 60 * 1000)" in source or "20 * 60 * 1000" in source
 
 
 def test_layer_b_records_cold_samples_separately() -> None:
