@@ -204,4 +204,3 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 | `validate-review-result.py` | Schema + verdict + expected refs |
 
 <!-- ci-trigger -->
-

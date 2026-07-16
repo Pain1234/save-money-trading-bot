@@ -3,10 +3,50 @@
 from __future__ import annotations
 
 import io
+import os
 import subprocess
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 
+import pytest
 import secret_fragments as sf
+
+
+def _resolve_main_merge_base(repo_root: Path) -> str | None:
+    """Return merge-base with main/master, or PR-merge first parent in CI."""
+    refs: list[str] = []
+    env_base = os.environ.get("GITHUB_BASE_REF")
+    if env_base:
+        refs.extend([f"origin/{env_base}", env_base])
+    refs.extend(["origin/main", "main", "origin/master", "master"])
+    seen: set[str] = set()
+    for ref in refs:
+        if ref in seen:
+            continue
+        seen.add(ref)
+        mb = subprocess.run(
+            ["git", "merge-base", ref, "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if mb.returncode == 0 and mb.stdout.strip():
+            return mb.stdout.strip()
+    # GitHub Actions pull_request checkout is often a merge commit; first parent
+    # is the base branch tip when origin/main was not fetched as a remote ref.
+    parents = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if parents.returncode == 0:
+        parts = parents.stdout.strip().split()
+        if len(parts) >= 3:
+            return parts[1]
+    return None
 
 
 def test_clean_text_no_matches(secret_scan_mod):
@@ -158,15 +198,9 @@ def test_diff_scan_only_added_lines(secret_scan_mod):
 
 def test_pr_diff_against_origin_main_is_secret_clean(secret_scan_mod, repo_root, tmp_path):
     """Branch worktree vs origin/main merge-base must be secret_scan clean."""
-    mb = subprocess.run(
-        ["git", "merge-base", "origin/main", "HEAD"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert mb.returncode == 0 and mb.stdout.strip(), mb.stderr
-    merge_base = mb.stdout.strip()
+    merge_base = _resolve_main_merge_base(repo_root)
+    if merge_base is None:
+        pytest.skip("no main/master (or PR-merge parent) available for merge-base")
     # Include unstaged/uncommitted edits so the check works before commit.
     proc = subprocess.run(
         ["git", "diff", merge_base],
