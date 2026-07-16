@@ -83,9 +83,13 @@ class _Runtime:
 class BacktestEngine:
     """Deterministic event-driven backtester using Strategy + Risk engines."""
 
-    def __init__(self) -> None:
-        self._strategy = StrategyEngine()
-        self._risk = RiskEngine()
+    def __init__(
+        self,
+        strategy: StrategyEngine | None = None,
+        risk: RiskEngine | None = None,
+    ) -> None:
+        self._strategy = strategy if strategy is not None else StrategyEngine()
+        self._risk = risk if risk is not None else RiskEngine()
 
     def run(self, bundle: HistoricalDataBundle, config: BacktestConfig) -> BacktestResult:
         rt = _Runtime(cash=config.initial_cash)

@@ -33,7 +33,10 @@ Git commit is pinned separately on the RunManifest / `run_id` inputs (`#142`), n
 
 ## Research signal semantics
 
-At research level the runner uses the resolved engine through `BacktestEngine` with Spec-derived cost models. Signal/order evaluation is identical to the backtester path used by paper parity tests (`#48`).
+At research level the runner injects the resolved `StrategyEngine` into
+`BacktestEngine(strategy=resolved.engine)` — there is no second parallel
+strategy resolution. Signal/order evaluation is identical to the backtester
+path used by paper parity tests (`#48`).
 
 ## Out of scope (not P4)
 
