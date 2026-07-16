@@ -1,4 +1,4 @@
-"""Semantic registry compare coverage (#167)."""
+"""Semantic registry compare coverage (#167 / #171)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any, Callable
 
 from research.artifacts import load_checksums
 from research.registry import ExperimentRegistry
@@ -66,22 +67,57 @@ def _clone_artifacts(src: Path, dest: Path) -> dict[str, str]:
     return _compute_checksums(dest)
 
 
-def test_compare_compatible_same_artifacts(tmp_path: Path) -> None:
-    registry, outcome, spec = _register(tmp_path, label="same")
+def _append_twin(
+    registry: ExperimentRegistry,
+    *,
+    outcome: Any,
+    spec: Any,
+    run_id: str,
+    artifact_path: Path,
+    checksums: dict[str, str],
+) -> None:
     registry._append(  # noqa: SLF001
         {
             "experiment_id": outcome.experiment_id,
-            "run_id": "run_clone_compat",
-            "attempt_id": "att_clone",
+            "run_id": run_id,
+            "attempt_id": f"att_{run_id}",
             "status": "complete",
             "strategy_version": spec.strategy_version,
             "dataset_version": spec.dataset_manifest_ref.dataset_id,
             "cost_model_version": "1.0",
             "benchmark_ref": spec.benchmark,
             "created_at": "2026-01-01T00:00:00.000000Z",
-            "artifact_path": str(outcome.artifact_path),
-            "checksums": load_checksums(outcome.artifact_path),  # type: ignore[arg-type]
+            "artifact_path": str(artifact_path),
+            "checksums": checksums,
         }
+    )
+
+
+def _mutate_experiment(
+    twin: Path,
+    mutator: Callable[[dict[str, Any]], None],
+) -> dict[str, str]:
+    exp = json.loads((twin / "experiment.json").read_text(encoding="utf-8"))
+    mutator(exp)
+    (twin / "experiment.json").write_text(
+        json.dumps(exp, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    seal = _compute_checksums(twin)
+    (twin / "checksums.json").write_text(
+        json.dumps(seal, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return _compute_checksums(twin)
+
+
+def test_compare_compatible_same_artifacts(tmp_path: Path) -> None:
+    registry, outcome, spec = _register(tmp_path, label="same")
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_clone_compat",
+        artifact_path=outcome.artifact_path,  # type: ignore[arg-type]
+        checksums=load_checksums(outcome.artifact_path),  # type: ignore[arg-type]
     )
     result = registry.compare(outcome.run_id, "run_clone_compat")
     assert result["compatible"] is True
@@ -93,35 +129,23 @@ def test_compare_parameter_mismatch(tmp_path: Path) -> None:
     twin = tmp_path / "twin-params"
     assert outcome.artifact_path is not None
     _clone_artifacts(outcome.artifact_path, twin)
-    exp = json.loads((twin / "experiment.json").read_text(encoding="utf-8"))
-    exp["parameters"] = deepcopy(exp["parameters"])
-    exp["parameters"]["breakout_lookback"] = 99
-    (twin / "experiment.json").write_text(
-        json.dumps(exp, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    seal = _compute_checksums(twin)
-    (twin / "checksums.json").write_text(
-        json.dumps(seal, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    seal = _compute_checksums(twin)
-    registry._append(  # noqa: SLF001
-        {
-            "experiment_id": outcome.experiment_id,
-            "run_id": "run_params_diff",
-            "attempt_id": "att_p",
-            "status": "complete",
-            "strategy_version": spec.strategy_version,
-            "dataset_version": spec.dataset_manifest_ref.dataset_id,
-            "cost_model_version": "1.0",
-            "benchmark_ref": spec.benchmark,
-            "created_at": "2026-01-01T00:00:00.000000Z",
-            "artifact_path": str(twin),
-            "checksums": seal,
-        }
+
+    def mutate(exp: dict[str, Any]) -> None:
+        exp["parameters"] = deepcopy(exp["parameters"])
+        exp["parameters"]["breakout_lookback"] = 99
+
+    seal = _mutate_experiment(twin, mutate)
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_params_diff",
+        artifact_path=twin,
+        checksums=seal,
     )
     result = registry.compare(outcome.run_id, "run_params_diff")
     assert result["compatible"] is False
-    assert "parameters" in result["diffs"]
+    assert "spec.parameters" in result["diffs"]
 
 
 def test_compare_git_commit_mismatch(tmp_path: Path) -> None:
@@ -139,24 +163,17 @@ def test_compare_git_commit_mismatch(tmp_path: Path) -> None:
         json.dumps(seal, sort_keys=True) + "\n", encoding="utf-8"
     )
     seal = _compute_checksums(twin)
-    registry._append(  # noqa: SLF001
-        {
-            "experiment_id": outcome.experiment_id,
-            "run_id": "run_git_diff",
-            "attempt_id": "att_g",
-            "status": "complete",
-            "strategy_version": spec.strategy_version,
-            "dataset_version": spec.dataset_manifest_ref.dataset_id,
-            "cost_model_version": "1.0",
-            "benchmark_ref": spec.benchmark,
-            "created_at": "2026-01-01T00:00:00.000000Z",
-            "artifact_path": str(twin),
-            "checksums": seal,
-        }
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_git_diff",
+        artifact_path=twin,
+        checksums=seal,
     )
     result = registry.compare(outcome.run_id, "run_git_diff")
     assert result["compatible"] is False
-    assert "git_commit" in result["diffs"]
+    assert "manifest.git_commit" in result["diffs"]
 
 
 def test_compare_dataset_hash_mismatch(tmp_path: Path) -> None:
@@ -164,35 +181,149 @@ def test_compare_dataset_hash_mismatch(tmp_path: Path) -> None:
     twin = tmp_path / "twin-hash"
     assert outcome.artifact_path is not None
     _clone_artifacts(outcome.artifact_path, twin)
-    exp = json.loads((twin / "experiment.json").read_text(encoding="utf-8"))
-    exp["dataset_manifest_ref"] = deepcopy(exp["dataset_manifest_ref"])
-    exp["dataset_manifest_ref"]["content_hash"] = "b" * 64
-    (twin / "experiment.json").write_text(
-        json.dumps(exp, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    seal = _compute_checksums(twin)
-    (twin / "checksums.json").write_text(
-        json.dumps(seal, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    seal = _compute_checksums(twin)
-    registry._append(  # noqa: SLF001
-        {
-            "experiment_id": outcome.experiment_id,
-            "run_id": "run_hash_diff",
-            "attempt_id": "att_h",
-            "status": "complete",
-            "strategy_version": spec.strategy_version,
-            "dataset_version": spec.dataset_manifest_ref.dataset_id,
-            "cost_model_version": "1.0",
-            "benchmark_ref": spec.benchmark,
-            "created_at": "2026-01-01T00:00:00.000000Z",
-            "artifact_path": str(twin),
-            "checksums": seal,
-        }
+
+    def mutate(exp: dict[str, Any]) -> None:
+        exp["dataset_manifest_ref"] = deepcopy(exp["dataset_manifest_ref"])
+        exp["dataset_manifest_ref"]["content_hash"] = "b" * 64
+
+    seal = _mutate_experiment(twin, mutate)
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_hash_diff",
+        artifact_path=twin,
+        checksums=seal,
     )
     result = registry.compare(outcome.run_id, "run_hash_diff")
     assert result["compatible"] is False
-    assert "dataset_content_hash" in result["diffs"]
+    assert "spec.dataset_manifest_ref" in result["diffs"]
+
+
+def test_compare_symbols_mismatch(tmp_path: Path) -> None:
+    registry, outcome, spec = _register(tmp_path, label="symbols")
+    twin = tmp_path / "twin-symbols"
+    assert outcome.artifact_path is not None
+    _clone_artifacts(outcome.artifact_path, twin)
+
+    def mutate(exp: dict[str, Any]) -> None:
+        exp["symbols"] = ["BTC", "ETH"]
+
+    seal = _mutate_experiment(twin, mutate)
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_symbols_diff",
+        artifact_path=twin,
+        checksums=seal,
+    )
+    result = registry.compare(outcome.run_id, "run_symbols_diff")
+    assert result["compatible"] is False
+    assert "spec.symbols" in result["diffs"]
+
+
+def test_compare_starting_capital_and_fees(tmp_path: Path) -> None:
+    registry, outcome, spec = _register(tmp_path, label="capital")
+    twin = tmp_path / "twin-capital"
+    assert outcome.artifact_path is not None
+    _clone_artifacts(outcome.artifact_path, twin)
+
+    def mutate(exp: dict[str, Any]) -> None:
+        exp["starting_capital"] = "99999"
+        exp["fee_assumption"] = deepcopy(exp["fee_assumption"])
+        exp["fee_assumption"]["entry_fee_rate"] = "0.05"
+        exp["slippage_assumption"] = deepcopy(exp["slippage_assumption"])
+        exp["slippage_assumption"]["slippage_bps"] = "50"
+        exp["funding_assumption"] = deepcopy(exp["funding_assumption"])
+        exp["funding_assumption"]["enabled"] = True
+        exp["funding_assumption"]["assumed_rate"] = "0.001"
+        exp["random_seed"] = 7
+
+    seal = _mutate_experiment(twin, mutate)
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_capital_diff",
+        artifact_path=twin,
+        checksums=seal,
+    )
+    result = registry.compare(outcome.run_id, "run_capital_diff")
+    assert result["compatible"] is False
+    for key in (
+        "spec.starting_capital",
+        "spec.fee_assumption",
+        "spec.slippage_assumption",
+        "spec.funding_assumption",
+        "spec.random_seed",
+    ):
+        assert key in result["diffs"], key
+
+
+def test_compare_time_range_mismatch(tmp_path: Path) -> None:
+    registry, outcome, spec = _register(tmp_path, label="trange")
+    twin = tmp_path / "twin-trange"
+    assert outcome.artifact_path is not None
+    _clone_artifacts(outcome.artifact_path, twin)
+
+    def mutate(exp: dict[str, Any]) -> None:
+        exp["time_range"] = deepcopy(exp["time_range"])
+        exp["time_range"]["end"] = "2024-01-15T23:59:59.000000Z"
+
+    seal = _mutate_experiment(twin, mutate)
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_trange_diff",
+        artifact_path=twin,
+        checksums=seal,
+    )
+    result = registry.compare(outcome.run_id, "run_trange_diff")
+    assert result["compatible"] is False
+    assert "spec.time_range" in result["diffs"]
+
+
+def test_compare_cost_scenarios_mismatch(tmp_path: Path) -> None:
+    registry, outcome, spec = _register(tmp_path, label="scenarios")
+    twin = tmp_path / "twin-scenarios"
+    assert outcome.artifact_path is not None
+    _clone_artifacts(outcome.artifact_path, twin)
+
+    def mutate(exp: dict[str, Any]) -> None:
+        exp["cost_scenarios"] = [
+            {
+                "name": "stress_high_fee",
+                "fee_assumption": {
+                    "entry_fee_rate": "0.01",
+                    "exit_fee_rate": "0.01",
+                    "model_version": "1.0",
+                },
+                "slippage_assumption": {
+                    "slippage_bps": "10",
+                    "model_version": "1.0",
+                },
+                "funding_assumption": {
+                    "enabled": False,
+                    "assumed_rate": None,
+                    "model_version": "1.0",
+                },
+            }
+        ]
+
+    seal = _mutate_experiment(twin, mutate)
+    _append_twin(
+        registry,
+        outcome=outcome,
+        spec=spec,
+        run_id="run_scenarios_diff",
+        artifact_path=twin,
+        checksums=seal,
+    )
+    result = registry.compare(outcome.run_id, "run_scenarios_diff")
+    assert result["compatible"] is False
+    assert "spec.cost_scenarios" in result["diffs"]
 
 
 def test_compare_invalidated_incompatible(tmp_path: Path) -> None:

@@ -14,6 +14,9 @@ from research.artifacts import (
     verify_checksums,
     verify_checksums_against,
 )
+from research.experiment_spec import load_experiment_spec
+from research.identity import semantic_spec_dict
+from research.run_manifest import load_run_manifest, semantic_manifest_payload
 
 Status = Literal["complete", "failed", "invalidated"]
 
@@ -198,21 +201,13 @@ class ExperimentRegistry:
         note("cost_model_version", a.cost_model_version, b.cost_model_version)
         note("benchmark_ref", a.benchmark_ref, b.benchmark_ref)
 
-        # Semantic Spec + RunManifest identity fields from artifacts.
+        # Full semantic Spec + validated RunManifest identity (not a field subset).
         try:
-            exp_a = json.loads(
-                (Path(a.artifact_path) / "experiment.json").read_text(encoding="utf-8")
-            )
-            exp_b = json.loads(
-                (Path(b.artifact_path) / "experiment.json").read_text(encoding="utf-8")
-            )
-            man_a = json.loads(
-                (Path(a.artifact_path) / "run_manifest.json").read_text(encoding="utf-8")
-            )
-            man_b = json.loads(
-                (Path(b.artifact_path) / "run_manifest.json").read_text(encoding="utf-8")
-            )
-        except (OSError, json.JSONDecodeError, TypeError) as exc:
+            spec_a = load_experiment_spec(Path(a.artifact_path) / "experiment.json")
+            spec_b = load_experiment_spec(Path(b.artifact_path) / "experiment.json")
+            man_a = load_run_manifest(Path(a.artifact_path) / "run_manifest.json")
+            man_b = load_run_manifest(Path(b.artifact_path) / "run_manifest.json")
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             return {
                 "compatible": False,
                 "a": a,
@@ -220,54 +215,15 @@ class ExperimentRegistry:
                 "diffs": {"artifact_load_error": [str(exc), None]},
             }
 
-        note("parameters", exp_a.get("parameters"), exp_b.get("parameters"))
-        note(
-            "strategy_id",
-            (exp_a.get("parameters") or {}).get("strategy_id", "trend_v1"),
-            (exp_b.get("parameters") or {}).get("strategy_id", "trend_v1"),
-        )
-        note(
-            "dataset_content_hash",
-            (exp_a.get("dataset_manifest_ref") or {}).get("content_hash"),
-            (exp_b.get("dataset_manifest_ref") or {}).get("content_hash"),
-        )
-        note("git_commit", man_a.get("git_commit"), man_b.get("git_commit"))
-        note(
-            "metrics_schema_version",
-            man_a.get("metrics_schema_version"),
-            man_b.get("metrics_schema_version"),
-        )
-        note(
-            "environment_fingerprint",
-            man_a.get("environment_fingerprint"),
-            man_b.get("environment_fingerprint"),
-        )
-        note(
-            "manifest_cost_model_version",
-            man_a.get("cost_model_version"),
-            man_b.get("cost_model_version"),
-        )
-        note(
-            "manifest_strategy_version",
-            man_a.get("strategy_version"),
-            man_b.get("strategy_version"),
-        )
-        note("benchmark", exp_a.get("benchmark"), exp_b.get("benchmark"))
-        note(
-            "fee_model_version",
-            (exp_a.get("fee_assumption") or {}).get("model_version"),
-            (exp_b.get("fee_assumption") or {}).get("model_version"),
-        )
-        note(
-            "slippage_model_version",
-            (exp_a.get("slippage_assumption") or {}).get("model_version"),
-            (exp_b.get("slippage_assumption") or {}).get("model_version"),
-        )
-        note(
-            "funding_model_version",
-            (exp_a.get("funding_assumption") or {}).get("model_version"),
-            (exp_b.get("funding_assumption") or {}).get("model_version"),
-        )
+        sem_a = semantic_spec_dict(spec_a)
+        sem_b = semantic_spec_dict(spec_b)
+        for key in sorted(set(sem_a) | set(sem_b)):
+            note(f"spec.{key}", sem_a.get(key), sem_b.get(key))
+
+        man_sem_a = semantic_manifest_payload(man_a)
+        man_sem_b = semantic_manifest_payload(man_b)
+        for key in sorted(set(man_sem_a) | set(man_sem_b)):
+            note(f"manifest.{key}", man_sem_a.get(key), man_sem_b.get(key))
 
         compatible = (
             a.status == "complete"
