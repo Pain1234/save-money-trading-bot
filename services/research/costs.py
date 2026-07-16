@@ -107,5 +107,12 @@ def cost_manifest_fields(spec: ExperimentSpec) -> dict[str, Any]:
             if scenario.funding_assumed_rate is not None
             else None
         ),
+        "funding_semantics": (
+            "assumed_rate_per_daily_candle"
+            if scenario.funding_enabled
+            else "disabled"
+        ),
         "gross_net_required": True,
+        "gross_pnl_identity": "net + fees + slippage + funding_costs",
+        "supported_cost_model_versions": sorted(SUPPORTED_COST_MODEL_VERSIONS),
     }

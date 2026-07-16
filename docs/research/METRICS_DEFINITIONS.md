@@ -10,7 +10,7 @@ Required for `status=complete`:
 
 - Capital: `start_capital`, `end_capital`
 - PnL: `gross_pnl`, `net_pnl` (gross/net separated)
-- Costs: `fees`, `slippage_costs`, `funding_assumption` (non-empty string)
+- Costs: `fees`, `slippage_costs`, `funding_costs`, `funding_assumption` (non-empty string)
 - Counts: `signal_count`, `order_count`, `fill_count`, `closed_trades`
 - Optional analytics: hit rate, avg win/loss, expectancy, profit factor, max drawdown, exposure, turnover, time in market
 - Benchmark: `benchmark` (`BenchmarkRef`) + `benchmark_result`
