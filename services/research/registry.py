@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from research.artifacts import load_checksums, verify_checksums
+from research.artifacts import (
+    compute_artifact_checksums,
+    load_checksums,
+    verify_checksums,
+    verify_checksums_against,
+)
 
 Status = Literal["complete", "failed", "invalidated"]
 
@@ -58,7 +63,18 @@ class ExperimentRegistry:
         if any(e.run_id == run_id and e.status == "complete" for e in self.list_entries()):
             msg = f"duplicate complete run_id forbidden: {run_id}"
             raise ValueError(msg)
-        verify_checksums(Path(artifact_path))
+        path = Path(artifact_path)
+        on_disk = compute_artifact_checksums(path)
+        if checksums != on_disk:
+            msg = "provided checksums do not match finalized artifact set"
+            raise ValueError(msg)
+        # Helper seal must agree too when present.
+        if (path / "checksums.json").is_file():
+            seal = load_checksums(path)
+            if seal != on_disk:
+                msg = "checksums.json seal disagrees with artifact files"
+                raise ValueError(msg)
+        verify_checksums_against(path, checksums)
         self._append(
             {
                 "experiment_id": experiment_id,
@@ -105,7 +121,11 @@ class ExperimentRegistry:
         if not path.is_dir():
             msg = f"missing or deleted artifacts for {entry.run_id}: {path}"
             raise FileNotFoundError(msg)
-        verify_checksums(path)
+        if not entry.checksums:
+            msg = f"registry entry for {entry.run_id} has empty trusted checksums"
+            raise ValueError(msg)
+        # Trust anchor = append-only registry snapshot, not mutable checksums.json.
+        verify_checksums_against(path, entry.checksums)
 
     def show(self, run_id: str, *, verify: bool = True) -> RegistryEntry:
         for entry in reversed(self.list_entries()):

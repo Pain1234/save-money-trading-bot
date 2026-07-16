@@ -90,3 +90,25 @@ def test_checksum_mismatch_detected(tmp_path: Path) -> None:
     metrics.write_text(metrics.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(ValueError, match="checksum mismatch"):
         registry.show(outcome.run_id, verify=True)
+
+
+def test_resealed_checksums_json_still_fails_against_registry(
+    tmp_path: Path,
+) -> None:
+    """Mutate metrics.json and rewrite checksums.json — registry trust must fail."""
+    from research.artifacts import compute_artifact_checksums
+
+    registry, outcome, _spec = _complete_run(tmp_path)
+    assert outcome.artifact_path is not None
+    metrics = outcome.artifact_path / "metrics.json"
+    metrics.write_text(metrics.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    # Reseal helper file so on-disk verify_checksums would pass.
+    new_seal = compute_artifact_checksums(outcome.artifact_path)
+    import json
+
+    (outcome.artifact_path / "checksums.json").write_text(
+        json.dumps(new_seal, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="trusted snapshot|checksum mismatch"):
+        registry.show(outcome.run_id, verify=True)
