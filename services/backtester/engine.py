@@ -147,7 +147,9 @@ class BacktestEngine:
             if config.funding_model.enabled:
                 for sym in config.symbols:
                     if sym in rt.positions and sym in day_candles:
-                        self._apply_funding(rt, bundle, sym, day_candles[sym])
+                        self._apply_funding(
+                            rt, config, bundle, sym, day_candles[sym]
+                        )
 
             eval_time = evaluation_time_for_daily(list(day_candles.values())[0])
             for sym in config.symbols:
@@ -488,18 +490,40 @@ class BacktestEngine:
     def _apply_funding(
         self,
         rt: _Runtime,
+        config: BacktestConfig,
         bundle: HistoricalDataBundle,
         symbol: str,
         candle: Candle,
     ) -> None:
+        """Apply funding for an open position on this candle.
+
+        Semantics:
+        - ``FundingModel.enabled`` must be true (caller gated).
+        - If ``assumed_rate`` is set, that constant rate is applied once per
+          daily candle while a position is open (research path). Bundle
+          ``FundingEvent``s are ignored when ``assumed_rate`` is set.
+        - If ``assumed_rate`` is None, apply matching ``FundingEvent``s from
+          the bundle whose timestamps fall inside the candle window.
+        """
         pos = rt.positions.get(symbol)
         if pos is None:
+            return
+        notional = pos.quantity * pos.entry_price
+        rate = config.funding_model.assumed_rate
+        if rate is not None:
+            payment = compute_funding_payment(notional, rate)
+            rt.cash -= payment
+            rt.total_funding += payment
+            trade = rt.active_trades.get(symbol)
+            if trade:
+                rt.active_trades[symbol] = trade.model_copy(
+                    update={"funding": trade.funding + payment}
+                )
             return
         events = bundle.funding.get(symbol, ())
         for ev in events:
             if not (candle.open_time <= ev.timestamp <= candle.close_time):
                 continue
-            notional = pos.quantity * pos.entry_price
             payment = compute_funding_payment(notional, ev.funding_rate)
             rt.cash -= payment
             rt.total_funding += payment

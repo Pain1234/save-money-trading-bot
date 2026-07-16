@@ -40,6 +40,7 @@ class ResearchMetrics(BaseModel):
     net_pnl: Decimal
     fees: Decimal
     slippage_costs: Decimal
+    funding_costs: Decimal = Decimal("0")
     funding_assumption: str
     signal_count: int = Field(ge=0)
     order_count: int = Field(ge=0)
@@ -107,6 +108,19 @@ def validate_metrics_or_mark_invalid(data: dict[str, Any]) -> ResearchMetrics:
     return metrics
 
 
+def compute_gross_pnl(
+    net_pnl: Decimal,
+    fees: Decimal,
+    slippage_costs: Decimal,
+    funding_costs: Decimal,
+) -> Decimal:
+    """Gross PnL restores all cost components embedded in net.
+
+    Identity: ``gross = net + fees + slippage + funding``.
+    """
+    return net_pnl + fees + slippage_costs + funding_costs
+
+
 def metrics_to_canonical_dict(metrics: ResearchMetrics) -> dict[str, Any]:
     raw = metrics.model_dump(mode="python")
 
@@ -149,6 +163,7 @@ def render_report_md(metrics: ResearchMetrics) -> str:
         f"- net_pnl: `{metrics.net_pnl}`",
         f"- fees: `{metrics.fees}`",
         f"- slippage_costs: `{metrics.slippage_costs}`",
+        f"- funding_costs: `{metrics.funding_costs}`",
         f"- funding_assumption: `{metrics.funding_assumption}`",
         f"- closed_trades: `{metrics.closed_trades}`",
         f"- hit_rate: `{metrics.hit_rate}`",

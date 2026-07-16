@@ -8,10 +8,12 @@ Required for `status=complete`:
 
 - Capital: `start_capital`, `end_capital`
 - PnL: `gross_pnl`, `net_pnl` (gross/net separated)
-- Costs: `fees`, `slippage_costs`, `funding_assumption` (non-empty string)
+- Costs: `fees`, `slippage_costs`, `funding_costs`, `funding_assumption` (non-empty string)
 - Counts: `signal_count`, `order_count`, `fill_count`, `closed_trades`
 - Optional analytics: hit rate, avg win/loss, expectancy, profit factor, max drawdown, exposure, turnover, time in market
 - Benchmark: `benchmark` (`BenchmarkRef`) + `benchmark_result`
+
+**Gross/net identity:** `gross_pnl = net_pnl + fees + slippage_costs + funding_costs`.
 
 Missing or incompatible benchmark/cost data fails validation; report status is `incomplete` or `invalid`. P4 does not make strategy promotion decisions.
 
@@ -27,6 +29,6 @@ Missing or incompatible benchmark/cost data fails validation; report status is `
   - Symbol must be in experiment symbols and present in the bundle (fail-closed otherwise)
 - Output lands in `metrics.json` and `report.md`
 
-## Costs (#49)
+## Costs (#49 / #164)
 
-Fee / slippage / funding model versions are required on the Spec (and optional named `cost_scenarios`). Funding `assumed_rate` is applied via `FundingModel` and persisted in `costs.json` / RunManifest cost fields. Cost **stress** (sensitivity sweeps) is **P5**, not P4.
+Fee / slippage / funding model versions are required on the Spec (and optional named `cost_scenarios`). Funding `assumed_rate` is applied via `FundingModel` **per daily candle** while a position is open (see [FUNDING.md](FUNDING.md)). Costs persist in `costs.json` / RunManifest cost fields. Cost **stress** (sensitivity sweeps) is **P5**, not P4.
