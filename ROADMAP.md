@@ -375,14 +375,26 @@ Standardized strategy interfaces, reproducible experiments, experiment registry,
 ### Deliverables
 
 - Experiment ID scheme and registry location
+- Standardized strategy interfaces / resolver contract
 - Standard report format
-- Benchmark definitions
+- Benchmark definitions (`benchmark_id` / version, calculation, period/dataset/cost parity)
+- Cost model field/version enforcement (stress evaluation is P5)
+- Documented invalidation workflow for historical results
+
+### Binding dependency chain
+
+```
+P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → P4 done → P5
+```
+
+Docs preparation may run in parallel from #142.
 
 ### Exit criteria
 
 - [ ] Every experiment traceable to commit + dataset version + config
 - [ ] Acceptance/rejection criteria applied consistently
-- [ ] Old results immutable; invalidation process used
+- [ ] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
+- [ ] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
 
 ### Stop criteria
 
@@ -392,7 +404,7 @@ Standardized strategy interfaces, reproducible experiments, experiment registry,
 
 - Backtest bias; cost model optimism
 
-**Current gap:** Backtester and specs exist; unified experiment registry and pipeline not enforced.
+**Current gap:** Backtester and specs exist; unified experiment registry and pipeline not enforced. Planning corrections applied to #48/#49/#141–#148 and P7 instrument issues.
 
 ---
 
