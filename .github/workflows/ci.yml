@@ -1,26 +1,97 @@
 # Mandatory CI gate for Python tests, lint, and governance checks (Issue #53).
 # Branch protection on `main` with required checks: Issue #65.
+#
+# Runs on: pull_request → main, push → main, and workflow_dispatch.
+# Docs-only changes skip heavy jobs (required checks report skipped = pass).
 
 name: CI
 
 on:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
-      - cursor/railway-paper-dashboard-v1
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_ci: ${{ steps.detect.outputs.run_ci }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect non-documentation changes
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "workflow_dispatch: always run CI"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              echo "run_ci=true" >> "$GITHUB_OUTPUT"
+              echo "missing before SHA: run CI"
+              exit 0
+            fi
+          fi
+
+          mapfile -t files < <(git diff --name-only "$BASE" "$HEAD")
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "no file list: run CI"
+            exit 0
+          fi
+
+          # Skip heavy jobs only when every path is documentation / license noise.
+          # Any executable or config-relevant path forces a full CI run.
+          run_ci=false
+          for f in "${files[@]}"; do
+            if [[ "$f" == *.md ]] \
+              || [[ "$f" == docs/* ]] \
+              || [[ "$f" == LICENSE || "$f" == LICENSE.* ]] \
+              || [[ "$f" == .gitignore ]] \
+              || [[ "$f" == .gitkeep || "$f" == */.gitkeep ]]; then
+              continue
+            fi
+            run_ci=true
+            break
+          done
+
+          echo "run_ci=${run_ci}" >> "$GITHUB_OUTPUT"
+          echo "changed files (${#files[@]}):"
+          printf '  %s\n' "${files[@]}"
+          echo "run_ci=${run_ci}"
+
   validate:
     name: validate
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,7 +133,10 @@ jobs:
 
   requirements-baseline:
     name: requirements-baseline
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -71,6 +145,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-baseline.txt
 
       - name: Sanity check baseline file has no local paths
         run: |
@@ -87,7 +163,10 @@ jobs:
 
   lint:
     name: lint
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -96,6 +175,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
@@ -105,7 +186,10 @@ jobs:
 
   test:
     name: test
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -114,6 +198,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
@@ -127,7 +213,10 @@ jobs:
 
   research-repro:
     name: research-repro
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -136,6 +225,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
@@ -154,7 +245,10 @@ jobs:
 
   test-market-data:
     name: test-market-data
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -163,6 +257,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
@@ -173,7 +269,10 @@ jobs:
 
   test-deploy:
     name: test-deploy
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -182,6 +281,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -206,7 +307,10 @@ jobs:
 
   postgres:
     name: postgres
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -231,6 +335,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dev dependencies
         run: python -m pip install -e ".[dev]"
@@ -241,7 +347,10 @@ jobs:
 
   perf-reporting:
     name: perf-reporting
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     # Issue #102: reporting measurements + JSON artifact (not a hard latency gate).
     services:
       postgres:
@@ -267,6 +376,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install Python dev dependencies
         run: python -m pip install -e ".[dev]"

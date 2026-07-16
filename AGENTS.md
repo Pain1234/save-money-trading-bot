@@ -174,10 +174,11 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 -BaseR
 | P1 baseline (start, versions, tests) | `docs/baseline-paper-v1.md` |
 | System architecture | `docs/ARCHITECTURE.md` |
 | Definition of Done | `docs/DEFINITION_OF_DONE.md` |
-| Tests (paper, postgres) | `python -m pytest tests/paper_trading -m postgres -v` |
+| Lint (pre-push) | `python -m ruff check .` |
+| Types (pre-push) | `python -m mypy .` |
+| Unit tests (CI-shaped, pre-push) | `python -m pytest tests/ --ignore=tests/deploy -m "not postgres and not live and not soak and not reporting" -q` |
+| Tests (paper, postgres) | `python -m pytest tests/paper_trading tests/market_data -m "postgres and not soak" -q` |
 | Full tests | `python -m pytest tests/ -v` |
-| Lint | `ruff check .` |
-| Types | `mypy .` (if configured) |
 | Migrations | `python -m alembic upgrade head` |
 | Worker start (prod path) | `deploy/scripts/start-worker.sh` |
 | Governance setup (dry) | `python scripts/github_project_setup.py --dry-run --skip-project` |

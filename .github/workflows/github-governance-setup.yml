@@ -5,6 +5,8 @@ name: GitHub governance setup
 
 on:
   pull_request:
+    branches:
+      - main
     paths:
       - "scripts/github_project_setup.py"
       - "tests/governance/**"
@@ -25,12 +27,13 @@ on:
         type: boolean
 
 concurrency:
-  group: github-governance-setup
-  cancel-in-progress: false
+  group: github-governance-setup-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: read
@@ -84,6 +87,7 @@ jobs:
 
   apply:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: validate
     if: github.event_name == 'workflow_dispatch' && inputs.apply == true
     permissions:
