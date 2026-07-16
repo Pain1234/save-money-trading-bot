@@ -1,0 +1,61 @@
+benchmark: buy_and_hold_BTC
+cost_scenarios:
+- fee_assumption:
+    entry_fee_rate: '0.0005'
+    exit_fee_rate: '0.0005'
+    model_version: '1.0'
+  funding_assumption:
+    assumed_rate: null
+    enabled: false
+    model_version: '1.0'
+  name: base
+  slippage_assumption:
+    model_version: '1.0'
+    slippage_bps: '5'
+dataset_manifest_ref:
+  content_hash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  dataset_id: example-btc-eth-sol-normalized-001
+  manifest_path: tests/market_data/fixtures/example_dataset_manifest.json
+expected_artifacts:
+- equity_curve.json
+- metrics.json
+- trade_log.csv
+fee_assumption:
+  entry_fee_rate: '0.0005'
+  exit_fee_rate: '0.0005'
+  model_version: '1.0'
+funding_assumption:
+  assumed_rate: null
+  enabled: false
+  model_version: '1.0'
+hypothesis: BTC/ETH/SOL trend-following with frozen V1 parameters remains robust under
+  stated fee, slippage, and funding assumptions versus a buy-and-hold BTC benchmark.
+notes: Example ExperimentSpec for BTC/ETH/SOL research only. Paper/research context
+  — no live credentials.
+owner: research
+parameters:
+  atr_period: 14
+  breakout_lookback: 20
+  daily_ema_period: 20
+  monthly_ema_period: 20
+  pullback_ema_tolerance: '0.005'
+  stop_initial_atr_mult: '2.5'
+  trail_atr_mult: '3.0'
+  volume_ratio_min: '1.00'
+  volume_sma_period: 20
+  weekly_ema_fast: 20
+  weekly_ema_slow: 50
+random_seed: 42
+schema_version: '1.0'
+slippage_assumption:
+  model_version: '1.0'
+  slippage_bps: '5'
+starting_capital: '100000'
+strategy_version: 1.0.0
+symbols:
+- BTC
+- ETH
+- SOL
+time_range:
+  end: '2024-12-31T23:59:59.999999Z'
+  start: '2024-01-01T00:00:00.000000Z'

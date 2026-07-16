@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "hypothesis": "BTC/ETH/SOL trend-following with frozen V1 parameters remains robust under stated fee, slippage, and funding assumptions versus a buy-and-hold BTC benchmark.",
+  "strategy_version": "1.0.0",
+  "parameters": {
+    "monthly_ema_period": 20,
+    "weekly_ema_fast": 20,
+    "weekly_ema_slow": 50,
+    "daily_ema_period": 20,
+    "breakout_lookback": 20,
+    "atr_period": 14,
+    "volume_sma_period": 20,
+    "volume_ratio_min": "1.00",
+    "pullback_ema_tolerance": "0.005",
+    "stop_initial_atr_mult": "2.5",
+    "trail_atr_mult": "3.0"
+  },
+  "dataset_manifest_ref": {
+    "dataset_id": "example-btc-eth-sol-normalized-001",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest_path": "tests/market_data/fixtures/example_dataset_manifest.json"
+  },
+  "symbols": ["BTC", "ETH", "SOL"],
+  "time_range": {
+    "start": "2024-01-01T00:00:00.000000Z",
+    "end": "2024-12-31T23:59:59.999999Z"
+  },
+  "starting_capital": "100000",
+  "fee_assumption": {
+    "entry_fee_rate": "0.0005",
+    "exit_fee_rate": "0.0005",
+    "model_version": "1.0"
+  },
+  "slippage_assumption": {
+    "slippage_bps": "5",
+    "model_version": "1.0"
+  },
+  "funding_assumption": {
+    "enabled": false,
+    "assumed_rate": null,
+    "model_version": "1.0"
+  },
+  "cost_scenarios": [
+    {
+      "name": "base",
+      "fee_assumption": {
+        "entry_fee_rate": "0.0005",
+        "exit_fee_rate": "0.0005",
+        "model_version": "1.0"
+      },
+      "slippage_assumption": {
+        "slippage_bps": "5",
+        "model_version": "1.0"
+      },
+      "funding_assumption": {
+        "enabled": false,
+        "assumed_rate": null,
+        "model_version": "1.0"
+      }
+    }
+  ],
+  "benchmark": "buy_and_hold_BTC",
+  "random_seed": 42,
+  "expected_artifacts": [
+    "equity_curve.json",
+    "metrics.json",
+    "trade_log.csv"
+  ],
+  "notes": "Example ExperimentSpec for BTC/ETH/SOL research only. Paper/research context — no live credentials.",
+  "owner": "research"
+}

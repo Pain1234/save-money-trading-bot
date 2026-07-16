@@ -125,6 +125,33 @@ jobs:
             -m "not postgres and not live and not soak and not reporting" \
             -q
 
+  research-repro:
+    name: research-repro
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Research schema + identity + runner + registry gate
+        run: |
+          python -m pytest tests/research \
+            tests/paper_trading/test_backtester_parity.py \
+            tests/paper_trading/test_backtester_signal_parity.py \
+            -q --tb=short
+          python -c "from research.experiment_spec import load_experiment_spec; load_experiment_spec('examples/research/btc_eth_sol_experiment.example.json', check_json_schema=True)"
+
+      - name: Double-run semantic artifact gate (#146)
+        run: |
+          python -m pytest tests/research/test_double_run_repro.py -v --tb=short
+
   test-market-data:
     name: test-market-data
     runs-on: ubuntu-latest

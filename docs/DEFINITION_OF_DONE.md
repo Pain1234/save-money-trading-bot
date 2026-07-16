@@ -28,7 +28,8 @@ Checklist before merging any pull request. Copy relevant sections into the PR de
 
 Additional requirements when changing or producing strategy/research artifacts:
 
-- [ ] Experiment-ID assigned and recorded
+- [ ] Experiment-ID assigned and recorded (`experiment_id` from semantic spec fields only; owner/notes excluded)
+- [ ] Run identity recorded (`run_id` from spec + code + dataset + relevant model/env versions; `attempt_id` for retries)
 - [ ] Git commit hash documented
 - [ ] Dataset version / manifest ID documented
 - [ ] Configuration saved (reproducible artifact or pinned file)
@@ -37,6 +38,19 @@ Additional requirements when changing or producing strategy/research artifacts:
 - [ ] Results reproducible from documented steps
 - [ ] Accept or reject decision documented with rationale
 - [ ] Prior results not overwritten; invalidation documented if applicable
+
+### Research result invalidation (binding)
+
+Historical research artifacts are immutable. The original **RunManifest must never be mutated** after finalize.
+
+If a completed run must no longer be treated as valid evidence:
+
+- [ ] Run status set to `invalidated` **only** via the experiment registry **and/or** an append-only invalidation record / sidecar (never by editing `run_manifest.json`)
+- [ ] Invalidation reason recorded in that registry entry or sidecar
+- [ ] Provenance recorded (who/when/which change or defect triggered invalidation)
+- [ ] Replacement run referenced when one exists (`run_id` / artifact path)
+- [ ] Original artifacts and RunManifest retained unchanged (no silent delete or overwrite)
+- [ ] Downstream consumers (comparisons, acceptance reports, CI baselines) updated to exclude or flag the invalidated run
 
 ---
 
