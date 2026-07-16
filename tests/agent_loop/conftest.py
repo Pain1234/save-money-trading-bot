@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
 import subprocess
 import sys
 import types
@@ -35,6 +37,28 @@ AGENT_LOOP = REPO_ROOT / ".agent-loop"
 for p in (str(REPO_ROOT), str(AGENT_LOOP)):
     if p not in sys.path:
         sys.path.insert(0, p)
+
+
+def discover_powershell() -> str:
+    """Locate a PowerShell executable for gate tests (prefer pwsh)."""
+    tried: list[str] = []
+    pwsh = shutil.which("pwsh")
+    if pwsh:
+        return pwsh
+    tried.append("pwsh")
+
+    if os.name == "nt":
+        powershell = shutil.which("powershell")
+        if powershell:
+            return powershell
+        tried.append("powershell")
+    else:
+        tried.append("powershell (Windows only)")
+
+    raise RuntimeError(
+        "No PowerShell executable found for agent-loop gate tests. "
+        f"Tried: {', '.join(tried)}. Install PowerShell 7+ (pwsh) or Windows PowerShell."
+    )
 
 
 def _load_module(name: str, path: Path) -> types.ModuleType:
@@ -95,11 +119,13 @@ def run_gate(
     cwd: Path | None = None,
     script: Path | None = None,
     env: dict[str, str] | None = None,
+    powershell: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Invoke run-codex-review.ps1 with PowerShell (optional wrapper script)."""
+    """Invoke run-codex-review.ps1 with discovered PowerShell (optional wrapper script)."""
     ps1 = script if script is not None else AGENT_LOOP / "run-codex-review.ps1"
+    exe = powershell if powershell is not None else discover_powershell()
     cmd = [
-        "powershell",
+        exe,
         "-ExecutionPolicy",
         "Bypass",
         "-File",

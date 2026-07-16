@@ -32,6 +32,10 @@
   When using -MockResultPath, do not overlay reviewed_base/head/diff_hash
   (for stale-head / wrong-hash tests).
 
+.PARAMETER CodexBin
+  Optional path/name of the Codex executable (tests: fake recorder). 
+  Overrides env AGENT_LOOP_CODEX_BIN when set.
+
 .NOTES
   Exit codes: 0 APPROVED, 2 CHANGES_REQUIRED, 3 REVIEW_FAILED, 4 stale/wrong.
 #>
@@ -44,7 +48,8 @@ param(
     [string]$RepoRoot = "",
     [string]$DiffFile = "",
     [switch]$AllowEmptyDiff,
-    [switch]$PreserveMockRefs
+    [switch]$PreserveMockRefs,
+    [string]$CodexBin = ""
 )
 
 Set-StrictMode -Version Latest
@@ -115,13 +120,180 @@ function Resolve-RepoRoot {
     return $top.Trim()
 }
 
+function Resolve-CodexBin {
+    param([string]$Explicit)
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) {
+        return $Explicit.Trim()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_CODEX_BIN)) {
+        return $env:AGENT_LOOP_CODEX_BIN.Trim()
+    }
+    return "codex"
+}
+
 function Test-CodexAvailable {
+    param([Parameter(Mandatory = $true)][string]$Bin)
+    if ($Bin -ne "codex" -and (Test-Path -LiteralPath $Bin)) {
+        return $true
+    }
     try {
-        $null = Get-Command codex -ErrorAction Stop
+        $null = Get-Command $Bin -ErrorAction Stop
         return $true
     }
     catch {
         return $false
+    }
+}
+
+function Invoke-CodexCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$Bin,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList
+    )
+    if ($Bin -match '\.py$') {
+        & python $Bin @ArgumentList
+    }
+    else {
+        & $Bin @ArgumentList
+    }
+}
+
+function Get-CodexExecHelpText {
+    param([Parameter(Mandatory = $true)][string]$Bin)
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $helpOut = Invoke-CodexCommand -Bin $Bin -ArgumentList @("exec", "--help") 2>&1 | Out-String
+    $ErrorActionPreference = $prevEap
+    return $helpOut
+}
+
+function New-CodexExecArgumentList {
+    param(
+        [Parameter(Mandatory = $true)][string]$Bin,
+        [Parameter(Mandatory = $true)][string]$InstructionPath
+    )
+    $helpText = Get-CodexExecHelpText -Bin $Bin
+    $required = @(
+        @{ Flag = "--sandbox"; Label = "sandbox" },
+        @{ Flag = "--ask-for-approval"; Label = "ask-for-approval" },
+        @{ Flag = "--ignore-user-config"; Label = "ignore-user-config" }
+    )
+    foreach ($req in $required) {
+        if ($helpText -notmatch [regex]::Escape($req.Flag)) {
+            throw ("Codex CLI does not advertise required read-only flag '{0}'. " +
+                "Cannot enforce sandbox; refusing to run review.") -f $req.Flag
+        }
+    }
+
+    $argList = [System.Collections.Generic.List[string]]::new()
+    $argList.Add("exec") | Out-Null
+    $argList.Add("--skip-git-repo-check") | Out-Null
+    $argList.Add("--sandbox") | Out-Null
+    $argList.Add("read-only") | Out-Null
+    $argList.Add("--ask-for-approval") | Out-Null
+    $argList.Add("never") | Out-Null
+    $argList.Add("--ignore-user-config") | Out-Null
+    if ($helpText -match "--ignore-rules") {
+        $argList.Add("--ignore-rules") | Out-Null
+    }
+    if ($helpText -match "--ephemeral") {
+        $argList.Add("--ephemeral") | Out-Null
+    }
+    $argList.Add($InstructionPath) | Out-Null
+    return , $argList.ToArray()
+}
+
+function Get-UniqueHistoryPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$HistoryDir,
+        [Parameter(Mandatory = $true)][string]$ShortSha
+    )
+    $stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssfffZ")
+    $baseName = "${stamp}_${ShortSha}.json"
+    $candidate = Join-Path $HistoryDir $baseName
+    if (-not (Test-Path -LiteralPath $candidate)) {
+        return $candidate
+    }
+    $n = 1
+    while ($true) {
+        $alt = Join-Path $HistoryDir ("${stamp}_${ShortSha}_${n}.json")
+        if (-not (Test-Path -LiteralPath $alt)) {
+            return $alt
+        }
+        $n++
+        if ($n -gt 1000) {
+            throw "Unable to allocate unique history filename under $HistoryDir"
+        }
+    }
+}
+
+function Assert-PostCodexHeadFresh {
+    param(
+        [Parameter(Mandatory = $true)][string]$ReviewedHead,
+        [Parameter(Mandatory = $true)][string]$ReviewedBase,
+        [Parameter(Mandatory = $true)][string]$DiffHash,
+        [Parameter(Mandatory = $true)][string]$DiffPath,
+        [string]$HeadRefParam = "",
+        [string]$DiffFileParam = ""
+    )
+    # Test override: force a post-Codex HEAD mismatch without rewriting git state.
+    if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_POST_CODEX_HEAD)) {
+        $currentHead = $env:AGENT_LOOP_POST_CODEX_HEAD.Trim()
+    }
+    elseif ([string]::IsNullOrWhiteSpace($HeadRefParam)) {
+        $currentHead = (& git rev-parse HEAD 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($currentHead)) {
+            throw "Post-Codex HEAD recheck failed: cannot read HEAD."
+        }
+        $currentHead = $currentHead.Trim()
+    }
+    else {
+        $currentHead = (& git rev-parse $HeadRefParam 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($currentHead)) {
+            throw "Post-Codex HEAD recheck failed: cannot resolve -HeadRef."
+        }
+        $currentHead = $currentHead.Trim()
+    }
+
+    if ($currentHead -ne $ReviewedHead) {
+        Write-Host "STALE: HEAD changed during review ($ReviewedHead -> $currentHead)."
+        exit $Script:ExitStale
+    }
+
+    # Recompute diff hash when using live git diff (not a frozen -DiffFile).
+    if ([string]::IsNullOrWhiteSpace($DiffFileParam)) {
+        $reMerge = (& git merge-base $ReviewedBase $currentHead 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($reMerge)) {
+            throw "Post-Codex recheck: cannot recompute merge-base."
+        }
+        $reDiffText = & git diff --no-ext-diff "$($reMerge.Trim())...$currentHead"
+        if ($null -eq $reDiffText) { $reDiffText = "" }
+        if ($reDiffText -is [System.Array]) {
+            $reDiffText = ($reDiffText -join "`n")
+        }
+        $reDiffText = [string]$reDiffText
+        if ($reDiffText.Length -gt 0 -and -not $reDiffText.EndsWith("`n")) {
+            $reDiffText = $reDiffText + "`n"
+        }
+        $utf8 = New-Object System.Text.UTF8Encoding $false
+        $rePath = Join-Path (Join-Path $Script:AgentLoopDir "tmp") "post-codex-recheck.patch"
+        [System.IO.File]::WriteAllText(
+            $rePath,
+            $reDiffText.Replace("`r`n", "`n").Replace("`r", "`n"),
+            $utf8
+        )
+        $reHash = Get-Sha256NoBom -Path $rePath
+        if ($reHash -ne $DiffHash) {
+            Write-Host "STALE: diff hash changed during review."
+            exit $Script:ExitStale
+        }
+    }
+    else {
+        $reHash = Get-Sha256NoBom -Path $DiffPath
+        if ($reHash -ne $DiffHash) {
+            Write-Host "STALE: diff hash changed during review."
+            exit $Script:ExitStale
+        }
     }
 }
 
@@ -363,7 +535,8 @@ try {
         exit $Script:ExitReviewFailed
     }
     else {
-        if (-not (Test-CodexAvailable)) {
+        $resolvedCodexBin = Resolve-CodexBin -Explicit $CodexBin
+        if (-not (Test-CodexAvailable -Bin $resolvedCodexBin)) {
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "Codex CLI not available and no -MockResultPath provided." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
@@ -398,11 +571,24 @@ $inputSummaryPath
         $utf8 = New-Object System.Text.UTF8Encoding $false
         [System.IO.File]::WriteAllText($instructionPath, $instruction, $utf8)
 
+        try {
+            $codexArgList = New-CodexExecArgumentList -Bin $resolvedCodexBin -InstructionPath $instructionPath
+        }
+        catch {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "Cannot apply required Codex read-only sandbox flags: $($_.Exception.Message)" `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @($_.Exception.Message)
+            Write-Host "REVIEW_FAILED: Codex sandbox flags unavailable."
+            exit $Script:ExitReviewFailed
+        }
+
         # Prefer read-only exec; never use write-to-repo modes.
         # Capture stdout to a temp file under .agent-loop/tmp (gitignored).
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
-        & codex exec --skip-git-repo-check $instructionPath 2>&1 | Tee-Object -FilePath $codexOutPath | Out-Null
+        Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList 2>&1 |
+            Tee-Object -FilePath $codexOutPath | Out-Null
         $codexExit = $LASTEXITCODE
         $ErrorActionPreference = $prevEap
 
@@ -433,6 +619,15 @@ $inputSummaryPath
         [System.IO.File]::WriteAllText($resultPath, $jsonSlice.Trim() + "`n", $utf8)
     }
 
+    # After Codex/mock returns: refuse APPROVED if HEAD or diff drifted.
+    Assert-PostCodexHeadFresh `
+        -ReviewedHead $reviewedHead `
+        -ReviewedBase $reviewedBase `
+        -DiffHash $diffHash `
+        -DiffPath $diffPath `
+        -HeadRefParam $HeadRef `
+        -DiffFileParam $DiffFile
+
     # Validate
     $validateScript = Join-Path $Script:AgentLoopDir "validate-review-result.py"
     & python $validateScript `
@@ -456,11 +651,10 @@ $inputSummaryPath
         exit $Script:ExitReviewFailed
     }
 
-    # History copy
-    $stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
-    $histName = "${stamp}_${shortSha}.json"
-    $histPath = Join-Path $historyDir $histName
-    Copy-Item -LiteralPath $resultPath -Destination $histPath -Force
+    # History copy (UTC ms stamp; never overwrite existing)
+    $histPath = Get-UniqueHistoryPath -HistoryDir $historyDir -ShortSha $shortSha
+    $histName = Split-Path -Leaf $histPath
+    Copy-Item -LiteralPath $resultPath -Destination $histPath
 
     $verdictObj = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
     $verdict = [string]$verdictObj.verdict

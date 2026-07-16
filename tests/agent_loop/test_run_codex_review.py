@@ -1,15 +1,16 @@
-"""Integration tests for run-codex-review.ps1 gate (15 categories)."""
+"""Integration tests for run-codex-review.ps1 gate."""
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
 from pathlib import Path
 
 import pytest
-from conftest import run_gate
+from conftest import discover_powershell, run_gate
 
 
 def _result_path(repo_root: Path) -> Path:
@@ -26,6 +27,49 @@ def _history_json_files(repo_root: Path) -> list[Path]:
     return sorted(
         p for p in hist.iterdir() if p.is_file() and p.suffix == ".json" and p.name != ".gitkeep"
     )
+
+
+def _gate_env(**extra: str) -> dict[str, str]:
+    env = dict(os.environ)
+    env.update(extra)
+    return env
+
+
+def test_discover_powershell_prefers_pwsh(monkeypatch):
+    calls: list[str] = []
+
+    def fake_which(name: str):
+        calls.append(name)
+        if name == "pwsh":
+            return r"C:\Tools\pwsh.exe"
+        return None
+
+    monkeypatch.setattr("conftest.shutil.which", fake_which)
+    assert discover_powershell() == r"C:\Tools\pwsh.exe"
+    assert calls[0] == "pwsh"
+
+
+def test_run_gate_uses_discovered_powershell(monkeypatch, fixtures_dir, gate_ps1):
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("conftest.subprocess.run", fake_run)
+    monkeypatch.setattr("conftest.discover_powershell", lambda: "pwsh-from-helper")
+    run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        "-SkipCodex",
+        "-MockResultPath",
+        str(fixtures_dir / "approved_template.json"),
+        script=gate_ps1,
+    )
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert cmd[0] == "pwsh-from-helper"
+    assert "-File" in cmd
 
 
 def test_01_valid_approved(repo_root, fixtures_dir, gate_ps1):
@@ -170,6 +214,19 @@ def test_10_secret_pattern_aborts(repo_root, fixtures_dir, gate_ps1):
     assert "secret" in combined.lower() or "Secret" in combined
 
 
+def test_10b_secret_sqlalchemy_aborts(repo_root, fixtures_dir, gate_ps1):
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "secret_sqlalchemy.diff"),
+        "-SkipCodex",
+        "-MockResultPath",
+        str(fixtures_dir / "approved_template.json"),
+        script=gate_ps1,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+
+
 def test_11_result_file_not_committed(repo_root):
     gi = (repo_root / ".gitignore").read_text(encoding="utf-8")
     required = [
@@ -225,9 +282,30 @@ def test_13_review_history_created(repo_root, fixtures_dir, gate_ps1):
     ]
     assert new_or_updated, "expected a new review-history JSON file"
     assert any(
-        re.match(r".+_\d+.*\.json$", p.name) or re.match(r".+_.*\.json$", p.name)
+        re.match(r"^\d{8}T\d{9}Z_[0-9a-f]+(?:_\d+)?\.json$", p.name, re.I)
         for p in new_or_updated
     )
+
+
+def test_13b_history_unique_no_overwrite(repo_root, fixtures_dir, gate_ps1):
+    before = {p.name for p in _history_json_files(repo_root)}
+    names: list[str] = []
+    for _ in range(2):
+        proc = run_gate(
+            "-DiffFile",
+            str(fixtures_dir / "sample.diff"),
+            "-SkipCodex",
+            "-MockResultPath",
+            str(fixtures_dir / "approved_template.json"),
+            script=gate_ps1,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        after = {p.name for p in _history_json_files(repo_root)}
+        new = sorted(after - before - set(names))
+        assert new, "expected a distinct history file"
+        names.append(new[-1])
+        before = after
+    assert names[0] != names[1]
 
 
 def test_14_working_tree_no_tracked_source_mods(repo_root, fixtures_dir, gate_ps1):
@@ -275,6 +353,78 @@ def test_14_working_tree_no_tracked_source_mods(repo_root, fixtures_dir, gate_ps
     after_mods = tracked_source_mods(after)
     unexpected = after_mods - before_mods
     assert not unexpected, f"unexpected tracked modifications: {unexpected}"
+
+
+def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    argv_file = tmp_path / "codex-argv.txt"
+    mock_codex = fixtures_dir / "mock_codex.py"
+    before = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "APPROVED"
+    assert argv_file.is_file(), "mock Codex should record argv"
+    argv_text = argv_file.read_text(encoding="utf-8")
+    assert "--sandbox" in argv_text
+    assert "read-only" in argv_text
+    assert "--ask-for-approval" in argv_text
+    assert "never" in argv_text
+    assert "--ignore-user-config" in argv_text
+
+    after = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+    def tracked_source_mods(status: str) -> set[str]:
+        mods: set[str] = set()
+        for line in status.splitlines():
+            if len(line) < 4:
+                continue
+            code = line[:2]
+            path = line[3:].strip()
+            if path.startswith(".agent-loop/") or path.startswith("tests/agent_loop/"):
+                continue
+            if "M" in code or "D" in code or code.strip() == "T":
+                mods.add(path)
+        return mods
+
+    unexpected = tracked_source_mods(after) - tracked_source_mods(before)
+    assert not unexpected, f"unexpected tracked modifications: {unexpected}"
+
+
+def test_14c_post_codex_head_mismatch_exit_4(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_ARGV_FILE=str(tmp_path / "argv.txt"),
+        AGENT_LOOP_POST_CODEX_HEAD="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 4, proc.stdout + proc.stderr
 
 
 def test_15_script_works_from_subdirectory(repo_root, fixtures_dir, gate_ps1):

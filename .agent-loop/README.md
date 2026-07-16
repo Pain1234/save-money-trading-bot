@@ -7,6 +7,7 @@ Read-only Codex review gate for feature branches. Produces a schema-validated JS
 - **git** on `PATH`
 - **Python 3.11+** on `PATH`
 - **jsonschema** (`pip install jsonschema`) for `validate-review-result.py`
+- **PowerShell**: prefer **`pwsh`** (PowerShell 7+) on PATH for CI/Linux; Windows may fall back to `powershell`
 - **Codex CLI** (optional for local mock/tests): must be installed and authenticated for live reviews
 
 ### Check Codex CLI
@@ -19,10 +20,10 @@ If the CLI is missing and you do not pass `-MockResultPath`, the gate writes a `
 
 ## How to run
 
-From the repo root (or any subdirectory ? the script resolves the git toplevel):
+From the repo root (or any subdirectory — the script resolves the git toplevel). Prefer `pwsh` when available:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 -BaseRef origin/main
+pwsh -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 -BaseRef origin/main
 ```
 
 ### Note for issue #141
@@ -72,7 +73,9 @@ Verdict rules (enforced by `validate-review-result.py`):
 
 Each successful validation path also copies an immutable snapshot to:
 
-`.agent-loop/review-history/<UTC yyyyMMddTHHmmssZ>_<SHORT_SHA>.json`
+`.agent-loop/review-history/<UTC yyyyMMddTHHmmssfffZ>_<SHORT_SHA>.json`
+
+If that name already exists, a numeric suffix (`_1`, `_2`, …) is appended — existing files are never overwritten.
 
 Use this for audit trails across Cursor rounds. Do not edit history files in place.
 
@@ -115,8 +118,12 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 ## Security model
 
 - **Secret scan** runs on the diff before Codex (`secret_scan.py`). Matches abort with `REVIEW_FAILED` and never send the patch to Codex.
+- CLI stderr reports **pattern name + line number only** — never secret values or line previews.
+- Patterns cover common DB URLs (including SQLAlchemy `postgresql+psycopg://…`), `RAILWAY_TOKEN` / `SESSION_SECRET` / credentialed `DATABASE_URL` assignments, plus API keys and tokens.
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
-- Codex is invoked in **read-only** fashion; the gate must not use Codex modes that write into the repo tree.
+- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
+- After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
+- Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.
 
 ## Mock mode (tests)

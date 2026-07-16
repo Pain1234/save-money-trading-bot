@@ -22,8 +22,20 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("private_key_block", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
     ("bearer_token", re.compile(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*")),
     ("postgres_url_with_password", re.compile(r"(?i)postgres(?:ql)?://[^:\s/]+:[^@\s/]+@")),
+    (
+        "sqlalchemy_postgres_url_with_password",
+        re.compile(r"(?i)postgres(?:ql)?\+[A-Za-z0-9_]+://[^:\s/]+:[^@\s/]+@"),
+    ),
     ("mysql_url_with_password", re.compile(r"(?i)mysql://[^:\s/]+:[^@\s/]+@")),
     ("generic_db_url_password", re.compile(r"(?i)(?:mongodb|redis|amqp)://[^:\s/]+:[^@\s/]+@")),
+    (
+        "database_url_with_password",
+        re.compile(
+            r"(?i)database_url\s*[=:]\s*\S*://[^:\s/]+:[^@\s/]+@"
+        ),
+    ),
+    ("railway_token_assignment", re.compile(r"(?i)railway_token\s*[=:]\s*\S+")),
+    ("session_secret_assignment", re.compile(r"(?i)session_secret\s*[=:]\s*\S+")),
     ("github_pat", re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}")),
     ("slack_token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
     ("openai_sk", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
@@ -34,7 +46,6 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 class SecretMatch:
     pattern_name: str
     line_number: int
-    line_preview: str
 
 
 def scan_text(text: str) -> list[SecretMatch]:
@@ -43,14 +54,10 @@ def scan_text(text: str) -> list[SecretMatch]:
     for line_number, line in enumerate(text.splitlines(), start=1):
         for name, pattern in SECRET_PATTERNS:
             if pattern.search(line):
-                preview = line.strip()
-                if len(preview) > 120:
-                    preview = preview[:117] + "..."
                 matches.append(
                     SecretMatch(
                         pattern_name=name,
                         line_number=line_number,
-                        line_preview=preview,
                     )
                 )
                 break
@@ -67,9 +74,8 @@ def scan_file(path: Path) -> list[SecretMatch]:
 
 
 def format_matches(matches: list[SecretMatch]) -> str:
-    lines = [
-        f"  line {m.line_number}: [{m.pattern_name}] {m.line_preview}" for m in matches
-    ]
+    """Format matches for CLI stderr: pattern name + line number only (no secrets)."""
+    lines = [f"  line {m.line_number}: [{m.pattern_name}]" for m in matches]
     return "\n".join(lines)
 
 
