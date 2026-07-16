@@ -56,6 +56,18 @@ def main(argv: list[str]) -> int:
             encoding="utf-8",
         )
 
+    temp_values_file = os.environ.get("AGENT_LOOP_CODEX_TEMP_VALUES_FILE", "").strip()
+    if temp_values_file:
+        lines: list[str] = []
+        for key in ("TEMP", "TMP", "TMPDIR"):
+            val = os.environ.get(key, "")
+            if val:
+                lines.append(f"{key}={val}")
+        Path(temp_values_file).write_text(
+            "\n".join(lines) + ("\n" if lines else ""),
+            encoding="utf-8",
+        )
+
     if len(argv) >= 2 and argv[0] == "exec" and "--help" in argv:
         print(HELP_TEXT)
         return 0

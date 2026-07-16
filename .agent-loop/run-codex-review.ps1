@@ -237,12 +237,18 @@ function Get-CodexChildEnvironment {
             "AGENT_LOOP_MOCK_STDERR_NOISE",
             "AGENT_LOOP_CODEX_STDERR_NOISE",
             "AGENT_LOOP_MOCK_FLOOD_STREAMS",
-            "AGENT_LOOP_MOCK_PARTIAL_HANG"
+            "AGENT_LOOP_MOCK_PARTIAL_HANG",
+            "AGENT_LOOP_HANG_PID_FILE",
+            "AGENT_LOOP_CODEX_TEMP_VALUES_FILE"
         )
     }
 
     $child = @{}
     foreach ($name in $allow) {
+        # TEMP/TMP/TMPDIR are filled from GetTempPath() below — do not require parent env.
+        if ($name -eq "TEMP" -or $name -eq "TMP" -or $name -eq "TMPDIR") {
+            continue
+        }
         $val = [Environment]::GetEnvironmentVariable($name)
         if (-not [string]::IsNullOrEmpty($val)) {
             $child[$name] = $val
@@ -264,6 +270,23 @@ function Get-CodexChildEnvironment {
             $child[$k] = [string]$Extra[$key]
         }
     }
+    # Prefer BCL temp path so Linux CI (no TEMP/TMP/TMPDIR) still gets a usable child temp.
+    # Temp vars are allowlisted runtime paths — never treated as credentials.
+    $tempPath = $null
+    try {
+        $tempPath = [System.IO.Path]::GetTempPath()
+    }
+    catch {
+        $tempPath = $null
+    }
+    if (-not [string]::IsNullOrWhiteSpace($tempPath)) {
+        $normalizedTemp = $tempPath.TrimEnd([char]'\', [char]'/')
+        foreach ($tempName in @("TEMP", "TMP", "TMPDIR")) {
+            if (-not $child.ContainsKey($tempName) -or [string]::IsNullOrEmpty([string]$child[$tempName])) {
+                $child[$tempName] = $normalizedTemp
+            }
+        }
+    }
     # At most one Codex auth key for this run (prefer ACCESS_TOKEN).
     $hasAccess = $child.ContainsKey("CODEX_ACCESS_TOKEN") -and -not [string]::IsNullOrEmpty([string]$child["CODEX_ACCESS_TOKEN"])
     $hasApi = $child.ContainsKey("CODEX_API_KEY") -and -not [string]::IsNullOrEmpty([string]$child["CODEX_API_KEY"])
@@ -277,36 +300,40 @@ function Get-CodexChildEnvironment {
 }
 
 function Stop-CodexProcessTree {
+    <#
+      Kill the Codex process and its entire tree via .NET Process.Kill($true).
+      Requires PowerShell 7+ / .NET that supports Kill(entireProcessTree).
+      Throws on failure so the gate can REVIEW_FAILED without accepting partial JSON.
+    #>
     param([Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process)
     $pidToKill = $null
-    try { $pidToKill = $Process.Id } catch { return }
-    if ($null -eq $pidToKill -or $pidToKill -le 0) { return }
-    try {
-        Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+    try { $pidToKill = $Process.Id } catch {
+        throw "Codex process tree kill failed: cannot read process id."
     }
-    catch { }
-    $isWin = $false
+    if ($null -eq $pidToKill -or $pidToKill -le 0) {
+        throw "Codex process tree kill failed: invalid process id."
+    }
     try {
-        if ($PSVersionTable.PSVersion.Major -ge 6) {
-            $isWin = [bool]$IsWindows
-        }
-        else {
-            $isWin = $true
+        if (-not $Process.HasExited) {
+            $Process.Kill($true)
         }
     }
     catch {
-        $isWin = ($env:OS -like "*Windows*")
+        $safe = ([string]$_.Exception.Message) -replace '[^\x20-\x7E]', '?'
+        if ($safe.Length -gt 200) { $safe = $safe.Substring(0, 200) }
+        throw ("Codex process tree kill failed: {0}" -f $safe)
     }
-    if ($isWin) {
-        $prevEap = $ErrorActionPreference
-        $ErrorActionPreference = "Continue"
-        try {
-            & taskkill.exe /PID $pidToKill /T /F 2>$null | Out-Null
+    try {
+        $null = $Process.WaitForExit(5000)
+    }
+    catch { }
+    try {
+        if (-not $Process.HasExited) {
+            throw "Codex process tree kill failed: process still running after Kill(entireProcessTree)."
         }
-        catch { }
-        finally {
-            $ErrorActionPreference = $prevEap
-        }
+    }
+    catch [System.InvalidOperationException] {
+        # Process already disposed / exited — treat as success.
     }
 }
 
@@ -457,14 +484,20 @@ function Invoke-CodexCommand {
     $completed = [System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask), $timeoutMs)
 
     if (-not $completed) {
-        Stop-CodexProcessTree -Process $proc
-        try { $null = $proc.WaitForExit(5000) } catch { }
+        try {
+            Stop-CodexProcessTree -Process $proc
+        }
+        catch {
+            try { $proc.Dispose() } catch { }
+            throw
+        }
         try { $proc.Dispose() } catch { }
         return @{
-            ExitCode = -1
-            StdOut   = ""
-            StdErr   = ""
-            TimedOut = $true
+            ExitCode   = -1
+            StdOut     = ""
+            StdErr     = ""
+            TimedOut   = $true
+            KillFailed = $false
         }
     }
 
@@ -474,14 +507,20 @@ function Invoke-CodexCommand {
     if (-not $proc.HasExited) {
         $null = $proc.WaitForExit($timeoutMs)
         if (-not $proc.HasExited) {
-            Stop-CodexProcessTree -Process $proc
-            try { $null = $proc.WaitForExit(5000) } catch { }
+            try {
+                Stop-CodexProcessTree -Process $proc
+            }
+            catch {
+                try { $proc.Dispose() } catch { }
+                throw
+            }
             try { $proc.Dispose() } catch { }
             return @{
-                ExitCode = -1
-                StdOut   = ""
-                StdErr   = ""
-                TimedOut = $true
+                ExitCode   = -1
+                StdOut     = ""
+                StdErr     = ""
+                TimedOut   = $true
+                KillFailed = $false
             }
         }
     }
@@ -985,6 +1024,15 @@ try {
         exit $Script:ExitReviewFailed
     }
     else {
+        # Live Codex path requires PowerShell 7+ (.NET Kill(entireProcessTree)).
+        if ($PSVersionTable.PSVersion.Major -lt 7) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "PowerShell 7+ is required for live Codex reviews (process-tree kill support)." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @("PSVersion=$($PSVersionTable.PSVersion)")
+            Write-Host "REVIEW_FAILED: PowerShell 7+ required for live Codex; Codex was not started."
+            exit $Script:ExitReviewFailed
+        }
         $resolvedCodexBin = Resolve-CodexBin -Explicit $CodexBin
         if (-not (Test-CodexAvailable -Bin $resolvedCodexBin)) {
             Write-ReviewFailedResult -ResultPath $resultPath `

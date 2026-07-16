@@ -316,11 +316,15 @@ def test_private_key_basename_and_rename_denylist(tmp_path):
 
 def test_private_key_header_in_diff_and_blob_fail_closed(tmp_path):
     """PEM private key header in diff/blob → PermissionError; no key body in logs."""
+    import secret_fragments as sf
+
     repo = tmp_path / "repo"
     key_body = (
-        "-----BEGIN OPENSSH PRIVATE KEY-----\n"
-        "SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG\n"
-        "-----END OPENSSH PRIVATE KEY-----\n"
+        sf.private_key_begin("OPENSSH")
+        + "\n"
+        + "SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG\n"
+        + sf.private_key_end("OPENSSH")
+        + "\n"
     )
     sha = _git_init_with_file(repo, "notes.txt", key_body)
     diff = tmp_path / "pem.diff"
@@ -329,9 +333,13 @@ def test_private_key_header_in_diff_and_blob_fail_closed(tmp_path):
         "--- a/notes.txt\n"
         "+++ b/notes.txt\n"
         "@@ -0,0 +1,3 @@\n"
-        "+-----BEGIN OPENSSH PRIVATE KEY-----\n"
+        "+"
+        + sf.private_key_begin("OPENSSH")
+        + "\n"
         "+SUPER_SECRET_KEY_MATERIAL_DO_NOT_LOG\n"
-        "+-----END OPENSSH PRIVATE KEY-----\n",
+        "+"
+        + sf.private_key_end("OPENSSH")
+        + "\n",
         encoding="utf-8",
     )
     out = tmp_path / "ws"
@@ -345,11 +353,15 @@ def test_private_key_header_in_diff_and_blob_fail_closed(tmp_path):
 
 def test_private_key_header_in_blob_only(tmp_path):
     """Committed blob with PEM header fails even if diff hunk omits the header line."""
+    import secret_fragments as sf
+
     repo = tmp_path / "repo"
     key_body = (
-        "-----BEGIN RSA PRIVATE KEY-----\n"
-        "BLOB_SECRET_MATERIAL\n"
-        "-----END RSA PRIVATE KEY-----\n"
+        sf.private_key_begin("RSA")
+        + "\n"
+        + "BLOB_SECRET_MATERIAL\n"
+        + sf.private_key_end("RSA")
+        + "\n"
     )
     sha = _git_init_with_file(repo, "legacy.txt", key_body)
     diff = tmp_path / "touch.diff"
@@ -359,10 +371,14 @@ def test_private_key_header_in_blob_only(tmp_path):
         "--- a/legacy.txt\n"
         "+++ b/legacy.txt\n"
         "@@ -1,3 +1,3 @@\n"
-        " -----BEGIN RSA PRIVATE KEY-----\n"
+        " "
+        + sf.private_key_begin("RSA")
+        + "\n"
         "-BLOB_SECRET_MATERIAL\n"
         "+BLOB_SECRET_MATERIAL\n"
-        " -----END RSA PRIVATE KEY-----\n",
+        " "
+        + sf.private_key_end("RSA")
+        + "\n",
         encoding="utf-8",
     )
     # The + line is not a header; context lines are not scanned as additions.

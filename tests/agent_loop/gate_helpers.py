@@ -36,12 +36,27 @@ for p in (str(REPO_ROOT), str(AGENT_LOOP), str(Path(__file__).resolve().parent))
 
 
 def discover_powershell() -> str:
-    """Locate a PowerShell executable for gate tests (prefer pwsh)."""
+    """Locate a PowerShell executable for gate tests (prefer pwsh / PS7+)."""
     tried: list[str] = []
     pwsh = shutil.which("pwsh")
     if pwsh:
         return pwsh
     tried.append("pwsh")
+
+    # Common install locations when pwsh is not on PATH yet (fresh winget install).
+    for candidate in (
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+        / "PowerShell"
+        / "7"
+        / "pwsh.exe",
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+        / "PowerShell"
+        / "7-preview"
+        / "pwsh.exe",
+    ):
+        if candidate.is_file():
+            return str(candidate)
+        tried.append(str(candidate))
 
     if os.name == "nt":
         powershell = shutil.which("powershell")

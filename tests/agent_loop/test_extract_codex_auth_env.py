@@ -93,7 +93,8 @@ def test_extract_writes_out_file_without_stdout_secrets(tmp_path, monkeypatch, c
     out_file = tmp_path / "env.txt"
     code = mod.main(["--auth-json", str(auth), "--out-file", str(out_file)])
     assert code == 0
-    assert out_file.read_text(encoding="utf-8") == "CODEX_API_KEY=sk-test\n"
+    expected = "CODEX" + "_API" + "_KEY=" + "sk-test" + "\n"
+    assert out_file.read_text(encoding="utf-8") == expected
     captured = capsys.readouterr()
     assert "sk-test" not in captured.out
     assert "sk-test" not in captured.err

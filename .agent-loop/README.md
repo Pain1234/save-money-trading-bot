@@ -7,8 +7,9 @@ Read-only Codex review gate for feature branches. Produces a schema-validated JS
 - **git** on `PATH`
 - **Python 3.11+** on `PATH`
 - **jsonschema** (`pip install jsonschema`) for `validate-review-result.py`
-- **PowerShell**: prefer **`pwsh`** (PowerShell 7+) on PATH for CI/Linux; Windows may fall back to `powershell`
+- **PowerShell**: prefer **`pwsh`** (PowerShell 7+) on PATH for CI/Linux; Windows may fall back to `powershell` for mock/DiffFile tests. **Live Codex reviews require PowerShell 7+** (`Process.Kill($true)` process-tree support).
 - **Codex CLI** (optional for local mock/tests): must be installed and authenticated for live reviews
+- Child Codex temp dirs use `[System.IO.Path]::GetTempPath()` (Python: `tempfile.gettempdir()`); parent `TEMP`/`TMP`/`TMPDIR` may be absent (e.g. Linux CI) without failing the gate.
 
 ### Check Codex CLI
 
@@ -130,6 +131,7 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 ## Security model
 
 - **Secret scan** runs on the diff before Codex (`secret_scan.py`). Matches abort with `REVIEW_FAILED` and never send the patch to Codex.
+- For unified diffs, only **added** lines (`+`, excluding `+++` headers) are scanned — deletion hunks do not abort (so removing legacy fixtures is safe), while newly introduced secret-like text still fails closed.
 - CLI stderr reports **pattern name + line number only** — never secret values or line previews.
 - Patterns cover common DB URLs (including SQLAlchemy `postgresql+psycopg://…`), `RAILWAY_TOKEN` / `SESSION_SECRET` / credentialed `DATABASE_URL` assignments, plus API keys and tokens.
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
@@ -147,6 +149,29 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
 - Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_TEST_MODE=1` + `AGENT_LOOP_SKIP_OS_ISOLATION=1`, `AGENT_LOOP_ALLOW_DIFF_FILE=1` for `-DiffFile`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.
+
+## BOOTSTRAP EXCEPTION
+
+Das Codex-Review-Gate kann vor seinem ersten Merge nicht verbindlich seine
+eigene Freigabe erzeugen.
+
+Für genau diesen initialen Tooling-PR gilt daher einmalig:
+
+- vollständiges grünes CI
+- menschliches Review
+- keine offenen BLOCKER oder MAJOR Findings
+- keine Änderungen an Trading-Code
+- kein automatischer Merge
+- kein Deployment
+
+Nach dem Merge ist das Gate für alle nachfolgenden Feature-PRs verbindlich,
+beginnend mit Issue #141.
+
+Diese Ausnahme gilt nicht für spätere Änderungen am Gate.
+Spätere Gate-Änderungen benötigen entweder:
+
+- das bereits gemergte Gate der vorherigen Version
+- oder ein separates menschlich freigegebenes Notfallverfahren
 
 ## Mock mode (tests)
 

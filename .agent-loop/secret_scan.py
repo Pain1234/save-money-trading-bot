@@ -49,11 +49,24 @@ class SecretMatch:
 
 
 def scan_text(text: str) -> list[SecretMatch]:
-    """Return all secret-pattern matches in *text* (line-oriented)."""
+    """Return all secret-pattern matches in *text* (line-oriented).
+
+    When *text* looks like a unified diff, only added lines (``+``, excluding
+    ``+++`` headers) are scanned. Deletion hunks and context are ignored so
+    removing legacy fixtures does not abort a review, while newly introduced
+    secrets still fail closed.
+    """
     matches: list[SecretMatch] = []
+    looks_like_diff = text.startswith("diff --git ") or "\ndiff --git " in text
     for line_number, line in enumerate(text.splitlines(), start=1):
+        if looks_like_diff:
+            if not line.startswith("+") or line.startswith("+++"):
+                continue
+            content = line[1:]
+        else:
+            content = line
         for name, pattern in SECRET_PATTERNS:
-            if pattern.search(line):
+            if pattern.search(content):
                 matches.append(
                     SecretMatch(
                         pattern_name=name,

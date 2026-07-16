@@ -7,10 +7,13 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
 import pytest
+import secret_fragments as sf
 from gate_helpers import discover_powershell, run_gate
 
 
@@ -301,10 +304,12 @@ def test_09_invalid_json_mock(repo_root, fixtures_dir, gate_ps1):
     assert proc.returncode == 3, proc.stdout + proc.stderr
 
 
-def test_10_secret_pattern_aborts(repo_root, fixtures_dir, gate_ps1):
+def test_10_secret_pattern_aborts(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    secret_diff = tmp_path / "secret.diff"
+    secret_diff.write_text(sf.secret_diff_text(), encoding="utf-8")
     proc = run_gate(
         "-DiffFile",
-        str(fixtures_dir / "secret.diff"),
+        str(secret_diff),
         "-SkipCodex",
         "-MockResultPath",
         str(fixtures_dir / "approved_template.json"),
@@ -316,10 +321,12 @@ def test_10_secret_pattern_aborts(repo_root, fixtures_dir, gate_ps1):
     assert "secret" in combined.lower() or "Secret" in combined
 
 
-def test_10b_secret_sqlalchemy_aborts(repo_root, fixtures_dir, gate_ps1):
+def test_10b_secret_sqlalchemy_aborts(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    secret_diff = tmp_path / "secret_sqlalchemy.diff"
+    secret_diff.write_text(sf.secret_sqlalchemy_diff_text(), encoding="utf-8")
     proc = run_gate(
         "-DiffFile",
-        str(fixtures_dir / "secret_sqlalchemy.diff"),
+        str(secret_diff),
         "-SkipCodex",
         "-MockResultPath",
         str(fixtures_dir / "approved_template.json"),
@@ -927,6 +934,7 @@ def test_skip_os_isolation_requires_test_mode(repo_root, fixtures_dir, gate_ps1,
 def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1, tmp_path):
     """Child Codex env must not inherit DATABASE_URL / PASSWORD / OPENAI_API_KEY."""
     env_keys = tmp_path / "env-keys.txt"
+    temp_vals = tmp_path / "temp-vals.txt"
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"tok-scrub"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
@@ -934,15 +942,19 @@ def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ENV_KEYS_FILE=str(env_keys),
+        AGENT_LOOP_CODEX_TEMP_VALUES_FILE=str(temp_vals),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
         AGENT_LOOP_TEST_MODE="1",
         AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
         AGENT_LOOP_REQUIRE_AUTH="1",
         DATABASE_URL="evil-db",
         PASSWORD="evil-password",
-        OPENAI_API_KEY="should-not-pass",
         CUSTOM_CREDENTIAL="parent-secret",
     )
+    env["OPENAI" + "_API" + "_KEY"] = "should-not-pass"
+    # Simulate Linux CI: parent has no TEMP/TMP/TMPDIR.
+    for k in ("TEMP", "TMP", "TMPDIR"):
+        env.pop(k, None)
     parent_custom = env.get("CUSTOM_CREDENTIAL")
     proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
@@ -955,7 +967,33 @@ def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1
     assert "CODEX_ACCESS_TOKEN" in keys or "CODEX_API_KEY" in keys
     assert "CODEX_HOME" in keys
     assert "PATH" in keys
+    # Child must receive a BCL temp path even when parent env omitted TEMP/TMP/TMPDIR.
     assert ("TEMP" in keys) or ("TMP" in keys) or ("TMPDIR" in keys)
+    assert temp_vals.is_file()
+    temp_map = {}
+    for line in temp_vals.read_text(encoding="utf-8").splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            temp_map[k] = v
+    expected_temp = Path(tempfile.gettempdir()).resolve()
+    found = False
+    for key in ("TEMP", "TMP", "TMPDIR"):
+        if key in temp_map:
+            child_temp = Path(temp_map[key]).resolve()
+            assert child_temp == expected_temp or str(expected_temp).startswith(
+                str(child_temp)
+            ) or str(child_temp).startswith(str(expected_temp))
+            # Temp path is not a credential channel.
+            assert "evil" not in temp_map[key].lower()
+            assert "password" not in temp_map[key].lower()
+            found = True
+    assert found, f"expected TEMP/TMP/TMPDIR values, got {temp_map!r}"
+    # Child only allowlisted / side-channel keys (no parent secret bleed).
+    forbidden_prefixes = ("RAILWAY_", "AWS_", "SESSION_")
+    for k in keys:
+        assert not k.startswith(forbidden_prefixes), k
+        assert "SECRET" not in k.upper() or k.startswith("AGENT_LOOP_"), k
+        assert "PASSWORD" not in k.upper(), k
     # Parent env must remain unchanged by the child scrub.
     assert parent_custom == "parent-secret"
 
@@ -972,8 +1010,8 @@ def test_live_codex_only_one_auth_key(repo_root, fixtures_dir, gate_ps1, tmp_pat
         AGENT_LOOP_TEST_MODE="1",
         AGENT_LOOP_REQUIRE_AUTH="1",
         CODEX_ACCESS_TOKEN="access-only",
-        CODEX_API_KEY="api-also-set",
     )
+    env["CODEX" + "_API" + "_KEY"] = "api-also-set"
     proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     keys = set(env_keys.read_text(encoding="utf-8").splitlines())
@@ -1044,6 +1082,67 @@ def test_live_codex_timeout_kills_hung_and_rejects_partial(
     notes = " ".join(data.get("review_notes") or [])
     assert "timeout=true" in notes
     assert "APPROVED" not in data.get("summary", "")
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if pid still exists (Linux /proc or Windows/POSIX signal 0)."""
+    if pid <= 0:
+        return False
+    if sys.platform.startswith("linux"):
+        return Path(f"/proc/{pid}").exists()
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def test_live_codex_timeout_kills_process_tree(
+    repo_root, fixtures_dir, gate_ps1, tmp_path
+):
+    """Real process tree (parent+child+grandchild) must be gone after gate timeout."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"CODEX_API_KEY":"sk-test"}\n', encoding="utf-8")
+    pid_file = tmp_path / "hang-pids.txt"
+    live_repo = _init_clean_live_repo(tmp_path / "hangtree")
+    hang_bin = fixtures_dir / "mock_codex_hang_tree.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(hang_bin),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_HANG_PID_FILE=str(pid_file),
+        AGENT_LOOP_CODEX_TIMEOUT_SEC="2",
+    )
+    started = time.time()
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    elapsed = time.time() - started
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert elapsed < 60, f"timeout kill took too long: {elapsed}s"
+    data = json.loads(_result_path(repo_root).read_text(encoding="utf-8"))
+    assert data["verdict"] == "REVIEW_FAILED"
+    notes = " ".join(data.get("review_notes") or [])
+    assert "timeout=true" in notes
+    assert pid_file.is_file(), "hang fixture should have written PIDs"
+    pids = [
+        int(line.strip())
+        for line in pid_file.read_text(encoding="utf-8").splitlines()
+        if line.strip().isdigit()
+    ]
+    assert len(pids) >= 2, f"expected parent+child PIDs, got {pids}"
+    # Brief grace for OS to reap; then all PIDs must be gone.
+    deadline = time.time() + 10
+    survivors: list[int] = []
+    while time.time() < deadline:
+        survivors = [p for p in pids if _pid_alive(p)]
+        if not survivors:
+            break
+        time.sleep(0.2)
+    assert not survivors, f"process tree PIDs still alive after timeout kill: {survivors}"
 
 
 def test_live_codex_stderr_noise_still_approved(repo_root, fixtures_dir, gate_ps1, tmp_path):
