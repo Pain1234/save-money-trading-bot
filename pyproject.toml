@@ -51,7 +51,7 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
-packages = ["strategy_engine", "risk_engine", "backtester", "market_data", "paper_trading", "trading_constraints"]
+packages = ["strategy_engine", "risk_engine", "backtester", "market_data", "paper_trading", "trading_constraints", "instruments"]
 
 [[tool.mypy.overrides]]
 module = "tests.market_data.hyperliquid.*"
