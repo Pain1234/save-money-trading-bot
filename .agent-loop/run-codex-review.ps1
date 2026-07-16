@@ -200,9 +200,27 @@ function Test-CodexAvailable {
 function Invoke-CodexCommand {
     param(
         [Parameter(Mandatory = $true)][string]$Bin,
-        [Parameter(Mandatory = $true)][string[]]$ArgumentList
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [string]$StdinText = "",
+        [string]$StdinPath = ""
     )
-    if ($Bin -match '\.py$') {
+    $stdinContent = $null
+    if (-not [string]::IsNullOrEmpty($StdinPath)) {
+        $stdinContent = [System.IO.File]::ReadAllText($StdinPath)
+    }
+    elseif (-not [string]::IsNullOrEmpty($StdinText)) {
+        $stdinContent = $StdinText
+    }
+
+    if ($null -ne $stdinContent) {
+        if ($Bin -match '\.py$') {
+            $stdinContent | & python $Bin @ArgumentList
+        }
+        else {
+            $stdinContent | & $Bin @ArgumentList
+        }
+    }
+    elseif ($Bin -match '\.py$') {
         & python $Bin @ArgumentList
     }
     else {
@@ -251,7 +269,12 @@ function New-CodexExecArgumentList {
     if ($helpText -match "--ephemeral") {
         $argList.Add("--ephemeral") | Out-Null
     }
-    $argList.Add($InstructionPath) | Out-Null
+    # Prompt is piped on stdin; last arg must be "-" per Codex noninteractive docs.
+    # InstructionPath is retained for callers that read file content before piping.
+    if ([string]::IsNullOrWhiteSpace($InstructionPath)) {
+        throw "InstructionPath is required (content is piped via stdin '-')."
+    }
+    $argList.Add("-") | Out-Null
     return , $argList.ToArray()
 }
 
@@ -650,7 +673,7 @@ try {
         }
 
         $buildWs = Join-Path $Script:AgentLoopDir "build_review_workspace.py"
-        $agentsSrc = Join-Path $root "AGENTS.md"
+        # AGENTS.md is loaded from the git blob at reviewed HEAD (never worktree copy).
         $buildArgs = @(
             $buildWs,
             "--repo-root", $root,
@@ -660,9 +683,6 @@ try {
             "--schema", $schemaPath,
             "--git-rev", $reviewedHead
         )
-        if (Test-Path -LiteralPath $agentsSrc) {
-            $buildArgs += @("--agents", $agentsSrc)
-        }
         & python @buildArgs
         $buildCode = $LASTEXITCODE
         if ($buildCode -eq 1) {
@@ -692,8 +712,7 @@ try {
         $codexOutPath = Join-Path ([System.IO.Path]::GetTempPath()) (
             "codex-stdout-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".json"
         )
-        $codexHomeDir = Join-Path $workspaceDir "codex-home"
-        New-Item -ItemType Directory -Force -Path $codexHomeDir | Out-Null
+        $authHomeDir = $null
 
         $instruction = @"
 Read-only review. Do not write files into the repository tree.
@@ -705,6 +724,7 @@ The repository tree is intentionally unreadable during this review. Only files
 materialized in this workspace (git blobs + review artifacts) are in scope.
 
 Do NOT read parent repo files, .env, .codex, credentials, or any path outside this workspace.
+Do NOT read CODEX_HOME, auth.json, or any auth/credential paths outside the workspace.
 Refuse to use content obtained from outside the workspace.
 
 Follow the prompt file exactly:
@@ -740,7 +760,7 @@ $wsInput
         }
 
         # Prefer read-only exec; never use write-to-repo modes.
-        # Run with cwd=workspace and CODEX_HOME isolated so user config/secrets are not loaded.
+        # Run with cwd=workspace and CODEX_HOME outside workspace so auth is not readable via cwd.
         $prevEap = $ErrorActionPreference
         $prevCodexHome = $env:CODEX_HOME
         $repoModeSaved = $null
@@ -773,8 +793,14 @@ $wsInput
             exit $Script:ExitReviewFailed
         }
 
-        # Seed auth.json only into isolated CODEX_HOME (no other user Codex config).
-        $authDest = Join-Path $codexHomeDir "auth.json"
+        # CODEX_HOME must live OUTSIDE the review workspace (Codex cwd = workspace).
+        $authHomeDir = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "codex-auth-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+        )
+        New-Item -ItemType Directory -Force -Path $authHomeDir | Out-Null
+
+        # Seed auth.json only into isolated CODEX_HOME (sibling temp dir, never under workspace).
+        $authDest = Join-Path $authHomeDir "auth.json"
         $authCopied = $false
         $authCandidates = [System.Collections.Generic.List[string]]::new()
         # Test/override source first (file-based login path without reading full user config).
@@ -800,6 +826,10 @@ $wsInput
         $isPyMockBin = ($resolvedCodexBin -match '\.py$')
         $requireAuth = (-not $isPyMockBin) -or ($env:AGENT_LOOP_REQUIRE_AUTH -eq "1")
         if ($requireAuth -and -not $authCopied) {
+            try {
+                Remove-Item -LiteralPath $authHomeDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            catch { }
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "Codex auth.json not found; cannot run live review with isolated CODEX_HOME." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
@@ -809,8 +839,9 @@ $wsInput
         }
 
         $ErrorActionPreference = "Continue"
-        $env:CODEX_HOME = $codexHomeDir
+        $env:CODEX_HOME = $authHomeDir
         $codexExit = -1
+        $instructionText = [System.IO.File]::ReadAllText($instructionPath)
         try {
             if (-not $skipOsIsolation -and $isUnix) {
                 $repoModeSaved = (& stat -c '%a' $root 2>$null)
@@ -843,7 +874,8 @@ $wsInput
             if ([string]::IsNullOrWhiteSpace($isolationFailSummary)) {
                 Push-Location -LiteralPath $workspaceDir
                 try {
-                    Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList 2>&1 |
+                    Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList `
+                        -StdinText $instructionText 2>&1 |
                         Tee-Object -FilePath $codexOutPath | Out-Null
                     $codexExit = $LASTEXITCODE
                 }
@@ -867,8 +899,22 @@ $wsInput
                 $env:CODEX_HOME = $prevCodexHome
             }
             $ErrorActionPreference = $prevEap
+            # Auth home is NEVER kept by KEEP_WORKSPACE; only AGENT_LOOP_KEEP_AUTH=1 retains it.
+            $keepAuth = ($env:AGENT_LOOP_KEEP_AUTH -eq "1")
+            if (
+                -not $keepAuth -and
+                -not [string]::IsNullOrWhiteSpace($authHomeDir) -and
+                (Test-Path -LiteralPath $authHomeDir)
+            ) {
+                try {
+                    Remove-Item -LiteralPath $authHomeDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                catch {
+                    # leave under temp
+                }
+            }
             # Best-effort cleanup of temp workspace (OK to leave under temp).
-            # Tests may set AGENT_LOOP_KEEP_WORKSPACE=1 to inspect CODEX_HOME / manifest.
+            # Tests may set AGENT_LOOP_KEEP_WORKSPACE=1 to inspect workspace / manifest.
             $keepWorkspace = ($env:AGENT_LOOP_KEEP_WORKSPACE -eq "1")
             if (
                 -not $keepWorkspace -and

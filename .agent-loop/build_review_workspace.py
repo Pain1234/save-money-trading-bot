@@ -2,7 +2,9 @@
 """Build an allowlisted review workspace for Codex (secret isolation).
 
 Loads reviewed-head blobs via `git show` into an out-dir (never copies from the
-worktree). Copies only prompt/schema/diff/optional AGENTS.md as file artifacts.
+worktree). Copies only prompt/schema/diff as file artifacts; AGENTS.md is loaded
+from the git blob at --git-rev when present.
+
 Deny-listed paths in the diff fail closed (exit 1) — no usable workspace.
 
 Exit codes:
@@ -23,7 +25,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 DIFF_PATH_RE = re.compile(
-    r"^(?:\+\+\+|\-\-\-) [ab]/(?P<path>.+)$"
+    r'^(?:\+\+\+|---) (?:(?P<unquoted>[ab]/.+)|"(?P<quoted>.*)")$'
 )
 
 # Paths that must never be copied into the review workspace (even if in the diff).
@@ -53,6 +55,65 @@ def normalize_rel(path: str) -> str:
     while p.startswith("./"):
         p = p[2:]
     return p
+
+
+def decode_c_quoted_path(raw: str) -> str:
+    """Decode a git C-quoted path body (contents inside the surrounding quotes)."""
+    out: list[str] = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch != "\\":
+            out.append(ch)
+            i += 1
+            continue
+        if i + 1 >= n:
+            out.append("\\")
+            break
+        nxt = raw[i + 1]
+        if nxt == "n":
+            out.append("\n")
+            i += 2
+        elif nxt == "t":
+            out.append("\t")
+            i += 2
+        elif nxt == "r":
+            out.append("\r")
+            i += 2
+        elif nxt == "b":
+            out.append("\b")
+            i += 2
+        elif nxt == "f":
+            out.append("\f")
+            i += 2
+        elif nxt == '"':
+            out.append('"')
+            i += 2
+        elif nxt == "\\":
+            out.append("\\")
+            i += 2
+        elif nxt in "01234567":
+            # Up to three octal digits
+            j = i + 1
+            oct_digits = []
+            while j < n and len(oct_digits) < 3 and raw[j] in "01234567":
+                oct_digits.append(raw[j])
+                j += 1
+            out.append(chr(int("".join(oct_digits), 8)))
+            i = j
+        else:
+            # Unknown escape: keep the escaped character
+            out.append(nxt)
+            i += 2
+    return "".join(out)
+
+
+def _strip_ab_prefix(path: str) -> str:
+    """Strip leading a/ or b/ from a git diff path."""
+    if path.startswith("a/") or path.startswith("b/"):
+        return path[2:]
+    return path
 
 
 def is_denied(rel_path: str) -> bool:
@@ -85,7 +146,11 @@ def paths_from_diff(diff_text: str) -> list[str]:
         m = DIFF_PATH_RE.match(line)
         if not m:
             continue
-        rel = normalize_rel(m.group("path"))
+        if m.group("quoted") is not None:
+            decoded = decode_c_quoted_path(m.group("quoted"))
+            rel = normalize_rel(_strip_ab_prefix(decoded))
+        else:
+            rel = normalize_rel(_strip_ab_prefix(m.group("unquoted")))
         if not rel or rel == "/dev/null":
             continue
         if rel not in seen:
@@ -142,7 +207,6 @@ def build_workspace(
     out_dir: Path,
     prompt_path: Path,
     schema_path: Path,
-    agents_path: Path | None,
     git_rev: str,
 ) -> dict:
     raw = diff_path.read_bytes()
@@ -179,10 +243,12 @@ def build_workspace(
         safe_copy_file(src, dest)
         allowlisted.append(rel_name)
 
-    if agents_path is not None and agents_path.is_file():
+    # AGENTS.md from committed blob only (never worktree copy).
+    agents_blob = git_show_blob(repo_root, git_rev, "AGENTS.md")
+    if agents_blob is not None:
         if is_denied("AGENTS.md"):
-            raise PermissionError("refuse to copy deny-listed path: AGENTS.md")
-        safe_copy_file(agents_path, out_dir / "AGENTS.md")
+            raise PermissionError("refuse to materialize deny-listed path: AGENTS.md")
+        (out_dir / "AGENTS.md").write_bytes(agents_blob)
         allowlisted.append("AGENTS.md")
 
     for rel in diff_paths:
@@ -237,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Reviewed HEAD SHA/ref; blobs loaded via git show <rev>:<path>.",
     )
-    parser.add_argument("--agents", type=Path, default=None)
+    # Deprecated: previously copied worktree AGENTS.md; ignored — always use git blob.
+    parser.add_argument("--agents", type=Path, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     git_rev = args.git_rev.strip()
@@ -253,7 +320,6 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=out_dir,
             prompt_path=args.prompt.resolve(),
             schema_path=args.schema.resolve(),
-            agents_path=args.agents.resolve() if args.agents else None,
             git_rev=git_rev,
         )
     except PermissionError as exc:

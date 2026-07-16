@@ -250,6 +250,88 @@ def test_is_denied_helpers():
     assert not mod.is_denied("src/ok.py")
 
 
+def test_paths_from_diff_extracts_c_quoted_paths():
+    spec = importlib.util.spec_from_file_location(
+        "build_review_workspace_quoted", BUILD_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    diff = (
+        'diff --git "a/foo bar.py" "b/foo bar.py"\n'
+        '--- "a/foo bar.py"\n'
+        '+++ "b/foo bar.py"\n'
+        "@@ -1 +1 @@\n"
+        "+x\n"
+        '--- "a/foo\\tbar"\n'
+        '+++ "b/foo\\tbar"\n'
+    )
+    paths = mod.paths_from_diff(diff)
+    assert "foo bar.py" in paths
+    assert "foo\tbar" in paths
+    assert mod.decode_c_quoted_path(r'b/foo\tbar') == "b/foo\tbar"
+    assert mod.decode_c_quoted_path(r'b/foo\"bar') == 'b/foo"bar'
+
+
+def test_quoted_deny_path_in_diff_fail_closed(tmp_path):
+    """C-quoted path with space matching deny must fail closed (exit 1)."""
+    repo = tmp_path / "repo"
+    sha = _git_init_with_file(repo, "ok.py", "x=1\n")
+    diff = tmp_path / "quoted_secret.diff"
+    diff.write_text(
+        'diff --git "a/foo secret/token.txt" "b/foo secret/token.txt"\n'
+        '--- "a/foo secret/token.txt"\n'
+        '+++ "b/foo secret/token.txt"\n'
+        "@@ -0,0 +1 @@\n"
+        "+leak\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "ws"
+    proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "deny-listed" in (proc.stderr or "").lower() or "DENIED" in (proc.stderr or "")
+    assert not out.exists() or not any(out.rglob("*"))
+
+
+def test_agents_md_from_git_blob_not_worktree(tmp_path):
+    """Dirty worktree AGENTS.md must not override the committed blob."""
+    repo = tmp_path / "repo"
+    sha = _git_init_with_file(repo, "AGENTS.md", "COMMITTED_AGENTS\n")
+    # Also need a diff path so workspace build has something besides agents
+    (repo / "src").mkdir(exist_ok=True)
+    (repo / "src" / "ok.py").write_text("print('ok')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "add ok"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (repo / "AGENTS.md").write_text("DIRTY_WORKTREE_AGENTS\n", encoding="utf-8")
+    diff = tmp_path / "ok.diff"
+    diff.write_text(
+        "diff --git a/src/ok.py b/src/ok.py\n"
+        "--- a/src/ok.py\n"
+        "+++ b/src/ok.py\n"
+        "@@ -1 +1 @@\n"
+        "+print('ok')\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "ws"
+    proc = _run_build(repo_root=repo, diff=diff, out_dir=out, git_rev=sha)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    agents = (out / "AGENTS.md").read_text(encoding="utf-8")
+    assert "COMMITTED_AGENTS" in agents
+    assert "DIRTY_WORKTREE" not in agents
+
+
 def test_gate_helpers_module_importable():
     """Regression: helpers must not live under ambiguous `conftest` name."""
     import gate_helpers

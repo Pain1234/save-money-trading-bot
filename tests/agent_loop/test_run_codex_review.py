@@ -402,6 +402,7 @@ def test_14_working_tree_no_tracked_source_mods(repo_root, fixtures_dir, gate_ps
 
 def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, tmp_path):
     argv_file = tmp_path / "codex-argv.txt"
+    stdin_file = tmp_path / "codex-stdin.txt"
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
@@ -416,6 +417,7 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
+        AGENT_LOOP_CODEX_STDIN_FILE=str(stdin_file),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
         AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
     )
@@ -429,11 +431,16 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     assert _read_verdict(repo_root) == "APPROVED"
     assert argv_file.is_file(), "mock Codex should record argv"
     argv_text = argv_file.read_text(encoding="utf-8")
+    argv_lines = [ln for ln in argv_text.splitlines() if ln.strip()]
     assert "--sandbox" in argv_text
     assert "read-only" in argv_text
     assert "--ask-for-approval" in argv_text
     assert "never" in argv_text
     assert "--ignore-user-config" in argv_text
+    assert argv_lines[-1] == "-", "prompt must be stdin via trailing '-'"
+    assert stdin_file.is_file(), "mock should record stdin prompt"
+    stdin_text = stdin_file.read_text(encoding="utf-8")
+    assert "reviewed_head=" in stdin_text
 
     after = subprocess.run(
         ["git", "status", "--porcelain"],
@@ -465,6 +472,7 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
 ):
     argv_file = tmp_path / "codex-argv.txt"
     home_file = tmp_path / "codex-home.txt"
+    stdin_file = tmp_path / "codex-stdin.txt"
     auth_src = tmp_path / "auth.json"
     auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
@@ -472,10 +480,12 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
         AGENT_LOOP_CODEX_BIN=str(mock_codex),
         AGENT_LOOP_CODEX_ARGV_FILE=str(argv_file),
         AGENT_LOOP_CODEX_HOME_FILE=str(home_file),
+        AGENT_LOOP_CODEX_STDIN_FILE=str(stdin_file),
         AGENT_LOOP_SKIP_OS_ISOLATION="1",
         AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
         AGENT_LOOP_REQUIRE_AUTH="1",
         AGENT_LOOP_KEEP_WORKSPACE="1",
+        AGENT_LOOP_KEEP_AUTH="1",
     )
     proc = run_gate(
         "-DiffFile",
@@ -488,7 +498,26 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     codex_home = Path(home_file.read_text(encoding="utf-8").strip())
     assert codex_home.is_dir()
     assert (codex_home / "auth.json").is_file()
-    workspace = codex_home.parent
+    assert codex_home.name.startswith("codex-auth-")
+
+    stdin_text = stdin_file.read_text(encoding="utf-8")
+    m = re.search(
+        r"HARD SCOPE: You may ONLY read files inside this review workspace directory:\s*\n(.+)",
+        stdin_text,
+    )
+    assert m, "stdin should include HARD SCOPE workspace path"
+    workspace = Path(m.group(1).strip())
+    assert workspace.is_dir()
+    assert (workspace / "workspace-manifest.json").is_file()
+
+    # Auth home must NOT be under the Codex-readable workspace.
+    try:
+        codex_home.resolve().relative_to(workspace.resolve())
+        auth_under_ws = True
+    except ValueError:
+        auth_under_ws = False
+    assert not auth_under_ws, f"auth home {codex_home} must not be under workspace {workspace}"
+
     repo_resolved = repo_root.resolve()
     try:
         workspace.resolve().relative_to(repo_resolved)
@@ -496,14 +525,52 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     except ValueError:
         outside = True
     assert outside, f"workspace {workspace} must be outside repo {repo_resolved}"
-    assert (workspace / "workspace-manifest.json").is_file()
     manifest = json.loads(
         (workspace / "workspace-manifest.json").read_text(encoding="utf-8")
     )
     assert "repo_root" not in manifest
     assert "git_rev" in manifest
-    # Best-effort cleanup of kept temp workspace after assertions.
+    # Best-effort cleanup of kept temp dirs after assertions.
     shutil.rmtree(workspace, ignore_errors=True)
+    shutil.rmtree(codex_home, ignore_errors=True)
+
+
+def test_14b_keep_workspace_does_not_keep_auth(
+    repo_root, fixtures_dir, gate_ps1, tmp_path
+):
+    """KEEP_WORKSPACE must not retain auth.json / CODEX_HOME."""
+    home_file = tmp_path / "codex-home.txt"
+    stdin_file = tmp_path / "codex-stdin.txt"
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_HOME_FILE=str(home_file),
+        AGENT_LOOP_CODEX_STDIN_FILE=str(stdin_file),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_REQUIRE_AUTH="1",
+        AGENT_LOOP_KEEP_WORKSPACE="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    codex_home = Path(home_file.read_text(encoding="utf-8").strip())
+    assert not codex_home.exists(), "auth home must be deleted when KEEP_AUTH is unset"
+    # Cleanup kept workspace
+    stdin_text = stdin_file.read_text(encoding="utf-8")
+    m = re.search(
+        r"HARD SCOPE: You may ONLY read files inside this review workspace directory:\s*\n(.+)",
+        stdin_text,
+    )
+    if m:
+        shutil.rmtree(Path(m.group(1).strip()), ignore_errors=True)
+
 
 
 def test_14c_post_codex_head_mismatch_exit_4(repo_root, fixtures_dir, gate_ps1, tmp_path):
@@ -549,6 +616,34 @@ def test_08d_deny_path_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tm
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
     combined = (proc.stdout or "") + (proc.stderr or "")
     assert "SECRET=leak" not in combined
+
+
+def test_08e_quoted_deny_path_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """C-quoted deny path with spaces must fail closed before Codex."""
+    quoted_diff = tmp_path / "quoted_secret.diff"
+    quoted_diff.write_text(
+        'diff --git "a/foo secret/token.txt" "b/foo secret/token.txt"\n'
+        '--- "a/foo secret/token.txt"\n'
+        '+++ "b/foo secret/token.txt"\n'
+        "@@ -0,0 +1 @@\n"
+        "+SECRET=quoted-leak\n",
+        encoding="utf-8",
+    )
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(quoted_diff),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "SECRET=quoted-leak" not in combined
 
 
 def test_15_script_works_from_subdirectory(repo_root, fixtures_dir, gate_ps1):

@@ -22,8 +22,7 @@ Options:
 """
 
 
-def _parse_refs(instruction_path: Path) -> dict[str, str]:
-    text = instruction_path.read_text(encoding="utf-8")
+def _parse_refs(text: str) -> dict[str, str]:
     refs: dict[str, str] = {}
     for key in ("reviewed_base", "reviewed_head", "reviewed_diff_hash"):
         m = re.search(rf"^{key}=(\S+)\s*$", text, re.MULTILINE)
@@ -57,12 +56,20 @@ def main(argv: list[str]) -> int:
             print("mock_codex: auth.json missing under CODEX_HOME", file=sys.stderr)
             return 3
 
-    instruction = Path(argv[-1])
-    if not instruction.is_file():
-        print(f"mock_codex: instruction not found: {instruction}", file=sys.stderr)
-        return 2
+    if argv[-1] == "-":
+        instruction_text = sys.stdin.read()
+    else:
+        instruction = Path(argv[-1])
+        if not instruction.is_file():
+            print(f"mock_codex: instruction not found: {instruction}", file=sys.stderr)
+            return 2
+        instruction_text = instruction.read_text(encoding="utf-8")
 
-    refs = _parse_refs(instruction)
+    stdin_file = os.environ.get("AGENT_LOOP_CODEX_STDIN_FILE", "").strip()
+    if stdin_file:
+        Path(stdin_file).write_text(instruction_text, encoding="utf-8")
+
+    refs = _parse_refs(instruction_text)
     payload = {
         "schema_version": "1.0",
         "verdict": "APPROVED",

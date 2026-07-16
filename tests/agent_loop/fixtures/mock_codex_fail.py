@@ -34,6 +34,10 @@ def main(argv: list[str]) -> int:
         print("mock_codex_fail: expected 'exec' subcommand", file=sys.stderr)
         return 2
 
+    # Drain stdin when prompt is piped (last arg "-") so the pipe does not break.
+    if argv[-1] == "-":
+        _ = sys.stdin.read()
+
     print("mock_codex_fail: simulated Codex process failure", file=sys.stderr)
     return 7
 
