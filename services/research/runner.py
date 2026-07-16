@@ -14,6 +14,7 @@ from backtester.models import BacktestConfig, BacktestResult, HistoricalDataBund
 from strategy_engine.models import StrategyParameters
 
 from research.artifacts import ArtifactWriter, artifact_dir
+from research.benchmark import compute_benchmark_result
 from research.costs import COST_MODEL_VERSION, cost_models_from_spec, require_cost_fields
 from research.experiment_spec import (
     ExperimentSpec,
@@ -26,7 +27,6 @@ from research.identity import RunIdentityInputs, new_attempt_id
 from research.metrics_contract import (
     METRICS_SCHEMA_VERSION,
     ResearchMetrics,
-    parse_benchmark_ref,
     save_metrics_and_report,
 )
 from research.run_manifest import build_run_manifest, dumps_run_manifest
@@ -85,7 +85,11 @@ def _config_from_spec(spec: ExperimentSpec, params: StrategyParameters) -> Backt
     )
 
 
-def _metrics_from_result(spec: ExperimentSpec, result: BacktestResult) -> ResearchMetrics:
+def _metrics_from_result(
+    spec: ExperimentSpec,
+    result: BacktestResult,
+    bundle: HistoricalDataBundle,
+) -> ResearchMetrics:
     m = result.metrics
     funding_assumption = (
         f"enabled:{spec.funding_assumption.assumed_rate}"
@@ -95,6 +99,7 @@ def _metrics_from_result(spec: ExperimentSpec, result: BacktestResult) -> Resear
     end_capital = result.end_capital
     net_pnl = end_capital - spec.starting_capital
     gross_pnl = net_pnl + result.total_fees + result.total_slippage
+    benchmark_ref, benchmark_result = compute_benchmark_result(spec, bundle)
     return ResearchMetrics(
         start_capital=spec.starting_capital,
         end_capital=end_capital,
@@ -116,8 +121,8 @@ def _metrics_from_result(spec: ExperimentSpec, result: BacktestResult) -> Resear
         exposure=None,
         turnover=None,
         time_in_market=m.time_in_market_pct,
-        benchmark=parse_benchmark_ref(spec.benchmark),
-        benchmark_result=None,
+        benchmark=benchmark_ref,
+        benchmark_result=benchmark_result,
     )
 
 
@@ -161,7 +166,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
             writer.write_bytes("experiment.json", dumps_canonical(spec) + b"\n")
             config = _config_from_spec(spec, resolved.parameters)
             result = BacktestEngine().run(request.bundle, config)
-            metrics = _metrics_from_result(spec, result)
+            metrics = _metrics_from_result(spec, result, request.bundle)
             complete = build_run_manifest(
                 spec,
                 inputs=inputs,
