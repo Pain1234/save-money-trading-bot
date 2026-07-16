@@ -1,4 +1,4 @@
-"""Research package — experiment contracts and validation (P4)."""
+"""Research package — experiment contracts, identity, and validation (P4)."""
 
 from research.experiment_spec import (
     EXPERIMENT_SPEC_SCHEMA_VERSION,
@@ -14,6 +14,23 @@ from research.experiment_spec import (
     save_experiment_spec,
     to_canonical_dict,
 )
+from research.identity import (
+    RunIdentityInputs,
+    compute_experiment_id,
+    compute_run_id,
+    new_attempt_id,
+    semantic_artifact_hash,
+    semantic_spec_dict,
+)
+from research.run_manifest import (
+    RUN_MANIFEST_SCHEMA_VERSION,
+    RunManifest,
+    build_run_manifest,
+    dumps_run_manifest,
+    load_run_manifest,
+    save_run_manifest,
+    semantic_manifest_payload,
+)
 from research.validation import (
     SCHEMA_PATH,
     assert_no_secrets,
@@ -23,19 +40,32 @@ from research.validation import (
 
 __all__ = [
     "EXPERIMENT_SPEC_SCHEMA_VERSION",
+    "RUN_MANIFEST_SCHEMA_VERSION",
     "SCHEMA_PATH",
     "DatasetManifestRef",
     "ExperimentSpec",
     "FeeAssumption",
     "FundingAssumption",
+    "RunIdentityInputs",
+    "RunManifest",
     "SlippageAssumption",
     "TimeRange",
     "assert_no_secrets",
+    "build_run_manifest",
+    "compute_experiment_id",
+    "compute_run_id",
     "dumps_canonical",
+    "dumps_run_manifest",
     "load_experiment_spec",
     "load_json_schema",
+    "load_run_manifest",
+    "new_attempt_id",
     "parse_experiment_spec",
     "save_experiment_spec",
+    "save_run_manifest",
+    "semantic_artifact_hash",
+    "semantic_manifest_payload",
+    "semantic_spec_dict",
     "to_canonical_dict",
     "validate_against_json_schema",
 ]
