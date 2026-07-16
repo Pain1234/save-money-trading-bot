@@ -32,6 +32,9 @@ def _history_json_files(repo_root: Path) -> list[Path]:
 
 def _gate_env(**extra: str) -> dict[str, str]:
     env = dict(os.environ)
+    # Live mock / DiffFile paths are test-only; require explicit test mode for OS skip.
+    env.setdefault("AGENT_LOOP_TEST_MODE", "1")
+    env.setdefault("AGENT_LOOP_ALLOW_DIFF_FILE", "1")
     env.update(extra)
     return env
 
@@ -680,3 +683,146 @@ def test_run_review_loop_wrapper(repo_root, fixtures_dir, loop_ps1):
         script=loop_ps1,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_difffile_requires_allow_env(repo_root, fixtures_dir, gate_ps1):
+    """Production must not accept -DiffFile without AGENT_LOOP_ALLOW_DIFF_FILE=1."""
+    env = dict(os.environ)
+    env["AGENT_LOOP_ALLOW_DIFF_FILE"] = "0"
+    env["AGENT_LOOP_TEST_MODE"] = "1"
+    # Bypass run_gate auto-allow by calling subprocess directly.
+    from gate_helpers import AGENT_LOOP, discover_powershell
+
+    exe = discover_powershell()
+    cmd = [
+        exe,
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(AGENT_LOOP / "run-codex-review.ps1"),
+        "-BaseRef",
+        "HEAD",
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        "-SkipCodex",
+        "-MockResultPath",
+        str(fixtures_dir / "approved_template.json"),
+    ]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "ALLOW_DIFF_FILE" in combined or "DiffFile" in combined
+
+
+def test_skip_os_isolation_requires_test_mode(repo_root, fixtures_dir, gate_ps1):
+    """SKIP_OS_ISOLATION alone must not unlock production on non-Unix."""
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="0",
+    )
+    # Force TEST_MODE off even if _gate_env setdefault ran first.
+    env["AGENT_LOOP_TEST_MODE"] = "0"
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "TEST_MODE" in combined or "OS isolation" in combined
+
+
+def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """Child Codex env must not inherit DATABASE_URL / PASSWORD / OPENAI_API_KEY."""
+    env_keys = tmp_path / "env-keys.txt"
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"tokens":{"access_token":"tok-scrub"}}\n', encoding="utf-8")
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_ENV_KEYS_FILE=str(env_keys),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_REQUIRE_AUTH="1",
+        DATABASE_URL="evil-db",
+        PASSWORD="evil-password",
+        OPENAI_API_KEY="should-not-pass",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert env_keys.is_file(), "mock should record child env keys"
+    keys = set(env_keys.read_text(encoding="utf-8").splitlines())
+    assert "DATABASE_URL" not in keys
+    assert "PASSWORD" not in keys
+    assert "OPENAI_API_KEY" not in keys
+    assert "CODEX_ACCESS_TOKEN" in keys or "CODEX_API_KEY" in keys
+    assert "CODEX_HOME" in keys
+
+
+def test_live_codex_stderr_noise_still_approved(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """Progress JSON on stderr must not pollute stdout verdict parsing."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text('{"CODEX_API_KEY":"sk-test"}\n', encoding="utf-8")
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_MOCK_STDERR_NOISE="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(fixtures_dir / "sample.diff"),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "APPROVED"
+
+
+def test_auth_json_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
+    """auth.json in the reviewed patch must abort before Codex."""
+    auth_diff = tmp_path / "auth_in_patch.diff"
+    auth_diff.write_text(
+        "diff --git a/auth.json b/auth.json\n"
+        "--- a/auth.json\n"
+        "+++ b/auth.json\n"
+        "@@ -0,0 +1 @@\n"
+        '+{"tokens":{"access_token":"leak"}}\n',
+        encoding="utf-8",
+    )
+    mock_codex = fixtures_dir / "mock_codex.py"
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_TEST_MODE="1",
+    )
+    proc = run_gate(
+        "-DiffFile",
+        str(auth_diff),
+        script=gate_ps1,
+        env=env,
+    )
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert _read_verdict(repo_root) == "REVIEW_FAILED"
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "leak" not in combined

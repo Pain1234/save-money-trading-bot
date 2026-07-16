@@ -197,12 +197,76 @@ function Test-CodexAvailable {
     }
 }
 
+function Get-CodexChildEnvironment {
+    <#
+      Build a scrubbed env hashtable for the Codex child process.
+      Allowlist only — never pass DATABASE_URL, PASSWORD, OPENAI_API_KEY,
+      RAILWAY_*, SESSION_SECRET, *SECRET*, *TOKEN* (except CODEX_*), etc.
+    #>
+    param(
+        [hashtable]$Extra = @{}
+    )
+    $allow = @(
+        "PATH", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "windir",
+        "HOME", "USERPROFILE", "USERNAME", "USER", "LOGNAME",
+        "TMP", "TEMP", "TMPDIR",
+        "LANG", "LC_ALL", "LC_CTYPE", "TERM",
+        "ComSpec", "COMSPEC", "SystemDrive", "PROCESSOR_ARCHITECTURE",
+        "NUMBER_OF_PROCESSORS", "OS",
+        "CODEX_HOME", "CODEX_ACCESS_TOKEN", "CODEX_API_KEY",
+        "PYTHONPATH", "PYTHONHOME", "PYTHONUTF8", "PYTHONIOENCODING",
+        "PYTHONDONTWRITEBYTECODE", "VIRTUAL_ENV"
+    )
+    $sideChannels = @(
+        "AGENT_LOOP_CODEX_ARGV_FILE",
+        "AGENT_LOOP_CODEX_HOME_FILE",
+        "AGENT_LOOP_CODEX_STDIN_FILE",
+        "AGENT_LOOP_CODEX_ENV_KEYS_FILE",
+        "AGENT_LOOP_REQUIRE_AUTH",
+        "AGENT_LOOP_MOCK_AUTH_OK",
+        "AGENT_LOOP_AUTH_ENV_SEEN_FILE",
+        "AGENT_LOOP_MOCK_STDERR_NOISE"
+    )
+
+    $child = @{}
+    foreach ($name in $allow) {
+        $val = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrEmpty($val)) {
+            $child[$name] = $val
+        }
+    }
+    foreach ($name in $sideChannels) {
+        $val = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrEmpty($val)) {
+            $child[$name] = $val
+        }
+    }
+    if ($null -ne $Extra) {
+        foreach ($key in $Extra.Keys) {
+            if ($null -eq $Extra[$key]) { continue }
+            $child[[string]$key] = [string]$Extra[$key]
+        }
+    }
+    # Hard deny: never pass OPENAI_API_KEY into the child.
+    if ($child.ContainsKey("OPENAI_API_KEY")) {
+        $child.Remove("OPENAI_API_KEY")
+    }
+    return $child
+}
+
 function Invoke-CodexCommand {
+    <#
+      Launch Codex (or mock) with a scrubbed environment via ProcessStartInfo.
+      Captures stdout and stderr SEPARATELY. Returns a hashtable:
+        ExitCode, StdOut, StdErr
+    #>
     param(
         [Parameter(Mandatory = $true)][string]$Bin,
         [Parameter(Mandatory = $true)][string[]]$ArgumentList,
         [string]$StdinText = "",
-        [string]$StdinPath = ""
+        [string]$StdinPath = "",
+        [hashtable]$Environment = $null,
+        [string]$WorkingDirectory = ""
     )
     $stdinContent = $null
     if (-not [string]::IsNullOrEmpty($StdinPath)) {
@@ -212,37 +276,138 @@ function Invoke-CodexCommand {
         $stdinContent = $StdinText
     }
 
+    $fileName = $Bin
+    $argList = [System.Collections.Generic.List[string]]::new()
+    if ($Bin -match '\.py$') {
+        $py = Get-Command python -ErrorAction SilentlyContinue
+        if ($null -eq $py) {
+            throw "python not found on PATH (required to run Codex mock/bin '$Bin')."
+        }
+        $fileName = $py.Source
+        $argList.Add($Bin) | Out-Null
+    }
+    foreach ($a in $ArgumentList) {
+        $argList.Add([string]$a) | Out-Null
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $fileName
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+        $psi.WorkingDirectory = $WorkingDirectory
+    }
+
+    $usedArgList = $false
+    try {
+        if ($null -ne $psi.ArgumentList) {
+            foreach ($a in $argList) {
+                $psi.ArgumentList.Add([string]$a) | Out-Null
+            }
+            $usedArgList = $true
+        }
+    }
+    catch {
+        $usedArgList = $false
+    }
+    if (-not $usedArgList) {
+        $escaped = foreach ($a in $argList) {
+            if ($a -match '[\s"]') {
+                '"' + ($a -replace '"', '\"') + '"'
+            }
+            else {
+                $a
+            }
+        }
+        $psi.Arguments = ($escaped -join " ")
+    }
+
+    $envMap = if ($null -ne $Environment) { $Environment } else { Get-CodexChildEnvironment }
+    $cleared = $false
+    try {
+        if ($null -ne $psi.Environment) {
+            $psi.Environment.Clear()
+            $cleared = $true
+            foreach ($key in $envMap.Keys) {
+                $psi.Environment[[string]$key] = [string]$envMap[$key]
+            }
+        }
+    }
+    catch {
+        $cleared = $false
+    }
+    if (-not $cleared) {
+        # .NET Framework fallback: start from inherited env, strip secrets, apply allowlist overlay.
+        $denyExact = @(
+            "OPENAI_API_KEY", "DATABASE_URL", "PASSWORD", "SESSION_SECRET",
+            "RAILWAY_TOKEN", "RAILWAY_API_TOKEN"
+        )
+        foreach ($k in @($psi.EnvironmentVariables.Keys)) {
+            $ks = [string]$k
+            $upper = $ks.ToUpperInvariant()
+            $drop = $false
+            if ($denyExact -contains $ks) { $drop = $true }
+            elseif ($upper -like "RAILWAY_*") { $drop = $true }
+            elseif ($upper -like "*SECRET*") { $drop = $true }
+            elseif ($upper -like "*PASSWORD*") { $drop = $true }
+            elseif ($upper -like "*TOKEN*" -and $ks -ne "CODEX_ACCESS_TOKEN" -and $ks -ne "CODEX_API_KEY") {
+                $drop = $true
+            }
+            elseif ($upper -like "PAPER_*") { $drop = $true }
+            if ($drop) {
+                try { $psi.EnvironmentVariables.Remove($ks) } catch { }
+            }
+        }
+        foreach ($key in $envMap.Keys) {
+            $psi.EnvironmentVariables[[string]$key] = [string]$envMap[$key]
+        }
+        try { $psi.EnvironmentVariables.Remove("OPENAI_API_KEY") } catch { }
+    }
+
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
     if ($null -ne $stdinContent) {
-        if ($Bin -match '\.py$') {
-            $stdinContent | & python $Bin @ArgumentList
-        }
-        else {
-            $stdinContent | & $Bin @ArgumentList
-        }
+        $proc.StandardInput.Write($stdinContent)
     }
-    elseif ($Bin -match '\.py$') {
-        & python $Bin @ArgumentList
-    }
-    else {
-        & $Bin @ArgumentList
+    $proc.StandardInput.Close()
+    $stdOut = $proc.StandardOutput.ReadToEnd()
+    $stdErr = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    $exitCode = $proc.ExitCode
+    $proc.Dispose()
+
+    return @{
+        ExitCode = $exitCode
+        StdOut   = $stdOut
+        StdErr   = $stdErr
     }
 }
 
 function Get-CodexExecHelpText {
-    param([Parameter(Mandatory = $true)][string]$Bin)
+    param(
+        [Parameter(Mandatory = $true)][string]$Bin,
+        [hashtable]$Environment = $null
+    )
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $helpOut = Invoke-CodexCommand -Bin $Bin -ArgumentList @("exec", "--help") 2>&1 | Out-String
+    $result = Invoke-CodexCommand -Bin $Bin -ArgumentList @("exec", "--help") `
+        -Environment $Environment
     $ErrorActionPreference = $prevEap
-    return $helpOut
+    return ([string]$result.StdOut + [string]$result.StdErr)
 }
 
 function New-CodexExecArgumentList {
     param(
         [Parameter(Mandatory = $true)][string]$Bin,
-        [Parameter(Mandatory = $true)][string]$InstructionPath
+        [Parameter(Mandatory = $true)][string]$InstructionPath,
+        [string]$OutputLastMessagePath = "",
+        [hashtable]$Environment = $null
     )
-    $helpText = Get-CodexExecHelpText -Bin $Bin
+    $helpText = Get-CodexExecHelpText -Bin $Bin -Environment $Environment
     $required = @(
         @{ Flag = "--sandbox"; Label = "sandbox" },
         @{ Flag = "--ask-for-approval"; Label = "ask-for-approval" },
@@ -268,6 +433,13 @@ function New-CodexExecArgumentList {
     }
     if ($helpText -match "--ephemeral") {
         $argList.Add("--ephemeral") | Out-Null
+    }
+    if (
+        -not [string]::IsNullOrWhiteSpace($OutputLastMessagePath) -and
+        $helpText -match "--output-last-message"
+    ) {
+        $argList.Add("--output-last-message") | Out-Null
+        $argList.Add($OutputLastMessagePath) | Out-Null
     }
     # Prompt is piped on stdin; last arg must be "-" per Codex noninteractive docs.
     # InstructionPath is retained for callers that read file content before piping.
@@ -499,6 +671,18 @@ try {
     $baseInfo = Resolve-BaseRefOrFallback -Preferred $BaseRef
     $hasDiffFile = -not [string]::IsNullOrWhiteSpace($DiffFile)
 
+    if ($hasDiffFile -and ($env:AGENT_LOOP_ALLOW_DIFF_FILE -ne "1")) {
+        Write-ReviewFailedResult -ResultPath $resultPath `
+            -Summary "-DiffFile is test/offline only; set AGENT_LOOP_ALLOW_DIFF_FILE=1 to enable." `
+            -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+            -ReviewNotes @(
+                "Production reviews must use git diff versus BaseRef.",
+                "Pytest run_gate() sets AGENT_LOOP_ALLOW_DIFF_FILE=1 automatically."
+            )
+        Write-Host "REVIEW_FAILED: -DiffFile requires AGENT_LOOP_ALLOW_DIFF_FILE=1"
+        exit $Script:ExitReviewFailed
+    }
+
     if (-not $baseInfo.Resolved) {
         if ($hasDiffFile) {
             # Documented test/offline mode: shallow CI or missing base refs with -DiffFile.
@@ -708,9 +892,15 @@ try {
         Copy-Item -LiteralPath $inputSummaryPath -Destination $wsInput -Force
 
         $instructionPath = Join-Path $workspaceDir "codex-instruction.txt"
-        # stdout must live outside the repo: OS isolation may chmod 000 the tree.
+        # stdout/stderr must live outside the repo: OS isolation may chmod 000 the tree.
         $codexOutPath = Join-Path ([System.IO.Path]::GetTempPath()) (
-            "codex-stdout-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".json"
+            "codex-stdout-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".txt"
+        )
+        $codexErrPath = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "codex-stderr-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".txt"
+        )
+        $codexLastMsgPath = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "codex-lastmsg-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".json"
         )
         $authHomeDir = $null
 
@@ -755,18 +945,6 @@ $wsInput
         $utf8 = New-Object System.Text.UTF8Encoding $false
         [System.IO.File]::WriteAllText($instructionPath, $instruction, $utf8)
 
-        try {
-            $codexArgList = New-CodexExecArgumentList -Bin $resolvedCodexBin -InstructionPath $instructionPath
-        }
-        catch {
-            Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "Cannot apply required Codex read-only sandbox flags: $($_.Exception.Message)" `
-                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
-                -ReviewNotes @($_.Exception.Message)
-            Write-Host "REVIEW_FAILED: Codex sandbox flags unavailable."
-            exit $Script:ExitReviewFailed
-        }
-
         # Prefer read-only exec; never use write-to-repo modes.
         # Run with cwd=workspace and CODEX_HOME outside workspace so auth is not readable via cwd.
         $prevEap = $ErrorActionPreference
@@ -774,10 +952,24 @@ $wsInput
         $repoModeSaved = $null
         $repoLocked = $false
         $isolationFailSummary = $null
-        $skipOsIsolation = ($env:AGENT_LOOP_SKIP_OS_ISOLATION -eq "1")
+        $wantSkipOs = ($env:AGENT_LOOP_SKIP_OS_ISOLATION -eq "1")
+        $testMode = ($env:AGENT_LOOP_TEST_MODE -eq "1")
+        $skipOsIsolation = $false
         $isUnix = $false
-        if ($skipOsIsolation) {
-            # Tests / mocks may skip chmod isolation.
+
+        if ($wantSkipOs -and -not $testMode) {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "AGENT_LOOP_SKIP_OS_ISOLATION requires AGENT_LOOP_TEST_MODE=1 (test-only)." `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @(
+                    "OS isolation skip is not allowed in production.",
+                    "Set AGENT_LOOP_TEST_MODE=1 together with AGENT_LOOP_SKIP_OS_ISOLATION=1 for mocks."
+                )
+            Write-Host "REVIEW_FAILED: SKIP_OS_ISOLATION without TEST_MODE"
+            exit $Script:ExitReviewFailed
+        }
+        if ($wantSkipOs -and $testMode) {
+            $skipOsIsolation = $true
         }
         elseif ($PSVersionTable.PSVersion.Major -ge 6 -and ($IsLinux -or $IsMacOS)) {
             $isUnix = $true
@@ -796,7 +988,9 @@ $wsInput
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "OS isolation not available on this platform." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
-                -ReviewNotes @("Set AGENT_LOOP_SKIP_OS_ISOLATION=1 only for tests/mocks.")
+                -ReviewNotes @(
+                    "Set AGENT_LOOP_SKIP_OS_ISOLATION=1 and AGENT_LOOP_TEST_MODE=1 only for tests/mocks."
+                )
             Write-Host "REVIEW_FAILED: OS isolation not available on this platform"
             exit $Script:ExitReviewFailed
         }
@@ -808,18 +1002,21 @@ $wsInput
         )
         New-Item -ItemType Directory -Force -Path $authHomeDir | Out-Null
 
-        $prevOpenAiKey = $env:OPENAI_API_KEY
-        $prevCodexApiKey = $env:CODEX_API_KEY
+        # Resolve CODEX_* credentials for the scrubbed child env only (never OPENAI_API_KEY).
+        $childAuth = @{}
         $authEnvApplied = $false
         $authEnvFile = $null
 
-        # Prefer API keys already in the parent env (never log values).
-        $hasEnvKey = (
-            -not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -or
-            -not [string]::IsNullOrWhiteSpace($env:CODEX_API_KEY)
-        )
+        if (-not [string]::IsNullOrWhiteSpace($env:CODEX_ACCESS_TOKEN)) {
+            $childAuth["CODEX_ACCESS_TOKEN"] = $env:CODEX_ACCESS_TOKEN
+            $authEnvApplied = $true
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:CODEX_API_KEY)) {
+            $childAuth["CODEX_API_KEY"] = $env:CODEX_API_KEY
+            $authEnvApplied = $true
+        }
 
-        if (-not $hasEnvKey) {
+        if (-not $authEnvApplied) {
             $authCandidates = [System.Collections.Generic.List[string]]::new()
             if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_AUTH_JSON_SOURCE)) {
                 $authCandidates.Add($env:AGENT_LOOP_AUTH_JSON_SOURCE.Trim()) | Out-Null
@@ -859,14 +1056,11 @@ $wsInput
                         if ($eq -lt 1) { continue }
                         $k = $line.Substring(0, $eq)
                         $v = $line.Substring($eq + 1)
-                        if ($k -eq "OPENAI_API_KEY") {
-                            $env:OPENAI_API_KEY = $v
+                        if ($k -eq "CODEX_ACCESS_TOKEN" -or $k -eq "CODEX_API_KEY") {
+                            $childAuth[$k] = $v
                             $authEnvApplied = $true
                         }
-                        elseif ($k -eq "CODEX_API_KEY") {
-                            $env:CODEX_API_KEY = $v
-                            $authEnvApplied = $true
-                        }
+                        # Ignore OPENAI_API_KEY if ever present in extract output.
                     }
                 }
                 # Always delete the temp env file (never KEEP).
@@ -877,15 +1071,12 @@ $wsInput
                 $authEnvFile = $null
             }
         }
-        else {
-            $authEnvApplied = $true
-        }
 
         $isPyMockBin = ($resolvedCodexBin -match '\.py$')
         $requireAuth = (-not $isPyMockBin) -or ($env:AGENT_LOOP_REQUIRE_AUTH -eq "1")
         $hasChildKey = (
-            -not [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -or
-            -not [string]::IsNullOrWhiteSpace($env:CODEX_API_KEY) -or
+            $childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -or
+            $childAuth.ContainsKey("CODEX_API_KEY") -or
             ($env:AGENT_LOOP_MOCK_AUTH_OK -eq "1")
         )
         if ($requireAuth -and -not $hasChildKey) {
@@ -894,9 +1085,12 @@ $wsInput
             }
             catch { }
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "Codex auth missing; need OPENAI_API_KEY/CODEX_API_KEY env or auth.json to extract." `
+                -Summary "Codex auth missing; need CODEX_ACCESS_TOKEN/CODEX_API_KEY env or auth.json to extract." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
-                -ReviewNotes @("Expected env API key or auth under prior CODEX_HOME / ~/.codex/auth.json")
+                -ReviewNotes @(
+                    "This gate uses CODEX_* only (never OPENAI_API_KEY in the child env).",
+                    "Expected env key or auth under prior CODEX_HOME / ~/.codex/auth.json"
+                )
             Write-Host "REVIEW_FAILED: missing Codex auth (env or auth.json)"
             exit $Script:ExitReviewFailed
         }
@@ -906,8 +1100,30 @@ $wsInput
             [System.IO.File]::WriteAllText($markerPath, "1`n")
         }
 
+        $childExtra = @{
+            CODEX_HOME = $authHomeDir
+        }
+        foreach ($ak in $childAuth.Keys) {
+            $childExtra[$ak] = $childAuth[$ak]
+        }
+        $codexChildEnv = Get-CodexChildEnvironment -Extra $childExtra
+
+        try {
+            $codexArgList = New-CodexExecArgumentList -Bin $resolvedCodexBin `
+                -InstructionPath $instructionPath `
+                -OutputLastMessagePath $codexLastMsgPath `
+                -Environment $codexChildEnv
+        }
+        catch {
+            Write-ReviewFailedResult -ResultPath $resultPath `
+                -Summary "Cannot apply required Codex read-only sandbox flags: $($_.Exception.Message)" `
+                -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
+                -ReviewNotes @($_.Exception.Message)
+            Write-Host "REVIEW_FAILED: Codex sandbox flags unavailable."
+            exit $Script:ExitReviewFailed
+        }
+
         $ErrorActionPreference = "Continue"
-        $env:CODEX_HOME = $authHomeDir
         $codexExit = -1
         $instructionText = [System.IO.File]::ReadAllText($instructionPath)
         try {
@@ -940,16 +1156,13 @@ $wsInput
             }
 
             if ([string]::IsNullOrWhiteSpace($isolationFailSummary)) {
-                Push-Location -LiteralPath $workspaceDir
-                try {
-                    Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList `
-                        -StdinText $instructionText 2>&1 |
-                        Tee-Object -FilePath $codexOutPath | Out-Null
-                    $codexExit = $LASTEXITCODE
-                }
-                finally {
-                    Pop-Location
-                }
+                $codexResult = Invoke-CodexCommand -Bin $resolvedCodexBin -ArgumentList $codexArgList `
+                    -StdinText $instructionText `
+                    -Environment $codexChildEnv `
+                    -WorkingDirectory $workspaceDir
+                $codexExit = [int]$codexResult.ExitCode
+                [System.IO.File]::WriteAllText($codexOutPath, [string]$codexResult.StdOut, $utf8)
+                [System.IO.File]::WriteAllText($codexErrPath, [string]$codexResult.StdErr, $utf8)
             }
         }
         finally {
@@ -960,24 +1173,9 @@ $wsInput
                 $ErrorActionPreference = $prevRestoreEap
                 $repoLocked = $false
             }
-            # Restore auth env so extracted tokens do not linger in the parent shell.
-            if ($null -eq $prevOpenAiKey -or $prevOpenAiKey -eq "") {
-                Remove-Item Env:OPENAI_API_KEY -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:OPENAI_API_KEY = $prevOpenAiKey
-            }
-            if ($null -eq $prevCodexApiKey -or $prevCodexApiKey -eq "") {
-                Remove-Item Env:CODEX_API_KEY -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:CODEX_API_KEY = $prevCodexApiKey
-            }
+            # Parent CODEX_HOME was never overwritten; nothing to restore for auth tokens.
             if ($null -eq $prevCodexHome -or $prevCodexHome -eq "") {
-                Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:CODEX_HOME = $prevCodexHome
+                # no-op
             }
             $ErrorActionPreference = $prevEap
             # Never retain token files. KEEP_AUTH only keeps the empty CODEX_HOME
@@ -1022,6 +1220,14 @@ $wsInput
             }
         }
         if (-not [string]::IsNullOrWhiteSpace($isolationFailSummary)) {
+            # Drop Codex temp outputs on isolation failure unless KEEP.
+            if ($env:AGENT_LOOP_KEEP_CODEX_OUTPUT -ne "1") {
+                foreach ($p in @($codexOutPath, $codexErrPath, $codexLastMsgPath)) {
+                    if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path -LiteralPath $p)) {
+                        try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { }
+                    }
+                }
+            }
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary $isolationFailSummary `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash
@@ -1030,19 +1236,40 @@ $wsInput
         }
 
         if ($codexExit -ne 0) {
+            if ($env:AGENT_LOOP_KEEP_CODEX_OUTPUT -ne "1") {
+                foreach ($p in @($codexOutPath, $codexErrPath, $codexLastMsgPath)) {
+                    if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path -LiteralPath $p)) {
+                        try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { }
+                    }
+                }
+            }
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "Codex exec failed with exit code $codexExit." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
-                -ReviewNotes @("See $codexOutPath for Codex output")
+                -ReviewNotes @("Codex stderr captured separately from stdout (see gate logs / KEEP_CODEX_OUTPUT).")
             Write-Host "REVIEW_FAILED: codex exec exit $codexExit"
             exit $Script:ExitReviewFailed
         }
 
-        $rawOut = [System.IO.File]::ReadAllText($codexOutPath)
-        # Extract JSON object from stdout (first { ... last })
+        # Prefer --output-last-message file when Codex wrote it; else stdout only (never stderr).
+        $rawOut = ""
+        if ((Test-Path -LiteralPath $codexLastMsgPath) -and ((Get-Item -LiteralPath $codexLastMsgPath).Length -gt 0)) {
+            $rawOut = [System.IO.File]::ReadAllText($codexLastMsgPath)
+        }
+        elseif (Test-Path -LiteralPath $codexOutPath) {
+            $rawOut = [System.IO.File]::ReadAllText($codexOutPath)
+        }
+        # Extract JSON object from stdout / last-message only (first { ... last })
         $start = $rawOut.IndexOf("{")
         $end = $rawOut.LastIndexOf("}")
         if ($start -lt 0 -or $end -le $start) {
+            if ($env:AGENT_LOOP_KEEP_CODEX_OUTPUT -ne "1") {
+                foreach ($p in @($codexOutPath, $codexErrPath, $codexLastMsgPath)) {
+                    if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path -LiteralPath $p)) {
+                        try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { }
+                    }
+                }
+            }
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "Codex stdout did not contain a JSON object." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash
@@ -1054,6 +1281,13 @@ $wsInput
         $null = $jsonSlice | ConvertFrom-Json
         $utf8 = New-Object System.Text.UTF8Encoding $false
         [System.IO.File]::WriteAllText($resultPath, $jsonSlice.Trim() + "`n", $utf8)
+        if ($env:AGENT_LOOP_KEEP_CODEX_OUTPUT -ne "1") {
+            foreach ($p in @($codexOutPath, $codexErrPath, $codexLastMsgPath)) {
+                if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path -LiteralPath $p)) {
+                    try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { }
+                }
+            }
+        }
     }
 
     # After Codex/mock returns: refuse APPROVED if HEAD or diff drifted.

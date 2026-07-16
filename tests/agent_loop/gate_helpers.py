@@ -73,6 +73,13 @@ def run_gate(
     has_base_ref = any(str(a).lower() == "-baseref" for a in args)
     if has_diff_file and not has_base_ref:
         args = ["-BaseRef", "HEAD", *args]
+
+    merged = dict(os.environ) if env is None else dict(env)
+    # DiffFile is test/offline only in production unless explicitly allowed.
+    if has_diff_file:
+        merged.setdefault("AGENT_LOOP_ALLOW_DIFF_FILE", "1")
+        merged.setdefault("AGENT_LOOP_TEST_MODE", "1")
+
     cmd = [
         exe,
         "-ExecutionPolicy",
@@ -89,5 +96,5 @@ def run_gate(
         encoding="utf-8",
         errors="replace",
         shell=False,
-        env=env,
+        env=merged,
     )

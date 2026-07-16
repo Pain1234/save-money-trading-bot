@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
-"""Extract Codex/OpenAI auth into KEY=value lines for a child process env.
+"""Extract Codex auth into KEY=value lines for a child process env.
 
 Reads auth.json (ChatGPT login tokens or API key fields) and writes env
 assignments to --out-file (preferred) or stdout. Never logs token values.
+
+Auth contract (this project / review gate):
+  - ChatGPT tokens.access_token → CODEX_ACCESS_TOKEN only
+  - API key (auth.json or env) → CODEX_API_KEY only
+  - Never emit OPENAI_API_KEY (gate child env uses CODEX_* only)
+
+Preference order:
+  1. Existing process env CODEX_ACCESS_TOKEN / CODEX_API_KEY (when prefer_existing_env)
+  2. Existing OPENAI_API_KEY in process env → mapped to CODEX_API_KEY (never kept as OPENAI_*)
+  3. auth.json top-level OPENAI_API_KEY / CODEX_API_KEY → CODEX_API_KEY
+  4. auth.json tokens.access_token → CODEX_ACCESS_TOKEN
 
 Exit codes:
   0 - at least one usable key written
@@ -34,22 +45,23 @@ def extract_env_assignments(
     *,
     prefer_existing_env: bool = True,
 ) -> dict[str, str]:
-    """Return env KEY -> value for Codex noninteractive auth.
-
-    Preference order for OPENAI_API_KEY:
-      1. Existing process env OPENAI_API_KEY / CODEX_API_KEY (when prefer_existing_env)
-      2. auth.json top-level OPENAI_API_KEY / CODEX_API_KEY
-      3. auth.json tokens.access_token (ChatGPT login)
-    """
+    """Return env KEY -> value for Codex noninteractive auth (CODEX_* only)."""
     out: dict[str, str] = {}
 
     if prefer_existing_env:
-        for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
-            existing = _usable(os.environ.get(key))
-            if existing:
-                out[key] = existing
+        access = _usable(os.environ.get("CODEX_ACCESS_TOKEN"))
+        if access:
+            out["CODEX_ACCESS_TOKEN"] = access
+        api = _usable(os.environ.get("CODEX_API_KEY"))
+        if api:
+            out["CODEX_API_KEY"] = api
+        # Legacy parent env: map OPENAI_API_KEY → CODEX_API_KEY (never emit OPENAI_*).
+        if "CODEX_API_KEY" not in out:
+            legacy = _usable(os.environ.get("OPENAI_API_KEY"))
+            if legacy:
+                out["CODEX_API_KEY"] = legacy
 
-    if "OPENAI_API_KEY" in out or "CODEX_API_KEY" in out:
+    if "CODEX_ACCESS_TOKEN" in out or "CODEX_API_KEY" in out:
         return out
 
     if auth_path is None:
@@ -60,18 +72,18 @@ def extract_env_assignments(
     if not isinstance(data, dict):
         raise ValueError("auth.json root must be an object")
 
-    for key in ("OPENAI_API_KEY", "CODEX_API_KEY"):
+    for key in ("CODEX_API_KEY", "OPENAI_API_KEY"):
         val = _usable(data.get(key))
         if val:
-            out[key] = val
+            out["CODEX_API_KEY"] = val
+            break
 
-    if "OPENAI_API_KEY" not in out and "CODEX_API_KEY" not in out:
+    if "CODEX_API_KEY" not in out:
         tokens = data.get("tokens")
         if isinstance(tokens, dict):
             access = _usable(tokens.get("access_token"))
             if access:
-                # Codex noninteractive path: ChatGPT access token via OPENAI_API_KEY.
-                out["OPENAI_API_KEY"] = access
+                out["CODEX_ACCESS_TOKEN"] = access
 
     return out
 
@@ -89,13 +101,13 @@ def _write_env_file(path: Path, assignments: dict[str, str]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Extract Codex auth into KEY=value env assignments."
+        description="Extract Codex auth into KEY=value env assignments (CODEX_* only)."
     )
     parser.add_argument(
         "--auth-json",
         type=Path,
         default=None,
-        help="Path to Codex auth.json (optional if env already has API keys).",
+        help="Path to Codex auth.json (optional if env already has CODEX_* keys).",
     )
     parser.add_argument(
         "--out-file",
@@ -106,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--ignore-existing-env",
         action="store_true",
-        help="Do not reuse OPENAI_API_KEY/CODEX_API_KEY already in the process env.",
+        help="Do not reuse CODEX_ACCESS_TOKEN/CODEX_API_KEY already in the process env.",
     )
     args = parser.parse_args(argv)
 
@@ -129,10 +141,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if not assignments:
         print(
-            "extract_codex_auth_env: no usable OPENAI_API_KEY/CODEX_API_KEY found",
+            "extract_codex_auth_env: no usable CODEX_ACCESS_TOKEN/CODEX_API_KEY found",
             file=sys.stderr,
         )
         return 1
+
+    # Defense: never write OPENAI_API_KEY.
+    assignments = {k: v for k, v in assignments.items() if k != "OPENAI_API_KEY"}
 
     if args.out_file is not None:
         try:

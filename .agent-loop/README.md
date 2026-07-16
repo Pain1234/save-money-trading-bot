@@ -51,7 +51,9 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-review-loop.ps1 -BaseRe
 
 `-BaseRef` defaults to `origin/main`. The gate resolves refs in order: explicit `-BaseRef`, then `origin/main`, `main`, `master`. If none resolve and you did **not** pass `-DiffFile`, the gate fails with a clear error (common on shallow GitHub Actions checkouts that lack `origin/main`).
 
-**DiffFile offline mode:** when `-DiffFile` is set and BaseRef (or merge-base) cannot be resolved, the gate sets `reviewed_base = reviewed_head`, skips the merge-base requirement, and continues with the provided patch. Pytest `run_gate()` auto-passes `-BaseRef HEAD` for DiffFile tests so shallow CI stays green.
+**DiffFile offline mode:** when `-DiffFile` is set and BaseRef (or merge-base) cannot be resolved, the gate sets `reviewed_base = reviewed_head`, skips the merge-base requirement, and continues with the provided patch.
+
+**DiffFile is gated:** production runs must not pass `-DiffFile` unless `AGENT_LOOP_ALLOW_DIFF_FILE=1`. Without that env var the gate writes `REVIEW_FAILED` and exits `3`. Pytest `run_gate()` / `_gate_env()` set `AGENT_LOOP_ALLOW_DIFF_FILE=1` (and `AGENT_LOOP_TEST_MODE=1`) automatically when DiffFile is used.
 
 ## Result JSON (schema 1.0)
 
@@ -129,12 +131,19 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 - CLI stderr reports **pattern name + line number only** — never secret values or line previews.
 - Patterns cover common DB URLs (including SQLAlchemy `postgresql+psycopg://…`), `RAILWAY_TOKEN` / `SESSION_SECRET` / credentialed `DATABASE_URL` assignments, plus API keys and tokens.
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
-- **Allowlist review workspace (fail-closed):** live Codex runs in a **temp directory outside the repo** built by `build_review_workspace.py --git-rev <reviewed_head>`. Diff paths are materialized from **git blobs** (`git show <rev>:<path>`), never copied from the worktree. Symlinks (`120000`) are rejected. If any deny-listed path appears in the diff (`.env`, `.codex/**`, `*secret*`, credentials, private keys, etc.), the builder exits `1` and the gate returns `REVIEW_FAILED` — no usable workspace. Prompt, schema, patch, and optional `AGENTS.md` are still copied as review artifacts. Manifest lists allowlisted / skipped_missing / git_rev / out_dir_name only (no absolute `repo_root`).
-- **OS isolation:** on Linux/Unix the gate `chmod 000`s the repo root during Codex (then restores). Set `AGENT_LOOP_SKIP_OS_ISOLATION=1` only for tests/mocks. Other platforms → `REVIEW_FAILED` unless that skip is set.
-- **Auth isolation (env-only):** Codex never receives a readable `auth.json`. The gate extracts `OPENAI_API_KEY` / `CODEX_API_KEY` from an existing env key or from the user's `auth.json` via `extract_codex_auth_env.py` (temp env file deleted immediately; never logged). An ephemeral empty `CODEX_HOME` (sibling temp, no `auth.json`) is set so Codex cannot browse `~/.codex`. Real Codex without env auth → `REVIEW_FAILED`. `KEEP_WORKSPACE` never retains tokens; `AGENT_LOOP_KEEP_AUTH=1` may keep only the empty home / `auth-via-env.ok` marker (never `auth.json`).
-- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
+- **Allowlist review workspace (fail-closed):** live Codex runs in a **temp directory outside the repo** built by `build_review_workspace.py --git-rev <reviewed_head>`. Diff paths are materialized from **git blobs** (`git show <rev>:<path>`), never copied from the worktree. Symlinks (`120000`) are rejected. If any deny-listed path appears in the diff (`.env`, `.codex/**`, `auth.json`, `*secret*`, credentials, private keys / `id_ed25519` / `*.pem` / `*.keystore`, etc.), the builder exits `1` and the gate returns `REVIEW_FAILED` — no usable workspace. Prompt, schema, patch, and optional `AGENTS.md` are still copied as review artifacts. Manifest lists allowlisted / skipped_missing / git_rev / out_dir_name only (no absolute `repo_root`).
+- **OS isolation:** on Linux/Unix the gate `chmod 000`s the repo root during Codex (then restores). Skipping isolation requires **both** `AGENT_LOOP_SKIP_OS_ISOLATION=1` **and** `AGENT_LOOP_TEST_MODE=1` (test/mocks only). `SKIP_OS_ISOLATION` alone → `REVIEW_FAILED` exit `3`. Other platforms without that pair → `REVIEW_FAILED`.
+- **Auth isolation (CODEX_* only):** Codex never receives a readable `auth.json`. The gate extracts credentials via `extract_codex_auth_env.py` into the **scrubbed child env only**:
+  - ChatGPT `tokens.access_token` → `CODEX_ACCESS_TOKEN`
+  - API key (auth.json `OPENAI_API_KEY` / `CODEX_API_KEY`, or existing env) → `CODEX_API_KEY`
+  - Existing `CODEX_ACCESS_TOKEN` / `CODEX_API_KEY` in the parent env are preferred when set
+  - **Never** set `OPENAI_API_KEY` on the Codex child (this project’s review contract uses `CODEX_*` only; do not rely on legacy `OPENAI_API_KEY` passthrough)
+  Temp env extract files are deleted immediately and never logged. An ephemeral empty `CODEX_HOME` (sibling temp, no `auth.json`) is passed to the child. Real Codex without env auth → `REVIEW_FAILED`. `KEEP_WORKSPACE` never retains tokens; `AGENT_LOOP_KEEP_AUTH=1` may keep only the empty home / `auth-via-env.ok` marker (never `auth.json`).
+- **Scrubbed child environment:** `Invoke-CodexCommand` launches Codex via `ProcessStartInfo` with an allowlisted env (PATH / temp / locale / `CODEX_HOME` / `CODEX_*` credentials / selected `AGENT_LOOP_*` mock side-channels). Parent secrets such as `DATABASE_URL`, `PASSWORD`, `OPENAI_API_KEY`, `RAILWAY_*`, `SESSION_SECRET`, and other `*SECRET*` / `*TOKEN*` values are **not** inherited.
+- **Stdout / stderr hygiene:** Codex stdout and stderr are captured separately. When the CLI advertises `--output-last-message`, the gate uses that file for the verdict JSON; otherwise JSON is parsed from **stdout only** (never stderr). Temp `codex-stdout-*` / `codex-stderr-*` / last-message files are deleted afterward unless `AGENT_LOOP_KEEP_CODEX_OUTPUT=1`.
+- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` / `--output-last-message` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
-- Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_SKIP_OS_ISOLATION=1`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
+- Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_TEST_MODE=1` + `AGENT_LOOP_SKIP_OS_ISOLATION=1`, `AGENT_LOOP_ALLOW_DIFF_FILE=1` for `-DiffFile`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.
 
 ## Mock mode (tests)
@@ -151,7 +160,7 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 - `-MockResultPath` — use a fixture JSON as the Codex output (implies skip live Codex).
 - `-SkipCodex` — do not invoke Codex; requires `-MockResultPath` for a usable result path.
 - By default, when a mock is used, `reviewed_base` / `reviewed_head` / `reviewed_diff_hash` are overlaid with the actual run values (placeholders like `WILL_BE_SET`, or when `AGENT_LOOP_OVERLAY_REFS=1`). Use `-PreserveMockRefs` for stale-head / wrong-hash tests.
-- `-DiffFile` — supply a precomputed patch instead of `git diff` (tests / offline). If BaseRef cannot be resolved, uses reviewed_base=reviewed_head.
+- `-DiffFile` — supply a precomputed patch instead of `git diff` (tests / offline). Requires `AGENT_LOOP_ALLOW_DIFF_FILE=1`. If BaseRef cannot be resolved, uses reviewed_base=reviewed_head.
 - `-AllowEmptyDiff` — tests only; default is to fail empty diffs.
 
 ## Scripts reference
@@ -161,7 +170,7 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 | `run-codex-review.ps1` | Main gate orchestration |
 | `run-review-loop.ps1` | Alias wrapper |
 | `build_review_workspace.py` | Allowlisted Codex workspace (secret isolation) |
-| `extract_codex_auth_env.py` | Map auth.json → env KEY=value (no token logs) |
+| `extract_codex_auth_env.py` | Map auth.json → `CODEX_ACCESS_TOKEN` / `CODEX_API_KEY` (never `OPENAI_API_KEY`) |
 | `codex-review-prompt.md` | Codex instructions |
 | `codex-review-schema.json` | JSON Schema draft-07 |
 | `secret_scan.py` | Pre-Codex secret patterns |

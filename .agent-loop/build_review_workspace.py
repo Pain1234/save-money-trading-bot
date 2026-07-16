@@ -48,12 +48,18 @@ DENY_PATTERNS: tuple[str, ...] = (
     "credentials*",
     "*/credentials*",
     "**/credentials*",
+    "auth.json",
+    "*/auth.json",
+    "**/auth.json",
     "*.pem",
     "id_rsa",
     "id_rsa.*",
+    "id_ed25519",
+    "id_ed25519.*",
     "*.key",
     "*.p12",
     "*.pfx",
+    "*.keystore",
 )
 
 

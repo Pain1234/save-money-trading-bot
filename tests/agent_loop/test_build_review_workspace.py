@@ -247,6 +247,11 @@ def test_is_denied_helpers():
     assert mod.is_denied(".codex/foo")
     assert mod.is_denied("path/with/secret/token.txt")
     assert mod.is_denied("credentials.json")
+    assert mod.is_denied("auth.json")
+    assert mod.is_denied("nested/auth.json")
+    assert mod.is_denied("id_ed25519")
+    assert mod.is_denied("id_ed25519.pub")
+    assert mod.is_denied("foo.keystore")
     assert not mod.is_denied("src/ok.py")
 
 
