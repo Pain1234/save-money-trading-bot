@@ -290,7 +290,8 @@ P3 changes must not depend on untested Railway restore behavior.
 
 ## ADR-015 – Retire Codex review gate
 
-**Status:** Accepted  
+**Status:** Accepted
+
 **Date:** 2026-07-17
 
 **Context:** The read-only Codex review gate (Issue #149, `.agent-loop/`) blocked productive Windows workflows (OS isolation fail-closed), added high operational cost, and did not improve merge safety enough to justify keeping it.
