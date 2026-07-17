@@ -212,7 +212,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
             assert writer.work_dir is not None
             writer.write_bytes("experiment.json", dumps_canonical(spec) + b"\n")
             config = _config_from_spec(spec, resolved.parameters)
-            result = BacktestEngine().run(filtered_bundle, config)
+            result = BacktestEngine(strategy=resolved.engine).run(filtered_bundle, config)
             metrics = _metrics_from_result(spec, result, filtered_bundle)
             complete = build_run_manifest(
                 spec,
