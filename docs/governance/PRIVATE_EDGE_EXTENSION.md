@@ -8,21 +8,21 @@ Extend the public core from a **separate private repository** without copying pr
 
 ## Dependency direction (required)
 
-`	ext
+```text
 private repository
     depends on pinned public-core version (commit tag or release)
     provides private plugins / configuration
     stores private artifacts separately
-`
+```
 
 Forbidden direction:
 
-`	ext
+```text
 public repository
     imports private files conditionally
     holds secret placeholders with real names
     copies private results into public artifacts/
-`
+```
 
 Rules:
 
