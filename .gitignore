@@ -29,3 +29,9 @@ restore_drill_snapshot.json
 
 # Retired Codex gate local leftovers
 .agent-loop/
+
+# Never commit private-edge research mirrors inside the public tree
+save-money-trading-bot-private-research/
+private_research/
+artifacts/research/**
+!artifacts/research/.gitkeep
