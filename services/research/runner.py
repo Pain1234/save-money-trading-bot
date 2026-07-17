@@ -40,17 +40,43 @@ from research.run_manifest import build_run_manifest, dumps_run_manifest
 from research.strategy_resolver import resolve_strategy
 
 
-def _git_commit(repo_root: Path) -> str:
+def resolve_git_commit(repo_root: Path, *, allow_dirty: bool = False) -> str:
+    """Return full HEAD SHA for identity pins, or fail closed.
+
+    Complete research runs must pin a real commit. ``unknown`` is never returned.
+    A dirty working tree is rejected unless ``allow_dirty`` is explicitly set
+    (tests / documented emergency only — not exposed on the default CLI).
+    """
     try:
-        out = subprocess.check_output(
+        head = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
             cwd=repo_root,
             stderr=subprocess.DEVNULL,
             text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        msg = "git commit required for research runs; unable to resolve HEAD"
+        raise ValueError(msg) from exc
+    if not head or head.lower() == "unknown":
+        msg = "git commit required for research runs; HEAD is empty or unknown"
+        raise ValueError(msg)
+    try:
+        porcelain = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
-        return out.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return "unknown"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        msg = "git status required for research runs; unable to verify clean tree"
+        raise ValueError(msg) from exc
+    if porcelain.strip() and not allow_dirty:
+        msg = (
+            "git working tree is dirty; commit or clean before a research run "
+            "(allow_dirty only for documented exceptions / tests)"
+        )
+        raise ValueError(msg)
+    return head
 
 
 def _environment_fingerprint() -> str:
@@ -67,6 +93,7 @@ class RunRequest:
     artifacts_root: Path
     repo_root: Path
     dry_run: bool = False
+    allow_dirty_git: bool = False
 
 
 @dataclass(frozen=True)
@@ -148,6 +175,21 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     attempt_id = new_attempt_id()
 
     try:
+        git_commit = resolve_git_commit(
+            request.repo_root,
+            allow_dirty=request.allow_dirty_git,
+        )
+    except ValueError as git_exc:
+        return RunOutcome(
+            experiment_id="",
+            run_id="",
+            attempt_id=attempt_id,
+            artifact_path=None,
+            status="failed",
+            error=str(git_exc),
+        )
+
+    try:
         _manifest, filtered_bundle, verified_hash = bind_dataset_to_bundle(
             spec,
             request.bundle,
@@ -156,7 +198,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     except Exception as bind_exc:  # noqa: BLE001 — fail closed before artifacts
         # Identity still computable from Spec pins for diagnostics.
         inputs = RunIdentityInputs(
-            git_commit=_git_commit(request.repo_root),
+            git_commit=git_commit,
             dataset_content_hash=spec.dataset_manifest_ref.content_hash,
             strategy_version=spec.strategy_version,
             cost_model_version=COST_MODEL_VERSION,
@@ -180,7 +222,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
         )
 
     inputs = RunIdentityInputs(
-        git_commit=_git_commit(request.repo_root),
+        git_commit=git_commit,
         dataset_content_hash=verified_hash,
         strategy_version=spec.strategy_version,
         cost_model_version=COST_MODEL_VERSION,

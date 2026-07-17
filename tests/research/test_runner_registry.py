@@ -20,6 +20,7 @@ def test_dry_run_identity(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
             dry_run=True,
         )
     )
@@ -37,6 +38,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=out_root,
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
             dry_run=False,
         )
     )
@@ -68,6 +70,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=out_root,
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     assert again.status == "failed"
