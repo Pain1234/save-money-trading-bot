@@ -1,7 +1,7 @@
 # P5 Robustness execution plans
 
 **Status:** Public helpers land one issue at a time (#200–#203)
-**This PR:** #201 cost stress (after #200)
+**This PR:** #202 parameter stability
 
 ## #200 Walk-forward
 
@@ -29,9 +29,20 @@ Tests: `tests/research/test_p5_cost_stress.py`.
 - Report gross/net; no scenario shopping after results.
 - `combined_elevated` survival is required for ACCEPT (see decision rules).
 
+## #202 Parameter stability
+
+| Module | Role |
+|--------|------|
+| `services/research/parameter_stability.py` | Small symmetric neighborhoods |
+
+Tests: `tests/research/test_p5_parameter_stability.py`.
+
+- `symmetric_neighborhood` around freeze; diagnostic plots/tables private.
+- Fragility gate: >= ceil(0.5*N) neighbors net>=0 on B (decision rules).
+- Neighbor success cannot rescue failed freeze candidate.
+
 ## Later issues
 
-- #202 parameter neighborhood — `parameter_stability.py`
 - #203 path bootstrap — `bootstrap.py`
 
 ## Explicit non-execution here
