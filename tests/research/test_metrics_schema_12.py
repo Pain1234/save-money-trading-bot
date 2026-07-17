@@ -6,7 +6,6 @@ from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
-
 from research.metrics_contract import (
     METRICS_SCHEMA_VERSION,
     BenchmarkRef,
