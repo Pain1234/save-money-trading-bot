@@ -1,6 +1,6 @@
 # Agent Operating Rules
 
-Binding rules for Cursor, Codex, and other coding agents working in this repository.
+Binding rules for Cursor and other coding agents working in this repository.
 
 **Project goal:** Build a system that filters bad strategies, credibly validates good ones, measures execution deviation, and never risks more capital than proven maturity justifies — not a perfect trading bot.
 
@@ -21,28 +21,24 @@ explicitly authorizes them.
 ## Agent roles
 
 - Cursor is the implementation agent: writes code, tests, docs, and commits.
-- Codex is the independent, read-only reviewer: Codex must not edit files,
-  commit, push, merge, or deploy.
-- Humans approve merges, releases, and deployments.
+- Humans review, approve merges, releases, and deployments.
+- Agents must not merge or deploy automatically.
 
 ## Mandatory quality gate
 
-Every feature change must follow this 9-step gate, enforced in detail by
-`.cursor/rules/00-mandatory-codex-review.mdc`:
+Every feature change must follow this gate (also in
+`.cursor/rules/00-mandatory-quality-gate.mdc`):
 
 1. Implement on a feature branch (never directly on `main`).
 2. Add or update tests.
 3. Run relevant tests and static checks (lint, `git diff --check`).
 4. Commit the reviewed state.
-5. Run `.agent-loop/run-codex-review.ps1` against the actual PR base.
-6. Address confirmed BLOCKER and MAJOR findings only — do not apply Codex
-   suggestions unchecked.
-7. Repeat steps 5–6 for at most three review rounds.
-8. Require Codex `APPROVED` on the current HEAD before calling the change
-   merge-ready ("fertig").
-9. Never merge or deploy automatically — a human makes that call.
+5. Push the feature branch and open or update the pull request.
+6. Wait for required CI checks to pass.
+7. Never merge or deploy automatically — a human makes that call.
 
-A missing, failed, or stale Codex review is not approval.
+Do not declare work merge-ready ("fertig") without green required checks
+and human review where the change warrants it.
 
 ## Safety constraints
 
@@ -59,10 +55,10 @@ Never:
 
 ## Source of detailed Cursor workflow
 
-The step-by-step Cursor execution rules — pre-work checks, the Codex gate
-command, prohibited actions, and the approval rule — are stored in:
+The step-by-step Cursor execution rules — pre-work checks, prohibited
+actions, and the human merge rule — are stored in:
 
-`.cursor/rules/00-mandatory-codex-review.mdc`
+`.cursor/rules/00-mandatory-quality-gate.mdc`
 
 ---
 ## 1. Before every task
@@ -213,14 +209,6 @@ Nächster sinnvoller Schritt:
 Link the GitHub issue and PR. Do not rely on chat-only documentation for decisions — update `docs/DECISION_LOG.md` or the issue.
 
 ---
-
-## Codex review gate
-
-Independent read-only Codex review for feature diffs lives under `.agent-loop/` (see `.agent-loop/README.md`). Cursor may run at most **3** automatic review rounds addressing confirmed BLOCKER/MAJOR findings; after that, stop and escalate. The gate never auto-merges.
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 -BaseRef origin/main
-```
 
 ## Quick references
 

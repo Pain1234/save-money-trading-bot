@@ -4,7 +4,7 @@ How this trading research and operations repository is run day to day.
 
 **Principle:** Chat is the workbench. **GitHub is the project memory.**
 
-Cursor/Codex chats must not be the only record of decisions, bugs, or experiment outcomes.
+Agent chats must not be the only record of decisions, bugs, or experiment outcomes.
 
 ---
 

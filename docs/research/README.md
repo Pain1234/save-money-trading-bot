@@ -115,7 +115,7 @@ Completed `(experiment_id, run_id)` directories are immutable. Keep originals; m
 ## Phase boundaries
 
 - **P4:** complete, comparable research artifacts
-- **P5:** OOS / walk-forward / cost-stress robustness (not in P4)
+- **P5:** Honest validation planning and gates — see [`docs/research/p5/`](p5/README.md) (OOS / walk-forward / cost-stress are P5; not pre-empted by P4)
 - **P6:** promotion / live readiness (not in P4)
 - **P7:** multi-asset / instrument identity (not in P4)
 
