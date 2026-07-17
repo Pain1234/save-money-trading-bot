@@ -25,8 +25,8 @@ from research.metrics_contract import (
 )
 from research.strategy_resolver import (
     STRATEGY_INTERFACE_VERSION,
-    catalog_strategy_ids,
     canonicalize_strategy_id,
+    catalog_strategy_ids,
     known_strategy_ids,
     resolve_strategy,
 )
