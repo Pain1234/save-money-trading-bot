@@ -47,6 +47,8 @@ function sample(
     closed_trades: null,
     hit_rate: null,
     profit_factor: null,
+    integrity_ok: true,
+    integrity_error: null,
     ...overrides,
   };
 }

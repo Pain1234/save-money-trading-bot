@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from research.artifacts import verify_checksums_against
 from research.registry import ExperimentRegistry, RegistryEntry
 from research.strategy_resolver import known_strategy_ids
 
@@ -62,6 +64,39 @@ class ExperimentSummary:
     closed_trades: int | None
     hit_rate: str | None
     profit_factor: str | None
+    integrity_ok: bool
+    integrity_error: str | None
+
+
+def _empty_summary(
+    entry: RegistryEntry,
+    *,
+    integrity_ok: bool,
+    integrity_error: str | None,
+) -> ExperimentSummary:
+    return ExperimentSummary(
+        experiment_id=entry.experiment_id,
+        run_id=entry.run_id,
+        status=entry.status,
+        strategy_version=entry.strategy_version,
+        dataset_version=entry.dataset_version,
+        cost_model_version=entry.cost_model_version,
+        benchmark_ref=entry.benchmark_ref,
+        created_at=entry.created_at,
+        symbols=[],
+        time_range_start=None,
+        time_range_end=None,
+        timeframe=None,
+        git_commit=None,
+        duration_seconds=None,
+        net_pnl=None,
+        max_drawdown=None,
+        closed_trades=None,
+        hit_rate=None,
+        profit_factor=None,
+        integrity_ok=integrity_ok,
+        integrity_error=integrity_error,
+    )
 
 
 class ResearchReadService:
@@ -73,12 +108,17 @@ class ResearchReadService:
         self.artifacts_root = self.registry.artifacts_root.resolve()
 
     def _artifact_dir(self, entry: RegistryEntry) -> Path:
-        # Prefer path under artifacts_root derived from ids when possible.
-        preferred = self.artifacts_root / entry.experiment_id / entry.run_id
-        if preferred.is_dir():
-            return resolve_under_root(self.artifacts_root, preferred)
-        # Fall back to registry path only if it stays under artifacts root.
+        """Resolve the registry trust-path only (no alternate preferred dir)."""
         return resolve_under_root(self.artifacts_root, Path(entry.artifact_path))
+
+    def _verify_complete(self, entry: RegistryEntry, run_dir: Path) -> None:
+        """Trust anchor = registry checksum snapshot (same as ExperimentRegistry.show)."""
+        if entry.status != "complete":
+            return
+        if not entry.checksums:
+            msg = f"registry entry for {entry.run_id} has empty trusted checksums"
+            raise ValueError(msg)
+        verify_checksums_against(run_dir, entry.checksums)
 
     def latest_entries(self) -> list[RegistryEntry]:
         """Last registry line wins per experiment_id (append-only)."""
@@ -107,6 +147,24 @@ class ResearchReadService:
         return None
 
     def _enrich(self, entry: RegistryEntry) -> ExperimentSummary:
+        try:
+            run_dir = self._artifact_dir(entry)
+        except (PermissionError, OSError) as exc:
+            return _empty_summary(
+                entry,
+                integrity_ok=False,
+                integrity_error=str(exc),
+            )
+
+        try:
+            self._verify_complete(entry, run_dir)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            return _empty_summary(
+                entry,
+                integrity_ok=False,
+                integrity_error=str(exc),
+            )
+
         symbols: list[str] = []
         tr_start: str | None = None
         tr_end: str | None = None
@@ -116,30 +174,6 @@ class ResearchReadService:
         closed: int | None = None
         hit_rate: str | None = None
         pf: str | None = None
-        try:
-            run_dir = self._artifact_dir(entry)
-        except (PermissionError, OSError):
-            return ExperimentSummary(
-                experiment_id=entry.experiment_id,
-                run_id=entry.run_id,
-                status=entry.status,
-                strategy_version=entry.strategy_version,
-                dataset_version=entry.dataset_version,
-                cost_model_version=entry.cost_model_version,
-                benchmark_ref=entry.benchmark_ref,
-                created_at=entry.created_at,
-                symbols=[],
-                time_range_start=None,
-                time_range_end=None,
-                timeframe=None,
-                git_commit=None,
-                duration_seconds=None,
-                net_pnl=None,
-                max_drawdown=None,
-                closed_trades=None,
-                hit_rate=None,
-                profit_factor=None,
-            )
 
         spec = self._load_json(run_dir, "experiment.json")
         if isinstance(spec, dict):
@@ -191,6 +225,8 @@ class ResearchReadService:
             closed_trades=closed,
             hit_rate=hit_rate,
             profit_factor=pf,
+            integrity_ok=True,
+            integrity_error=None,
         )
 
     def overview(self) -> dict[str, Any]:
@@ -252,7 +288,65 @@ class ResearchReadService:
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
 
+        integrity_ok = True
+        integrity_error: str | None = None
+        try:
+            self._verify_complete(entry, run_dir)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            integrity_ok = False
+            integrity_error = str(exc)
+
         summary = self._enrich(entry)
+
+        if not integrity_ok:
+            return {
+                "summary": summary.__dict__,
+                "metadata": {
+                    "experiment_id": entry.experiment_id,
+                    "run_id": entry.run_id,
+                    "status": entry.status,
+                    "strategy_version": entry.strategy_version,
+                    "git_commit": None,
+                    "dataset_version": entry.dataset_version,
+                    "seed": None,
+                    "created_at": entry.created_at,
+                    # No durable start timestamp exists on RunManifest today.
+                    "started_at": None,
+                    "finalized_at": None,
+                    "duration_seconds": None,
+                },
+                "config": {
+                    "symbols": [],
+                    "time_range_start": None,
+                    "time_range_end": None,
+                    "timeframe": _UNAVAILABLE,
+                    "starting_capital": None,
+                    "parameters": {},
+                    "fee_assumption": None,
+                    "slippage_assumption": None,
+                    "funding_assumption": None,
+                    "costs": None,
+                    "in_sample_config": _UNAVAILABLE,
+                    "out_of_sample_config": _UNAVAILABLE,
+                    "benchmark": entry.benchmark_ref,
+                    "hypothesis": None,
+                },
+                "metrics": self._metrics_display(None),
+                "equity": [],
+                "drawdown": [],
+                "artifacts": {
+                    "has_experiment_spec": False,
+                    "has_run_manifest": False,
+                    "has_metrics": False,
+                    "has_equity": False,
+                    "has_costs": False,
+                },
+                "integrity": {
+                    "ok": False,
+                    "error": integrity_error or "integrity check failed",
+                },
+            }
+
         spec = self._load_json(run_dir, "experiment.json")
         manifest = self._load_json(run_dir, "run_manifest.json")
         costs = self._load_json(run_dir, "costs.json")
@@ -265,6 +359,11 @@ class ResearchReadService:
         equity_series, drawdown_series = self._equity_series(
             equity if isinstance(equity, list) else None
         )
+
+        finalized_at: str | None = None
+        if isinstance(manifest, dict) and manifest.get("created_at_utc"):
+            # Runner writes created_at_utc when finalizing the manifest — not a start time.
+            finalized_at = str(manifest["created_at_utc"])
 
         return {
             "summary": summary.__dict__,
@@ -281,16 +380,8 @@ class ResearchReadService:
                     else None
                 ),
                 "created_at": entry.created_at,
-                "started_at": (
-                    manifest.get("created_at_utc")
-                    if isinstance(manifest, dict)
-                    else None
-                ),
-                "completed_at": (
-                    manifest.get("created_at_utc")
-                    if isinstance(manifest, dict) and entry.status == "complete"
-                    else None
-                ),
+                "started_at": None,
+                "finalized_at": finalized_at,
                 "duration_seconds": None,
             },
             "config": {
@@ -333,6 +424,7 @@ class ResearchReadService:
                 "has_equity": isinstance(equity, list),
                 "has_costs": isinstance(costs, dict),
             },
+            "integrity": {"ok": True, "error": None},
         }
 
     def _metrics_display(self, metrics: dict[str, Any] | None) -> dict[str, Any]:
@@ -390,7 +482,9 @@ class ResearchReadService:
                 continue
             try:
                 eq_f = float(str(eq))
-            except ValueError:
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(eq_f):
                 continue
             points.append({"t": str(ts) if ts is not None else "", "equity": eq_f})
 

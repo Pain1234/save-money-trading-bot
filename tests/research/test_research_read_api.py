@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from paper_trading.readonly_api import app
 from research.api import get_research_service
+from research.artifacts import compute_artifact_checksums
 from research.service import ResearchReadService
 
 
@@ -23,6 +24,8 @@ def _write_run(
     with_equity: bool = True,
     corrupt_metrics: bool = False,
     artifact_path_override: str | None = None,
+    checksums_override: dict[str, str] | None = None,
+    equity_payload: list[dict[str, object]] | None = None,
 ) -> Path:
     run_dir = root / "artifacts" / "research" / experiment_id / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -94,17 +97,21 @@ def _write_run(
                 encoding="utf-8",
             )
     if with_equity:
+        payload = equity_payload or [
+            {"time": "2024-01-01T00:00:00Z", "equity": "100000"},
+            {"time": "2024-02-01T00:00:00Z", "equity": "105000"},
+            {"time": "2024-03-01T00:00:00Z", "equity": "110000"},
+        ]
         (run_dir / "equity.json").write_text(
-            json.dumps(
-                [
-                    {"time": "2024-01-01T00:00:00Z", "equity": "100000"},
-                    {"time": "2024-02-01T00:00:00Z", "equity": "105000"},
-                    {"time": "2024-03-01T00:00:00Z", "equity": "110000"},
-                ]
-            ),
+            json.dumps(payload),
             encoding="utf-8",
         )
 
+    checksums = (
+        checksums_override
+        if checksums_override is not None
+        else compute_artifact_checksums(run_dir)
+    )
     registry = root / "artifacts" / "research" / "registry.jsonl"
     registry.parent.mkdir(parents=True, exist_ok=True)
     entry = {
@@ -118,11 +125,19 @@ def _write_run(
         "benchmark_ref": "buy_hold_btc",
         "created_at": "2024-06-01T12:00:00.000000Z",
         "artifact_path": artifact_path_override or str(run_dir),
-        "checksums": {"metrics.json": "deadbeef"},
+        "checksums": checksums,
     }
     with registry.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, sort_keys=True) + "\n")
     return run_dir
+
+
+def _client_for(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
+    app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
+        tmp_path
+    )
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -137,11 +152,7 @@ def research_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
         with_metrics=False,
         with_equity=False,
     )
-    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
-    app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
-        tmp_path
-    )
-    client = TestClient(app)
+    client = _client_for(tmp_path, monkeypatch)
     yield client
     app.dependency_overrides.pop(get_research_service, None)
 
@@ -158,6 +169,10 @@ def test_overview_from_registry(research_client: TestClient) -> None:
     assert body["status_distribution"]["complete"] == 1
     assert body["unavailable"]["promotions"] == "Nicht verfügbar"
     assert len(body["recent_experiments"]) == 2
+    alpha = next(
+        e for e in body["recent_experiments"] if e["experiment_id"] == "exp-alpha"
+    )
+    assert alpha["integrity_ok"] is True
 
 
 def test_experiments_list_and_filters(research_client: TestClient) -> None:
@@ -190,12 +205,16 @@ def test_experiment_detail_success(research_client: TestClient) -> None:
     body = response.json()
     assert body["metadata"]["experiment_id"] == "exp-alpha"
     assert body["metadata"]["git_commit"] == "abc123def"
+    assert body["metadata"]["started_at"] is None
+    assert body["metadata"]["finalized_at"] == "2024-06-01T12:00:00Z"
+    assert "completed_at" not in body["metadata"]
     assert body["metrics"]["net_pnl"] == "10000"
     assert body["metrics"]["sharpe"] == "Nicht verfügbar"
     assert body["metrics"]["total_return"] == "0.1"
     assert len(body["equity"]) == 3
     assert len(body["drawdown"]) == 3
     assert body["artifacts"]["has_metrics"] is True
+    assert body["integrity"]["ok"] is True
 
 
 def test_unknown_experiment_404(research_client: TestClient) -> None:
@@ -213,11 +232,7 @@ def test_missing_artifacts_controlled(
         with_metrics=False,
         with_equity=False,
     )
-    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
-    app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
-        tmp_path
-    )
-    client = TestClient(app)
+    client = _client_for(tmp_path, monkeypatch)
     try:
         response = client.get("/api/v1/research/experiments/exp-sparse")
         assert response.status_code == 200
@@ -225,6 +240,7 @@ def test_missing_artifacts_controlled(
         assert body["metrics"]["net_pnl"] == "Nicht verfügbar"
         assert body["equity"] == []
         assert body["artifacts"]["has_metrics"] is False
+        assert body["integrity"]["ok"] is True
     finally:
         app.dependency_overrides.pop(get_research_service, None)
 
@@ -238,17 +254,90 @@ def test_corrupt_optional_metrics(
         run_id="run-c",
         corrupt_metrics=True,
     )
-    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
-    app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
-        tmp_path
-    )
-    client = TestClient(app)
+    client = _client_for(tmp_path, monkeypatch)
     try:
         response = client.get("/api/v1/research/experiments/exp-corrupt")
         assert response.status_code == 200
         body = response.json()
         assert body["metrics"]["net_pnl"] == "Nicht verfügbar"
         assert body["artifacts"]["has_metrics"] is False
+        assert body["integrity"]["ok"] is True
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_tampered_complete_run_hides_metrics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-tamper", run_id="run-t")
+    # Mutate sealed artifact without updating registry checksums.
+    (run_dir / "metrics.json").write_text(
+        json.dumps({"net_pnl": "999999", "status": "ok"}, sort_keys=True),
+        encoding="utf-8",
+    )
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        listed = client.get("/api/v1/research/experiments").json()["items"]
+        row = next(i for i in listed if i["experiment_id"] == "exp-tamper")
+        assert row["integrity_ok"] is False
+        assert row["net_pnl"] is None
+        assert "checksum" in (row["integrity_error"] or "").lower() or row[
+            "integrity_error"
+        ]
+
+        detail = client.get("/api/v1/research/experiments/exp-tamper")
+        assert detail.status_code == 200
+        body = detail.json()
+        assert body["integrity"]["ok"] is False
+        assert body["metrics"]["net_pnl"] == "Nicht verfügbar"
+        assert body["equity"] == []
+        assert "999999" not in json.dumps(body)
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_fake_checksum_complete_not_trusted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_run(
+        tmp_path,
+        experiment_id="exp-fake",
+        run_id="run-f",
+        checksums_override={"metrics.json": "deadbeef"},
+    )
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        body = client.get("/api/v1/research/experiments/exp-fake").json()
+        assert body["integrity"]["ok"] is False
+        assert body["metrics"]["net_pnl"] == "Nicht verfügbar"
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_non_finite_equity_rows_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_run(
+        tmp_path,
+        experiment_id="exp-eq",
+        run_id="run-eq",
+        equity_payload=[
+            {"time": "2024-01-01T00:00:00Z", "equity": "100000"},
+            {"time": "2024-01-02T00:00:00Z", "equity": "NaN"},
+            {"time": "2024-01-03T00:00:00Z", "equity": "Infinity"},
+            {"time": "2024-01-04T00:00:00Z", "equity": "-Infinity"},
+            {"time": "2024-01-05T00:00:00Z", "equity": "not-a-number"},
+            {"time": "2024-01-06T00:00:00Z", "equity": "110000"},
+        ],
+    )
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        body = client.get("/api/v1/research/experiments/exp-eq").json()
+        assert body["integrity"]["ok"] is True
+        assert [p["equity"] for p in body["equity"]] == [100000.0, 110000.0]
+        assert len(body["drawdown"]) == 2
+        # Response must be JSON-serializable (no NaN/Infinity).
+        json.dumps(body)
     finally:
         app.dependency_overrides.pop(get_research_service, None)
 
@@ -272,22 +361,13 @@ def test_artifact_path_escape_controlled(
         run_id="run-e",
         artifact_path_override=str(outside),
     )
-    # Remove the in-tree preferred dir so service falls back to registry path.
-    preferred = tmp_path / "artifacts" / "research" / "exp-escape" / "run-e"
-    for child in preferred.iterdir():
-        child.unlink()
-    preferred.rmdir()
-    preferred.parent.rmdir()
 
-    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
-    app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
-        tmp_path
-    )
-    client = TestClient(app)
+    client = _client_for(tmp_path, monkeypatch)
     try:
         listed = client.get("/api/v1/research/experiments").json()["items"]
         row = next(i for i in listed if i["experiment_id"] == "exp-escape")
         assert row["net_pnl"] is None
+        assert row["integrity_ok"] is False
         detail = client.get("/api/v1/research/experiments/exp-escape")
         assert detail.status_code == 400
     finally:

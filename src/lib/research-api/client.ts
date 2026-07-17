@@ -22,6 +22,8 @@ export interface ResearchExperimentSummary {
   closed_trades: number | null;
   hit_rate: string | null;
   profit_factor: string | null;
+  integrity_ok: boolean;
+  integrity_error: string | null;
 }
 
 export interface ResearchOverview {
@@ -61,7 +63,7 @@ export interface ResearchExperimentDetail {
     seed: number | null;
     created_at: string;
     started_at: string | null;
-    completed_at: string | null;
+    finalized_at: string | null;
     duration_seconds: number | null;
   };
   config: {
@@ -84,6 +86,7 @@ export interface ResearchExperimentDetail {
   equity: ResearchSeriesPoint[];
   drawdown: ResearchSeriesPoint[];
   artifacts: Record<string, boolean>;
+  integrity: { ok: boolean; error: string | null };
 }
 
 export function getResearchErrorMessage(error: unknown): string {

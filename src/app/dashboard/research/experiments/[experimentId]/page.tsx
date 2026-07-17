@@ -69,6 +69,15 @@ export default async function ResearchExperimentDetailPage({
 
         <Card padding="sm">
           <h2 className="mb-3 text-sm font-medium">Metadaten</h2>
+          {!detail.integrity.ok && (
+            <p
+              className="mb-3 rounded border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+              data-testid="research-integrity-warning"
+            >
+              Integrität fehlgeschlagen — Kennzahlen und Charts werden nicht
+              angezeigt. {displayValue(detail.integrity.error)}
+            </p>
+          )}
           <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
             {[
               ["Experiment-ID", metadata.experiment_id],
@@ -77,9 +86,9 @@ export default async function ResearchExperimentDetailPage({
               ["Git-Commit", metadata.git_commit],
               ["Dataset-Version", metadata.dataset_version],
               ["Seed", metadata.seed],
-              ["Erstellt", metadata.created_at],
-              ["Start", metadata.started_at],
-              ["Ende", metadata.completed_at],
+              ["Erstellt (Registry)", metadata.created_at],
+              ["Startzeit", metadata.started_at],
+              ["Finalisierungszeit (Manifest)", metadata.finalized_at],
               [
                 "Laufzeit",
                 metadata.duration_seconds == null
