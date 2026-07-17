@@ -18,7 +18,7 @@ Checkboxes reflect **merged** PRs that close the listed issues. Untick if an iss
 | Registry checksum trust anchor | #165 | PR #170 |
 | Inject resolved StrategyEngine into BacktestEngine | #166 | PR #172 |
 | Registry compare: full `semantic_spec_dict` + RunManifest | #167 | PR #171 |
-| Documentation complete (this folder) | #147 | PR (this docs PR) |
+| Documentation complete (this folder) | #147 | PR #188 |
 | No new markets / live trading / P5 gates pre-empted | — | scope review |
 
 Milestone DoD (from #147):
