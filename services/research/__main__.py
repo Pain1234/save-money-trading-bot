@@ -10,6 +10,7 @@ from pathlib import Path
 from backtester.models import HistoricalDataBundle
 
 from research.artifacts import load_checksums
+from research.costs import COST_MODEL_VERSION
 from research.experiment_spec import load_experiment_spec
 from research.registry import ExperimentRegistry
 from research.runner import RunRequest, inspect_run, run_experiment, validate_spec_path
@@ -17,6 +18,21 @@ from research.runner import RunRequest, inspect_run, run_experiment, validate_sp
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _cost_model_version_from_run(run_dir: Path) -> str:
+    """Prefer sealed costs.json / RunManifest; fall back to current constant."""
+    costs_path = run_dir / "costs.json"
+    if costs_path.is_file():
+        raw = json.loads(costs_path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and raw.get("cost_model_version"):
+            return str(raw["cost_model_version"])
+    manifest_path = run_dir / "run_manifest.json"
+    if manifest_path.is_file():
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and raw.get("cost_model_version"):
+            return str(raw["cost_model_version"])
+    return COST_MODEL_VERSION
 
 
 def _load_bundle(path: Path) -> HistoricalDataBundle:
@@ -88,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
                 attempt_id=outcome.attempt_id,
                 strategy_version=spec.strategy_version,
                 dataset_version=spec.dataset_manifest_ref.dataset_id,
-                cost_model_version="1.0",
+                cost_model_version=_cost_model_version_from_run(outcome.artifact_path),
                 benchmark_ref=spec.benchmark,
                 artifact_path=outcome.artifact_path,
                 checksums=load_checksums(outcome.artifact_path),
