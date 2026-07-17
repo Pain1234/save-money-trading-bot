@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Not started | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine | Research pipeline enforced (#141–#147, #163–#167); public-release gates #176–#180 open | No |
+| P4 | Research Engine | **Complete** (research #141–#147/#163–#167 + public-release gates #176–#180) | No |
 | P5 | Honest Validation of Trend Strategy V1 | Not started | No |
 | P6 | Paper Trading Soak | Not started (Railway paper deploy in progress) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Not started (planning only) | No |
@@ -392,7 +392,7 @@ Docs preparation may run in parallel from #142.
 ### Exit criteria
 
 - [x] Every experiment traceable to commit + dataset version + config
-- [ ] Acceptance/rejection criteria applied consistently (process/DoD; not a missing module)
+- [x] Acceptance/rejection criteria applied consistently (process/DoD; enforced via issue/PR template — ongoing discipline)
 - [x] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
 - [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
 
@@ -404,7 +404,7 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism
 
-**Current gap:** Research engine pipeline is enforced (Spec → bind → run → registry → CI repro → docs). Remaining on the P4 milestone: public-release gates #176–#180 (boundary, license, disclaimer, security audit). Soft exit criterion: acceptance/rejection applied consistently via issue/PR DoD.
+**Current gap:** None for P4. Soft process criterion (acceptance/rejection applied consistently) remains ongoing DoD discipline. Next: P5.
 
 ---
 
