@@ -107,17 +107,60 @@ def write_client(
 def test_list_strategies(write_client: tuple[TestClient, dict[str, object]]) -> None:
     client, _ = write_client
     body = client.get("/api/v1/research/strategies").json()
-    ids = {i["strategy_id"] for i in body["items"]}
-    assert "trend_v1" in ids
+    ids = [i["strategy_id"] for i in body["items"]]
+    assert ids == ["trend_v1"]
+    assert "trend_strategy_v1" not in ids
+    assert body["items"][0]["display_name"] == "Trend Strategy V1"
+    assert body["items"][0]["experiment_count"] == 0
+
+
+def test_strategy_detail_and_alias_schema(
+    write_client: tuple[TestClient, dict[str, object]],
+) -> None:
+    client, _ = write_client
+    detail = client.get("/api/v1/research/strategies/trend_v1").json()
+    assert detail["strategy_id"] == "trend_v1"
+    assert detail["display_name"] == "Trend Strategy V1"
+    assert "monthly_filter" in detail
+    assert detail["experiment_count"] == 0
+
+    alias_schema = client.get(
+        "/api/v1/research/strategies/trend_strategy_v1/schema"
+    ).json()
+    assert alias_schema["strategy_id"] == "trend_v1"
+    assert "parameter_descriptions" in alias_schema
+
+    assert client.get("/api/v1/research/strategies/unknown").status_code == 404
 
 
 def test_strategy_schema(write_client: tuple[TestClient, dict[str, object]]) -> None:
     client, _ = write_client
     body = client.get("/api/v1/research/strategies/trend_v1/schema").json()
     assert body["strategy_version"]
+    assert body["strategy_id"] == "trend_v1"
     assert "parameters_schema" in body
     assert "parameter_defaults" in body
     assert client.get("/api/v1/research/strategies/unknown/schema").status_code == 404
+
+
+def test_create_normalizes_alias_to_canonical(
+    write_client: tuple[TestClient, dict[str, object]],
+) -> None:
+    import os
+
+    from research.experiment_spec import load_experiment_spec
+    from research.jobs import ResearchJobStore
+
+    client, payload = write_client
+    aliased = dict(payload)
+    aliased["strategy_id"] = "trend_strategy_v1"
+    resp = client.post("/api/v1/research/experiments", json=aliased)
+    assert resp.status_code == 200
+    experiment_id = resp.json()["experiment_id"]
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    store = ResearchJobStore(root)
+    spec = load_experiment_spec(store.pending_spec_path(experiment_id))
+    assert spec.parameters.get("strategy_id") == "trend_v1"
 
 
 def test_create_valid_and_invalid(

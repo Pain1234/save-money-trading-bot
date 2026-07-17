@@ -25,6 +25,9 @@ from research.metrics_contract import (
 )
 from research.strategy_resolver import (
     STRATEGY_INTERFACE_VERSION,
+    catalog_strategy_ids,
+    canonicalize_strategy_id,
+    known_strategy_ids,
     resolve_strategy,
 )
 from strategy_engine.constants import STRATEGY_VERSION
@@ -36,9 +39,24 @@ EXAMPLE_JSON = REPO_ROOT / "examples" / "research" / "btc_eth_sol_experiment.exa
 def test_resolve_trend_v1() -> None:
     spec = load_experiment_spec(EXAMPLE_JSON)
     resolved = resolve_strategy(spec)
+    assert resolved.strategy_id == "trend_v1"
     assert resolved.strategy_version == STRATEGY_VERSION
     assert resolved.interface_version == STRATEGY_INTERFACE_VERSION
     assert resolved.entrypoint.endswith("StrategyEngine")
+
+
+def test_resolve_alias_trend_strategy_v1() -> None:
+    data = json.loads(EXAMPLE_JSON.read_text(encoding="utf-8"))
+    data["parameters"] = {**data["parameters"], "strategy_id": "trend_strategy_v1"}
+    spec = parse_experiment_spec(data)
+    resolved = resolve_strategy(spec)
+    assert resolved.strategy_id == "trend_v1"
+
+
+def test_catalog_lists_canonical_once() -> None:
+    assert catalog_strategy_ids() == ("trend_v1",)
+    assert "trend_strategy_v1" in known_strategy_ids()
+    assert canonicalize_strategy_id("trend_strategy_v1") == "trend_v1"
 
 
 def test_unknown_strategy_fails() -> None:

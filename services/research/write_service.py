@@ -27,7 +27,13 @@ from research.identity import compute_experiment_id
 from research.jobs import ResearchJob, ResearchJobStore, _utc_now
 from research.registry import ExperimentRegistry
 from research.runner import RunRequest, run_experiment
-from research.strategy_resolver import known_strategy_ids
+from research.strategy_resolver import (
+    StrategyCatalogEntry,
+    canonicalize_strategy_id,
+    get_strategy_catalog_entry,
+    list_strategy_catalog,
+    strategy_ids_equivalent,
+)
 from research.validation import assert_no_secrets
 
 _SAFE_CATALOG_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -112,37 +118,141 @@ def load_dataset_catalog() -> list[DatasetCatalogEntry]:
     return entries
 
 
+def _catalog_item(
+    entry: StrategyCatalogEntry,
+    *,
+    experiment_count: int = 0,
+    last_run: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "strategy_id": entry.strategy_id,
+        "display_name": entry.display_name,
+        "label": entry.display_name,
+        "description": entry.description,
+        "strategy_version": entry.strategy_version,
+        "aliases": list(entry.aliases),
+        "lifecycle_status": entry.lifecycle_status,
+        "timeframes": list(entry.required_timeframes),
+        "required_timeframes": list(entry.required_timeframes),
+        "timeframe_note": (
+            "Trend V1 requires multi-timeframe candles "
+            f"({'/'.join(entry.required_timeframes)})."
+        ),
+        "symbols": list(entry.supported_symbols),
+        "supported_symbols": list(entry.supported_symbols),
+        "experiment_count": experiment_count,
+        "last_run": last_run,
+    }
+
+
 def list_strategies() -> list[dict[str, Any]]:
-    return [
-        {
-            "strategy_id": sid,
-            "strategy_version": STRATEGY_VERSION,
-            "label": sid,
-            "timeframes": [t.value for t in Timeframe],
-            "timeframe_note": "Trend V1 requires multi-timeframe candles (1D/1W/1M).",
-            "symbols": sorted(ALLOWED_SYMBOLS),
-        }
-        for sid in known_strategy_ids()
-    ]
+    """Canonical strategies only (aliases are resolvable, not listed twice)."""
+    return [_catalog_item(entry) for entry in list_strategy_catalog()]
 
 
 def strategy_schema(strategy_id: str) -> dict[str, Any]:
-    if strategy_id not in known_strategy_ids():
+    try:
+        entry = get_strategy_catalog_entry(strategy_id)
+    except ValueError as exc:
         raise ResearchWriteError(
             f"unknown strategy_id {strategy_id!r}",
             field_errors={"strategy_id": "Strategie ist nicht registriert"},
-        )
+        ) from exc
     params_schema = StrategyParameters.model_json_schema()
     defaults = StrategyParameters().model_dump(mode="json")
     return {
-        "strategy_id": strategy_id,
-        "strategy_version": STRATEGY_VERSION,
+        "strategy_id": entry.strategy_id,
+        "display_name": entry.display_name,
+        "description": entry.description,
+        "strategy_version": entry.strategy_version,
+        "aliases": list(entry.aliases),
+        "lifecycle_status": entry.lifecycle_status,
         "parameters_schema": params_schema,
         "parameter_defaults": defaults,
-        "symbols": sorted(ALLOWED_SYMBOLS),
-        "timeframes": [t.value for t in Timeframe],
+        "parameter_descriptions": dict(entry.parameter_descriptions),
+        "symbols": list(entry.supported_symbols),
+        "timeframes": list(entry.required_timeframes),
         "fee_fields": ["entry_fee_rate", "exit_fee_rate"],
         "slippage_fields": ["slippage_bps"],
+    }
+
+
+def strategy_detail(
+    strategy_id: str,
+    *,
+    experiments: list[dict[str, Any]] | None = None,
+    pending_specs: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Full strategy catalog detail; experiment stats optional (from read service)."""
+    try:
+        entry = get_strategy_catalog_entry(strategy_id)
+    except ValueError as exc:
+        raise ResearchWriteError(
+            f"unknown strategy_id {strategy_id!r}",
+            field_errors={"strategy_id": "Strategie ist nicht registriert"},
+        ) from exc
+
+    matched: list[dict[str, Any]] = []
+    for row in experiments or []:
+        # Prefer explicit strategy_id when present; otherwise match version-only
+        # rows only when this is the sole catalog strategy (Trend V1 today).
+        sid = str(row.get("strategy_id") or "")
+        if sid:
+            if strategy_ids_equivalent(sid, entry.strategy_id):
+                matched.append(row)
+            continue
+        if row.get("strategy_version") == entry.strategy_version:
+            matched.append(row)
+
+    for pending in pending_specs or []:
+        sid = str(pending.get("strategy_id") or "")
+        if sid and strategy_ids_equivalent(sid, entry.strategy_id):
+            # Avoid double-counting registry rows already matched.
+            exp_id = str(pending.get("experiment_id") or "")
+            if exp_id and any(str(m.get("experiment_id")) == exp_id for m in matched):
+                continue
+            matched.append(pending)
+
+    matched.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    last = matched[0] if matched else None
+    last_run = None
+    if last is not None:
+        last_run = {
+            "experiment_id": last.get("experiment_id"),
+            "status": last.get("status"),
+            "created_at": last.get("created_at"),
+            "run_id": last.get("run_id"),
+        }
+
+    item = _catalog_item(entry, experiment_count=len(matched), last_run=last_run)
+    return {
+        **item,
+        "monthly_filter": entry.monthly_filter,
+        "weekly_filter": entry.weekly_filter,
+        "daily_entries": entry.daily_entries,
+        "stop_logic": entry.stop_logic,
+        "reason_codes": list(entry.reason_codes),
+        "parameter_defaults": StrategyParameters().model_dump(mode="json"),
+        "parameter_descriptions": dict(entry.parameter_descriptions),
+        "experiments": [
+            {
+                "experiment_id": r.get("experiment_id"),
+                "status": r.get("status"),
+                "created_at": r.get("created_at"),
+                "run_id": r.get("run_id"),
+                "net_pnl": r.get("net_pnl"),
+            }
+            for r in matched[:50]
+        ],
+        "baseline_defaults": {
+            "strategy_id": entry.strategy_id,
+            "strategy_version": entry.strategy_version,
+            "parameters": StrategyParameters().model_dump(mode="json"),
+            "note": (
+                "Baseline nutzt eingefrorene Standardparameter; Start erfordert "
+                "explizite Bestätigung im Strategy Lab."
+            ),
+        },
     }
 
 
@@ -159,8 +269,13 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
     assert_no_secrets(payload)
     field_errors: dict[str, str] = {}
 
-    strategy_id = str(payload.get("strategy_id") or "").strip()
-    if strategy_id not in known_strategy_ids():
+    strategy_id_raw = str(payload.get("strategy_id") or "").strip()
+    try:
+        strategy_id = canonicalize_strategy_id(strategy_id_raw) if strategy_id_raw else ""
+    except ValueError:
+        strategy_id = ""
+        field_errors["strategy_id"] = "Strategie ist nicht registriert"
+    if not strategy_id_raw:
         field_errors["strategy_id"] = "Strategie ist nicht registriert"
 
     strategy_version = str(payload.get("strategy_version") or STRATEGY_VERSION)
