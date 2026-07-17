@@ -311,6 +311,32 @@ P3 changes must not depend on untested Railway restore behavior.
 
 ---
 
+## ADR-016 – Enforce main required checks via repository rulesets
+
+**Status:** Accepted
+
+**Date:** 2026-07-17
+
+**Context:** Classic branch protection API returns HTTP 403 on this private
+repository without GitHub Pro (#65). A repository ruleset on `main` already
+blocked deletion/force-push and required PRs, but did not require CI checks.
+
+**Decision:** Complete #65 by adding the Phase-1 required status check contexts
+(`validate`, `requirements-baseline`, `lint`, `test`, `test-market-data`,
+`test-deploy`, `postgres`) to ruleset `main` (id 19091297) with strict policy.
+Do not claim classic branch protection is enabled.
+
+**Alternatives:** Upgrade to GitHub Pro for classic protection; make the repo
+public — rejected as unnecessary once rulesets enforce the same checks.
+
+**Consequences:** Docs (`docs/branch-protection.md`, `docs/baseline-paper-v1.md`)
+describe rulesets as the source of truth. Phase 2 may retarget check names per
+`docs/ci/REQUIRED_CHECK_MIGRATION.md`.
+
+**Related Issues / PRs:** #65
+
+---
+
 ## Template for new entries
 
 ```text
