@@ -10,9 +10,21 @@ from pathlib import Path
 from backtester.models import HistoricalDataBundle
 
 from research.artifacts import load_checksums
+from research.costs import COST_MODEL_VERSION
 from research.experiment_spec import load_experiment_spec
 from research.registry import ExperimentRegistry
 from research.runner import RunRequest, inspect_run, run_experiment, validate_spec_path
+
+
+def _cost_model_version_from_artifacts(artifact_path: Path) -> str:
+    """Prefer costs.json pin; fall back to COST_MODEL_VERSION."""
+    costs_path = artifact_path / "costs.json"
+    if costs_path.is_file():
+        raw = json.loads(costs_path.read_text(encoding="utf-8"))
+        version = raw.get("cost_model_version")
+        if isinstance(version, str) and version.strip():
+            return version.strip()
+    return COST_MODEL_VERSION
 
 
 def _repo_root() -> Path:
@@ -88,7 +100,9 @@ def main(argv: list[str] | None = None) -> int:
                 attempt_id=outcome.attempt_id,
                 strategy_version=spec.strategy_version,
                 dataset_version=spec.dataset_manifest_ref.dataset_id,
-                cost_model_version="1.0",
+                cost_model_version=_cost_model_version_from_artifacts(
+                    outcome.artifact_path
+                ),
                 benchmark_ref=spec.benchmark,
                 artifact_path=outcome.artifact_path,
                 checksums=load_checksums(outcome.artifact_path),
