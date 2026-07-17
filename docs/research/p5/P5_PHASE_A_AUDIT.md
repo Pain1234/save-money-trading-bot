@@ -1,7 +1,7 @@
 # P5 Phase A – Bestandsaudit (evidence-based)
 
-**Audit date:** 2026-07-17  
-**Audited `main` HEAD at planning branch creation:** `e804be5` (merge of docs/p4-milestone-close #194)  
+**Audit date:** 2026-07-17
+**Audited `main` HEAD at planning branch creation:** `e804be5` (merge of docs/p4-milestone-close #194)
 **Rule:** No assumptions recorded as facts. `UNKNOWN` where evidence is missing.
 
 ## Audit table

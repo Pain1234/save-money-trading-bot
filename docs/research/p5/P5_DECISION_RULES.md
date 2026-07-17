@@ -1,7 +1,7 @@
 # P5 Decision Rules (ACCEPT / REJECT / INCONCLUSIVE)
 
-**Status:** PLANNING / NOT FROZEN  
-**Issue:** P5-02 / P5-09  
+**Status:** PLANNING / NOT FROZEN
+**Issue:** P5-02 / P5-09
 **Hard rule:** Freeze before final OOS. No post-hoc threshold changes. Positive return alone never promotes.
 
 ## Outcomes

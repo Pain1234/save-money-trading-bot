@@ -1,7 +1,7 @@
 # P5 Public Core / Private Edge artifacts
 
-**Status:** PLANNING  
-**Canonical issue:** [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181)  
+**Status:** PLANNING
+**Canonical issue:** [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181)
 **Boundary doc:** `docs/governance/PUBLIC_PRIVATE_BOUNDARY.md`
 
 ## Gate

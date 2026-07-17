@@ -1,8 +1,8 @@
 # P5 – Honest Validation of Trend Strategy V1 (planning)
 
-**Status:** PLANNING ONLY  
-**Milestone:** [P5 – Honest Validation of Trend Strategy V1](https://github.com/Pain1234/save-money-trading-bot/milestone/6)  
-**Canonical risk issue:** [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47) (R-003)  
+**Status:** PLANNING ONLY
+**Milestone:** [P5 – Honest Validation of Trend Strategy V1](https://github.com/Pain1234/save-money-trading-bot/milestone/6)
+**Canonical risk issue:** [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47) (R-003)
 **Canonical public/private issue:** [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181)
 
 ## Purpose (binding)

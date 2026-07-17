@@ -1,7 +1,7 @@
 # P5 Validation Protocol (pre-registration template)
 
-**Status:** PLANNING / NOT FROZEN  
-**Issue:** P5-02  
+**Status:** PLANNING / NOT FROZEN
+**Issue:** P5-02
 **Hard rule:** Freeze and human-approve this protocol **before** opening the final OOS dataset. Never change thresholds after seeing results.
 
 ## 1. Research question
@@ -86,15 +86,15 @@ See [P5_DECISION_RULES.md](P5_DECISION_RULES.md). Rules frozen with this protoco
 
 ## 10. Evaluation order (binding)
 
-1. Confirm entry gate + freezes + #181  
-2. Development reproduction (optional sanity; not decision)  
-3. Walk-forward on validation partition  
-4. Cost stress  
-5. Parameter stability diagnostics  
-6. Bootstrap/MC on appropriate series  
-7. Sample-sufficiency check  
-8. Human pre-OOS approval  
-9. **One-shot** final OOS  
+1. Confirm entry gate + freezes + #181
+2. Development reproduction (optional sanity; not decision)
+3. Walk-forward on validation partition
+4. Cost stress
+5. Parameter stability diagnostics
+6. Bootstrap/MC on appropriate series
+7. Sample-sufficiency check
+8. Human pre-OOS approval
+9. **One-shot** final OOS
 10. Apply decision rules → human final sign-off (P5-09)
 
 ## 11. Technical errors

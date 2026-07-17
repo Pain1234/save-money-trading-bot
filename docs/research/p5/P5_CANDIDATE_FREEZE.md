@@ -1,7 +1,7 @@
 # P5 Candidate Freeze Manifest (planning template)
 
-**Status:** PLANNING / UNSIGNED  
-**Issue:** P5-00  
+**Status:** PLANNING / UNSIGNED
+**Issue:** P5-00
 **Rule:** After human freeze, no parameter change may keep the name Strategy V1 without a new `strategy_version`, new freeze manifest, and new validation chain.
 
 ## Identity (fill at freeze)

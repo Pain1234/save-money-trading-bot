@@ -1,8 +1,8 @@
 # P5 Data Exposure Audit (planning template)
 
-**Status:** PLANNING / TEMPLATE — no final partition lock until human review  
-**Issue:** P5-01 (linked after creation)  
-**Related:** #47, #181  
+**Status:** PLANNING / TEMPLATE — no final partition lock until human review
+**Issue:** P5-01 (linked after creation)
+**Related:** #47, #181
 
 ## Rules (binding)
 
