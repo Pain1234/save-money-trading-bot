@@ -40,20 +40,101 @@ from research.run_manifest import build_run_manifest, dumps_run_manifest
 from research.strategy_resolver import resolve_strategy
 
 
-def _git_commit(repo_root: Path) -> str:
+def resolve_git_commit(repo_root: Path, *, allow_dirty: bool = False) -> str:
+    """Return full HEAD SHA for identity pins, or fail closed.
+
+    Complete research runs must pin a real commit. ``unknown`` is never returned.
+    A dirty working tree is rejected unless ``allow_dirty`` is explicitly set
+    (tests / documented emergency only — not exposed on the default CLI).
+    """
     try:
-        out = subprocess.check_output(
+        head = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
             cwd=repo_root,
             stderr=subprocess.DEVNULL,
             text=True,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        msg = "git commit required for research runs; unable to resolve HEAD"
+        raise ValueError(msg) from exc
+    if not head or head.lower() == "unknown":
+        msg = "git commit required for research runs; HEAD is empty or unknown"
+        raise ValueError(msg)
+    try:
+        porcelain = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
-        return out.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return "unknown"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        msg = "git status required for research runs; unable to verify clean tree"
+        raise ValueError(msg) from exc
+    if porcelain.strip() and not allow_dirty:
+        msg = (
+            "git working tree is dirty; commit or clean before a research run "
+            "(allow_dirty only for documented exceptions / tests)"
+        )
+        raise ValueError(msg)
+    return head
+
+
+def _porcelain_paths(porcelain: str) -> list[str]:
+    """Return paths from ``git status --porcelain`` output."""
+    paths: list[str] = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        # formats: XY PATH | XY ORIG -> PATH | ?? PATH
+        body = line[3:] if len(line) > 3 else line.strip()
+        if " -> " in body:
+            body = body.split(" -> ", 1)[1]
+        paths.append(body.strip().strip('"'))
+    return paths
+
+
+def assert_git_commit_stable(
+    repo_root: Path,
+    expected_commit: str,
+    *,
+    allow_dirty: bool = False,
+    ignore_prefixes: tuple[str, ...] = (),
+) -> None:
+    """Re-verify HEAD and cleanliness before sealing a complete run (TOCTOU)."""
+    current = resolve_git_commit(repo_root, allow_dirty=True)
+    if current != expected_commit:
+        raise ValueError(
+            "git provenance changed during run: "
+            f"HEAD is {current}, expected {expected_commit}"
+        )
+    if allow_dirty:
+        return
+    porcelain = subprocess.check_output(
+        ["git", "status", "--porcelain"],
+        cwd=repo_root,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    ignored = tuple(
+        pref.replace(chr(92), "/").rstrip("/") + "/"
+        for pref in ignore_prefixes
+        if pref
+    )
+    dirty: list[str] = []
+    for path in _porcelain_paths(porcelain):
+        norm = path.replace(chr(92), "/")
+        if any(norm == pref.rstrip("/") or norm.startswith(pref) for pref in ignored):
+            continue
+        dirty.append(path)
+    if dirty:
+        raise ValueError(
+            "git working tree became dirty during run "
+            f"(paths: {', '.join(dirty[:5])})"
+        )
 
 
 def _environment_fingerprint() -> str:
+
     import platform
     import sys
 
@@ -67,6 +148,9 @@ class RunRequest:
     artifacts_root: Path
     repo_root: Path
     dry_run: bool = False
+    allow_dirty_git: bool = False
+    # Tests only: mutate tree/HEAD between resolve and finalize.
+    mid_run_hook: object | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +232,21 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     attempt_id = new_attempt_id()
 
     try:
+        git_commit = resolve_git_commit(
+            request.repo_root,
+            allow_dirty=request.allow_dirty_git,
+        )
+    except ValueError as git_exc:
+        return RunOutcome(
+            experiment_id="",
+            run_id="",
+            attempt_id=attempt_id,
+            artifact_path=None,
+            status="failed",
+            error=str(git_exc),
+        )
+
+    try:
         _manifest, filtered_bundle, verified_hash = bind_dataset_to_bundle(
             spec,
             request.bundle,
@@ -156,7 +255,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     except Exception as bind_exc:  # noqa: BLE001 — fail closed before artifacts
         # Identity still computable from Spec pins for diagnostics.
         inputs = RunIdentityInputs(
-            git_commit=_git_commit(request.repo_root),
+            git_commit=git_commit,
             dataset_content_hash=spec.dataset_manifest_ref.content_hash,
             strategy_version=spec.strategy_version,
             cost_model_version=COST_MODEL_VERSION,
@@ -180,7 +279,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
         )
 
     inputs = RunIdentityInputs(
-        git_commit=_git_commit(request.repo_root),
+        git_commit=git_commit,
         dataset_content_hash=verified_hash,
         strategy_version=spec.strategy_version,
         cost_model_version=COST_MODEL_VERSION,
@@ -214,6 +313,35 @@ def run_experiment(request: RunRequest) -> RunOutcome:
             config = _config_from_spec(spec, resolved.parameters)
             result = BacktestEngine(strategy=resolved.engine).run(filtered_bundle, config)
             metrics = _metrics_from_result(spec, result, filtered_bundle)
+            if request.mid_run_hook is not None:
+                cast_hook = request.mid_run_hook
+                cast_hook()  # type: ignore[operator]
+            try:
+                ignore: list[str] = []
+                try:
+                    ignore.append(
+                        str(final_dir.resolve().relative_to(request.repo_root.resolve()))
+                    )
+                except ValueError:
+                    pass
+                try:
+                    ignore.append(
+                        str(
+                            request.artifacts_root.resolve().relative_to(
+                                request.repo_root.resolve()
+                            )
+                        )
+                    )
+                except ValueError:
+                    pass
+                assert_git_commit_stable(
+                    request.repo_root,
+                    git_commit,
+                    allow_dirty=request.allow_dirty_git,
+                    ignore_prefixes=tuple(ignore),
+                )
+            except ValueError as provenance_exc:
+                raise RuntimeError(str(provenance_exc)) from provenance_exc
             complete = build_run_manifest(
                 spec,
                 inputs=inputs,
