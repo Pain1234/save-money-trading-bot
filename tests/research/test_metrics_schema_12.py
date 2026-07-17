@@ -102,3 +102,37 @@ def test_legacy_1_1_allows_missing_gross_return() -> None:
     )
     assert m.schema_version == "1.1"
     assert m.benchmark.gross_return is None
+
+
+def test_legacy_1_1_complete_without_benchmark_result_still_loads() -> None:
+    """1.1 complete payloads may omit benchmark_result (pre-1.2 contract)."""
+    bench = BenchmarkRef(
+        benchmark_id="buy_and_hold_BTC",
+        benchmark_version="1.0",
+        calculation="test",
+    )
+    m = ResearchMetrics(
+        **_base_kwargs(
+            schema_version="1.1",
+            benchmark=bench,
+            benchmark_result=None,
+            gross_pnl=Decimal("1000"),
+            net_pnl=Decimal("900"),
+            fees=Decimal("50"),
+            slippage_costs=Decimal("30"),
+            funding_costs=Decimal("20"),
+        )
+    )
+    assert m.benchmark_result is None
+
+
+def test_complete_1_2_rejects_unknown_cost_model_version() -> None:
+    bench = BenchmarkRef(
+        benchmark_id="buy_and_hold_BTC",
+        benchmark_version="1.0",
+        calculation="test",
+        cost_model_version="9.9",
+        gross_return=Decimal("0.25"),
+    )
+    with pytest.raises(ValidationError, match="not supported"):
+        ResearchMetrics(**_base_kwargs(benchmark=bench))

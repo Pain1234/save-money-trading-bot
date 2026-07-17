@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from research.costs import SUPPORTED_COST_MODEL_VERSIONS
+
 METRICS_SCHEMA_VERSION = "1.2"
 # 1.0 = pre-funding_costs; 1.1 = funding identity (benchmark_result was gross);
 # 1.2 = benchmark_result is net + required BenchmarkRef.gross_return/cost_model_version
@@ -91,14 +93,22 @@ class ResearchMetrics(BaseModel):
             if self.funding_assumption.strip() == "":
                 msg = "funding_assumption must be non-empty for complete metrics"
                 raise ValueError(msg)
-            if self.benchmark_result is None:
-                msg = "benchmark_result required for complete metrics"
-                raise ValueError(msg)
             if self.schema_version in {"1.2"}:
-                if not self.benchmark.cost_model_version.strip():
+                if self.benchmark_result is None:
+                    msg = "benchmark_result required for complete metrics schema 1.2+"
+                    raise ValueError(msg)
+                cost_ver = self.benchmark.cost_model_version.strip()
+                if not cost_ver:
                     msg = (
                         "benchmark.cost_model_version required for complete "
                         "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if cost_ver not in SUPPORTED_COST_MODEL_VERSIONS:
+                    msg = (
+                        "benchmark.cost_model_version "
+                        f"{cost_ver!r} is not supported; "
+                        f"supported={sorted(SUPPORTED_COST_MODEL_VERSIONS)}"
                     )
                     raise ValueError(msg)
                 if self.benchmark.gross_return is None:
