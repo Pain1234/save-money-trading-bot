@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #201 cost stress)
+
+- cost_stress.py: pre-registered scenarios; base funding mirrors frozen Spec.
+
 ### Added (P5 execution — #200 walk-forward)
 
 - walk_forward.py: chronological folds with completed-monthly candle warmup (not a 620-day proxy).

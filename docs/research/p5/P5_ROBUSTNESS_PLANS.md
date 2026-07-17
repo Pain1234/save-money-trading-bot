@@ -1,7 +1,7 @@
 # P5 Robustness execution plans
 
 **Status:** Public helpers land one issue at a time (#200–#203)
-**This PR:** #200 walk-forward only
+**This PR:** #201 cost stress (after #200)
 
 ## #200 Walk-forward
 
@@ -17,9 +17,20 @@ Tests: `tests/research/test_p5_walk_forward.py`.
 - Identical frozen Spec params/costs every fold.
 - Store per-fold + aggregate privately; do not drop failed folds.
 
+## #201 Cost stress
+
+| Module | Role |
+|--------|------|
+| `services/research/cost_stress.py` | Pre-registered stress scenario definitions |
+
+Tests: `tests/research/test_p5_cost_stress.py`.
+
+- Run `default_p5_cost_stress_scenarios(...)` with **base fee, slippage, and funding taken from the frozen Spec** (`funding off unless Spec enables`).
+- Report gross/net; no scenario shopping after results.
+- `combined_elevated` survival is required for ACCEPT (see decision rules).
+
 ## Later issues
 
-- #201 cost stress — `cost_stress.py`
 - #202 parameter neighborhood — `parameter_stability.py`
 - #203 path bootstrap — `bootstrap.py`
 
