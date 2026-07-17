@@ -55,6 +55,15 @@ Public surfaces that **must not** grow private hooks:
 - Conditional imports of private packages in public Python modules
 - Docs that embed private endpoints, keys, or strategy parameters
 
+## P5 private research repository
+
+Canonical private store for P5 validation artifacts (#181):
+
+- GitHub: `Pain1234/save-money-trading-bot-private-research` (private)
+- Layout and leakage rules: [`docs/research/p5/P5_PUBLIC_PRIVATE_ARTIFACTS.md`](../research/p5/P5_PUBLIC_PRIVATE_ARTIFACTS.md)
+
+Public workflows must never check out that repository.
+
 ## Acceptance (issue #180)
 
 - [x] Dependency arrow documented (private -> public only)
