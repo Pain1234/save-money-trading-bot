@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #200 walk-forward)
+
+- walk_forward.py: chronological folds with completed-monthly candle warmup (not a 620-day proxy).
+
 ### Added (P5 execution — #199 benchmarks)
 
 - Benchmarks/regimes contract: buy-and-hold net under Spec costs when cost_parity=true (metrics 1.2 / #208).
