@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #198 protocol)
+
+- Validation protocol + decision rules: combined_elevated on Accept checklist; measurable neighborhood fragility rule; metrics schema 1.2.
+
 ### Added (P5 execution — #197 partitions)
 
 - Data-exposure audit: forward holdout lock; purge/label embargo separated from completed-monthly feature warmup.
