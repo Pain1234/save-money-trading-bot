@@ -1,8 +1,8 @@
 # Metrics definitions
 
-Schema version: `1.1` (`ResearchMetrics` / `METRICS_SCHEMA_VERSION`).
+Schema version: `1.2` (`ResearchMetrics` / `METRICS_SCHEMA_VERSION`).
 
-Supported read versions: `1.0` (legacy, no required funding identity), `1.1` (current).
+Supported read versions: `1.0` (legacy, no required funding identity), `1.1` (funding identity; `benchmark_result` was **gross**), `1.2` (current; `benchmark_result` is **net** with required `benchmark.gross_return` + `benchmark.cost_model_version`).
 
 ## Comparable fields
 
@@ -24,8 +24,11 @@ Missing or incompatible benchmark/cost data fails validation; report status is `
 - Period / dataset / cost parity flags must be `true` for P4 runs
 - Computation (`services/research/benchmark.py`):
   - Supported id pattern: `buy_and_hold_<SYMBOL>`
-  - Result = `(last_close - first_close) / first_close` over closed daily candles in the same dataset/period as the run
-  - Buy-and-hold uses zero trading costs by definition; `cost_parity=true` declares that assumption
+  - Gross return = `(last_close - first_close) / first_close` over closed daily candles in the same dataset/period as the run
+  - Net return applies Spec fee/slippage/funding via backtester execution primitives (`cost_models_from_spec` + fill/fee/funding helpers)
+  - Capital/notional convention (futures-style): entry notional = `starting_capital` at slipped entry fill; entry fee does **not** shrink share count; funding notional = entry-fill notional (`shares * entry_fill`); holding days = `n_closed_candles - 1`
+  - `benchmark_result` is **net**; `BenchmarkRef.gross_return` holds the pre-cost price return
+  - `cost_parity=true` means benchmark and strategy share Spec cost assumptions (not that costs are zero); complete schema `1.2` artifacts must keep `cost_parity` / `period_parity` / `dataset_parity` true
   - Symbol must be in experiment symbols and present in the bundle (fail-closed otherwise)
 - Output lands in `metrics.json` and `report.md`
 

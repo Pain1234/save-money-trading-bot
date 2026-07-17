@@ -66,6 +66,12 @@ def test_benchmark_ref_and_metrics_roundtrip(tmp_path: Path) -> None:
     ref = parse_benchmark_ref("buy_and_hold_BTC")
     assert ref.benchmark_id == "buy_and_hold_BTC"
     assert ref.benchmark_version == "1.0"
+    ref = ref.model_copy(
+        update={
+            "cost_model_version": "1.1",
+            "gross_return": Decimal("0.08"),
+        }
+    )
     metrics = ResearchMetrics(
         start_capital=Decimal("100000"),
         end_capital=Decimal("110000"),
