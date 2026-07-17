@@ -1,6 +1,6 @@
 # Private-edge extension boundary
 
-Parent epic: **#176**. This issue: **#180** / repair **#210**.
+Parent epic: **#176**. This issue: **#180**.
 
 ## Goal
 
@@ -28,40 +28,36 @@ Rules:
 
 1. **Public core never depends on private edge** (no cyclic git/package dependency).
 2. Public core contains **no private secrets** and no private result payloads.
-3. Private edge pins public core to an explicit **commit SHA or release tag**.
-4. Private tests may install/import the public package; **public CI never checks out private**.
-5. No automated copy of sensitive files from private into public paths.
+3. Private edge **pins** a public-core version (tag or commit SHA) and may only consume published public APIs / packages.
+4. Private artifacts stay in the private repo (or private object storage); they are never committed under public rtifacts/research/.
 
-## Extension surface (public-safe hooks)
+## What stays public vs private
 
-Private edge may supply:
+| Layer | Public core | Private edge |
+|-------|-------------|--------------|
+| Engine / Spec / runner / registry | yes | consumes |
+| Generic strategies / plugins | yes (OSS) | may add proprietary plugins |
+| API keys, webhook secrets | never | only |
+| Research run artifacts with edge alpha | never | only |
+| Docs describing *that* a private edge may exist | yes (this file) | details of edge logic stay private |
 
-| Extension | Mechanism (preferred) | Notes |
-|-----------|----------------------|-------|
-| Private ExperimentSpecs | Files only in private repo; invoke public CLI with private paths | Do not commit to public examples/ |
-| Private strategy implementations | Plugin entry point / installable private package importing public interfaces | See docs/research/STRATEGY_INTERFACE.md |
-| Private configuration | Env / private config dir outside public tree | Never commit live keys |
-| Private results | Private artifact root (not rtifacts/research in public clone) | Registry stays private |
-| Private data adapters | Private package implementing public data contracts | Public contracts remain generic |
-| Private live execution | Separate private live repo/service (#184) | Out of public core |
-| Private deployment config | Private ops repo / secrets store | Public deploy examples stay placeholders |
+## Extension points (public, intentional)
 
-Preferred packaging: **pip-installable public package** (pip install from public tag/commit) consumed by private code. Git submodules only with written justification (avoid by default).
+Public surfaces private code may call **without** forking core:
 
-## Public CI
+- Spec + plugin registry (register private strategies by name in private config)
+- RunRequest / runner CLI against a pinned core version
+- Artifact layout contract (docs/research/ARTIFACT_LAYOUT.md) for private-side storage mirroring
 
-Public workflows under .github/workflows/ must succeed with only this repository. No token for private repos, no conditional private checkouts.
+Public surfaces that **must not** grow private hooks:
 
-## Verification checklist
+- CI secrets for private repos
+- Conditional imports of private packages in public Python modules
+- Docs that embed private endpoints, keys, or strategy parameters
 
-- [x] Dependency direction documented
-- [x] Public core has no private secret requirement
-- [x] Private can pin public commit/release
-- [x] Private tests can integrate public core
-- [x] Public CI needs no private access
-- [x] No cyclic repository dependency
+## Acceptance (issue #180)
 
-## Related
-
-- [PUBLIC_PRIVATE_BOUNDARY.md](PUBLIC_PRIVATE_BOUNDARY.md)
-- [PUBLIC_REPO_STRATEGY.md](PUBLIC_REPO_STRATEGY.md)
+- [x] Dependency arrow documented (private -> public only)
+- [x] Forbidden reverse dependency listed
+- [x] Artifact separation stated
+- [x] Extension points vs non-extension points listed
