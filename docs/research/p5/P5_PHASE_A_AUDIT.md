@@ -1,6 +1,6 @@
 # P5 Phase A – Bestandsaudit (evidence-based)
 
-**Audit date:** 2026-07-17
+**Audit date:** 2026-07-17 (updated later same day for open P4-fix inventory)
 **Audited `main` HEAD at planning branch creation:** `e804be5` (merge of docs/p4-milestone-close #194)
 **Rule:** No assumptions recorded as facts. `UNKNOWN` where evidence is missing.
 
@@ -12,8 +12,9 @@
 | P4 milestone (GitHub) | **No** GitHub milestone titled `P4 – Research Engine` in API list (IDs jump P3→P5) | `gh api .../milestones` 2026-07-17 | Track P4 completion via docs/issues, not milestone object | Whether to recreate P4 milestone for archive (out of P5 scope) |
 | P4 research engine | Complete on `main` | `docs/research/P4_ACCEPTANCE.md`; closed #141–#147, #148, #49, #48, #163–#167; ROADMAP P4 **Complete** | Entry-gate research prerequisites largely met | Re-run green regression suite before first P5 execution (P5-00) |
 | P4 public-release gates | Closed | #176–#180 closed; PR #189–#194 | Boundary docs exist; does not replace #181 P5 artifact path | Private storage path for P5 results (#181) |
-| Open P4 correction issues | None found open labeled as P4-fix | Issue search 2026-07-17; closed #163–#167 | No known open critical P4 fix blocking planning | Confirm no private unfiled defects before OOS |
-| P5 milestone | Exists; 2 open issues | Milestone #6; #47, #181 | Use existing milestone only | Create P5-00…P5-09 if missing |
+| Open P4 correction issues | **OPEN** critical P4-fix: #206 cost_model_version, #207 git provenance, #208 BH cost parity, #210 PRIVATE_EDGE_EXTENSION encoding | Issue search 2026-07-17 afternoon; PRs #211/#218 (#206), #212/#219 (#207), #213 (#208), #214/#217 (#210) — prefer one PR per issue before merge | **Blocks P5-00 execution** until merged to `main` and issues closed | Human: close duplicate PRs; merge winners |
+| P5 milestone | Exists; planning issues #196–#205 plus #47/#181 | Milestone #6 | Use existing milestone only | None for numbering |
+| Issue #65 | Ruleset required checks activated; docs PR #220 | Ruleset `main` id 19091297; ADR-016 | Governance gate for merges; not a research blocker | Merge #220 then close #65 |
 | Issue #47 | OPEN; R-003 OOS overfitting | Issue body + comment linking #181 | Canonical risk/overfitting checklist | Keep open until final P5 decision |
 | Issue #181 | OPEN; public/private separation | Issue body | Must complete before first real P5 result | Concrete private store + CI leak rules |
 | `ROADMAP.md` P5 | Exit criteria stub; gap “not started” | ROADMAP P5 section | Align with honest validation protocol docs | Human: status → Planning |
@@ -55,11 +56,11 @@
 | Backtester/paper parity documented | Met | BACKTESTER_PAPER_PARITY.md |
 | Strategy V1 uniquely versioned | Met at `1.0.0` | inventory / spec |
 | Parameters frozen for candidate under test | Spec freeze exists; **P5 Candidate Freeze Manifest not yet signed** | P5_CANDIDATE_FREEZE.md |
-| No open critical P4 defect falsifying P5 | **No open P4-fix issues found**; residual UNKNOWN | Issue search |
+| No open critical P4 defect falsifying P5 | **Not met** — open #206/#207/#208/#210 with in-flight PRs | Issue + PR search 2026-07-17 |
 | Public/private storage defined | Boundary docs yes; **P5 paths incomplete until #181** | PUBLIC_PRIVATE_BOUNDARY; #181 |
 | Final OOS not opened | Met | No P5 OOS artifacts |
 
-**Conclusion:** P5 may proceed as **PLANNING ONLY**. Execution and holdout open remain blocked until P5-00/#181 gates pass.
+**Conclusion:** P5 may proceed as **PLANNING ONLY**. Execution and holdout open remain blocked until P4-fix #206/#207/#208/#210 are merged and closed, then P5-00/#181 gates pass.
 
 ## Symbols in scope
 
