@@ -36,6 +36,11 @@ _KNOWN: dict[str, str] = {
 }
 
 
+def known_strategy_ids() -> tuple[str, ...]:
+    """Stable list of strategy_ids accepted by DefaultStrategyResolver."""
+    return tuple(sorted(_KNOWN))
+
+
 def _parameters_from_spec(spec: ExperimentSpec) -> StrategyParameters:
     """Map ExperimentSpec.parameters onto StrategyParameters (unknown keys fail)."""
     raw: dict[str, Any] = {"strategy_version": spec.strategy_version}

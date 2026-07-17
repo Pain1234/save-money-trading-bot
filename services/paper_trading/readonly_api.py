@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from research.api import router as research_router
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from paper_trading.api import (
@@ -42,6 +43,7 @@ from paper_trading.readiness import ReadinessService
 from paper_trading.repository import PaperTradingRepository
 
 app = FastAPI(title="Paper Trading Read-only API", version="1.0.0", openapi_url=None)
+app.include_router(research_router)
 
 
 class ReadonlyMethodMiddleware(BaseHTTPMiddleware):
