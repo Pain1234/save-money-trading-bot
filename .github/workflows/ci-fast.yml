@@ -1,0 +1,387 @@
+# Fast CI lane (Stage 2 Actions-usage optimization).
+#
+# Runs on every PR push. Classifies the diff (scripts/ci/classify_paths.py)
+# and only runs the quality/test slices relevant to what changed. Anything
+# the classifier cannot confidently place runs the full fast-lane suite
+# (fail-closed via run_all_fast).
+#
+# Required check names during the Phase 1 migration window are provided by
+# the thin compatibility alias jobs at the bottom of this file (validate,
+# requirements-baseline, lint, test, test-market-data), which mirror the
+# result of fast-ci-required. See docs/ci/REQUIRED_CHECK_MIGRATION.md.
+#
+# Active pipelines: ci-fast.yml (this file) + ci-full.yml.
+# Legacy monolithic workflow: ci.yml (dispatch-only rollback stub).
+
+name: Fast CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: fast-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      governance: ${{ steps.classify.outputs.governance }}
+      dependencies: ${{ steps.classify.outputs.dependencies }}
+      shared_python: ${{ steps.classify.outputs.shared_python }}
+      research: ${{ steps.classify.outputs.research }}
+      market_data: ${{ steps.classify.outputs.market_data }}
+      paper_trading: ${{ steps.classify.outputs.paper_trading }}
+      backtest: ${{ steps.classify.outputs.backtest }}
+      strategy: ${{ steps.classify.outputs.strategy }}
+      risk: ${{ steps.classify.outputs.risk }}
+      deploy: ${{ steps.classify.outputs.deploy }}
+      database: ${{ steps.classify.outputs.database }}
+      agent_loop: ${{ steps.classify.outputs.agent_loop }}
+      performance: ${{ steps.classify.outputs.performance }}
+      workflows: ${{ steps.classify.outputs.workflows }}
+      run_all_fast: ${{ steps.classify.outputs.run_all_fast }}
+      run_quality: ${{ steps.classify.outputs.run_quality }}
+      run_targeted_tests: ${{ steps.classify.outputs.run_targeted_tests }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        run: |
+          set -uo pipefail
+          : > /tmp/changed_files.txt
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            if ! git diff --name-only "$BASE" "$HEAD" > /tmp/changed_files.txt; then
+              echo "::warning::git diff failed; classifying as empty diff (fail-closed to run_all_fast)"
+              : > /tmp/changed_files.txt
+            fi
+          else
+            echo "non-pull_request event (${{ github.event_name }}): running everything"
+          fi
+
+          echo "Changed files:"
+          cat /tmp/changed_files.txt
+
+          python scripts/ci/classify_paths.py \
+            --write-github-output \
+            --files-from /tmp/changed_files.txt \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+  quality:
+    name: quality
+    needs: plan
+    if: >-
+      needs.plan.outputs.run_quality == 'true' ||
+      needs.plan.outputs.governance == 'true' ||
+      needs.plan.outputs.workflows == 'true' ||
+      needs.plan.outputs.dependencies == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Validate Python syntax
+        if: needs.plan.outputs.docs_only != 'true'
+        run: python -m compileall -q services scripts tests
+
+      - name: Validate issue template YAML files
+        if: needs.plan.outputs.governance == 'true'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for path in sorted(Path(".github/ISSUE_TEMPLATE").glob("*.yml")):
+              if path.name == "config.yml":
+                  continue
+              text = path.read_text(encoding="utf-8")
+              for key in ("name:", "description:", "body:"):
+                  if key not in text:
+                      raise SystemExit(f"missing {key!r} in {path}")
+              print(f"ok: {path}")
+          PY
+
+      - name: Run governance unit tests
+        if: needs.plan.outputs.governance == 'true'
+        run: python -m unittest discover -s tests/governance -p 'test_*.py' -v
+
+      - name: Check pull request diff for whitespace errors
+        if: github.event_name == 'pull_request' && needs.plan.outputs.run_quality == 'true'
+        run: |
+          git diff --check \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+      - name: Sanity check baseline file has no local paths
+        if: needs.plan.outputs.dependencies == 'true'
+        run: |
+          if grep -E '(^-e |file://|[@] file:)' requirements-baseline.txt; then
+            echo "requirements-baseline.txt contains editable or file:// paths"
+            exit 1
+          fi
+
+      - name: Install from requirements-baseline.txt in clean venv
+        if: needs.plan.outputs.dependencies == 'true'
+        run: |
+          python -m venv .venv-baseline-test
+          .venv-baseline-test/bin/pip install --upgrade pip
+          .venv-baseline-test/bin/pip install -r requirements-baseline.txt
+
+      - name: Install dev dependencies
+        if: needs.plan.outputs.run_quality == 'true' && needs.plan.outputs.docs_only != 'true'
+        run: python -m pip install -e ".[dev]"
+
+      - name: Ruff lint
+        if: needs.plan.outputs.run_quality == 'true' && needs.plan.outputs.docs_only != 'true'
+        run: python -m ruff check .
+
+  targeted-tests:
+    name: targeted-tests
+    needs: plan
+    if: needs.plan.outputs.run_targeted_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SESSION_SECRET: "01234567890123456789012345678901"
+      PRIVATE_PAPER_API_URL: "http://127.0.0.1:8080"
+      AUTH_USERNAME: monitor
+      AUTH_PASSWORD_HASH: "$2a$12$testhashfortestbuildonlyxxxxxxxxxxxxxxxxxxxxxx"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Set up Node.js
+        if: needs.plan.outputs.deploy == 'true' || needs.plan.outputs.run_all_fast == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        if: needs.plan.outputs.deploy == 'true' || needs.plan.outputs.run_all_fast == 'true'
+        run: npm ci
+
+      - name: Install Python dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run targeted test slices
+        shell: bash
+        env:
+          RUN_ALL_FAST: ${{ needs.plan.outputs.run_all_fast }}
+          RESEARCH: ${{ needs.plan.outputs.research }}
+          MARKET_DATA: ${{ needs.plan.outputs.market_data }}
+          PAPER_TRADING: ${{ needs.plan.outputs.paper_trading }}
+          BACKTEST: ${{ needs.plan.outputs.backtest }}
+          STRATEGY: ${{ needs.plan.outputs.strategy }}
+          RISK: ${{ needs.plan.outputs.risk }}
+          DEPLOY: ${{ needs.plan.outputs.deploy }}
+          AGENT_LOOP: ${{ needs.plan.outputs.agent_loop }}
+        run: |
+          set -euo pipefail
+          MARKERS="not postgres and not live and not soak and not reporting"
+
+          if [ "$RUN_ALL_FAST" = "true" ]; then
+            echo "== run_all_fast: full fast-lane suite =="
+            python -m pytest tests/ --ignore=tests/deploy -m "$MARKERS" -q
+            echo "== run_all_fast: market_data slice =="
+            python -m pytest tests/market_data -m "not live and not postgres" -q --tb=short
+            echo "== run_all_fast: deploy slice =="
+            python -m pytest tests/deploy -q --tb=short
+            exit 0
+          fi
+
+          ran_any=false
+
+          if [ "$RESEARCH" = "true" ]; then
+            echo "== research slice =="
+            python -m pytest tests/research \
+              tests/paper_trading/test_backtester_parity.py \
+              tests/paper_trading/test_backtester_signal_parity.py \
+              -m "$MARKERS" -q --tb=short
+            ran_any=true
+          fi
+
+          if [ "$MARKET_DATA" = "true" ]; then
+            echo "== market_data slice =="
+            python -m pytest tests/market_data -m "not live and not postgres" -q --tb=short
+            ran_any=true
+          fi
+
+          if [ "$PAPER_TRADING" = "true" ]; then
+            echo "== paper_trading slice (non-postgres) =="
+            python -m pytest tests/paper_trading -m "$MARKERS" -q --tb=short
+            ran_any=true
+          fi
+
+          if [ "$STRATEGY" = "true" ] || [ "$BACKTEST" = "true" ]; then
+            echo "== strategy/backtest slice =="
+            python -m pytest tests/strategy_engine tests/backtester -m "$MARKERS" -q --tb=short
+            ran_any=true
+          fi
+
+          if [ "$RISK" = "true" ]; then
+            echo "== risk slice =="
+            python -m pytest tests/risk_engine tests/trading_constraints -m "$MARKERS" -q --tb=short
+            ran_any=true
+          fi
+
+          if [ "$DEPLOY" = "true" ]; then
+            echo "== deploy slice =="
+            python -m pytest tests/deploy -q --tb=short
+            ran_any=true
+          fi
+
+          if [ "$AGENT_LOOP" = "true" ]; then
+            if [ -d tests/agent_loop ]; then
+              echo "== agent_loop slice =="
+              python -m pytest tests/agent_loop -m "$MARKERS" -q --tb=short
+              ran_any=true
+            else
+              echo "agent_loop flagged but tests/agent_loop does not exist yet; nothing to run"
+            fi
+          fi
+
+          if [ "$ran_any" = "false" ]; then
+            echo "::warning::no targeted slice matched a known area; falling back to the full fast-lane suite"
+            python -m pytest tests/ --ignore=tests/deploy -m "$MARKERS" -q
+          fi
+
+  fast-ci-required:
+    name: fast-ci-required
+    needs: [plan, quality, targeted-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check required job results
+        shell: bash
+        run: |
+          set -euo pipefail
+          quality_expected=false
+          if [ "${{ needs.plan.outputs.run_quality }}" = "true" ] \
+            || [ "${{ needs.plan.outputs.governance }}" = "true" ] \
+            || [ "${{ needs.plan.outputs.workflows }}" = "true" ] \
+            || [ "${{ needs.plan.outputs.dependencies }}" = "true" ]; then
+            quality_expected=true
+          fi
+
+          python scripts/ci/check_required_gate.py \
+            --mode fast \
+            --result "plan=${{ needs.plan.result }}" \
+            --result "quality=${{ needs.quality.result }}" \
+            --result "targeted-tests=${{ needs.targeted-tests.result }}" \
+            --expect-quality "$quality_expected" \
+            --expect-targeted-tests "${{ needs.plan.outputs.run_targeted_tests }}"
+
+  # --- Phase-1 compatibility aliases -----------------------------------
+  # These thin jobs exist only so the legacy required-check names configured
+  # on branch protection keep reporting during the Stage 2 migration window.
+  # They report the same pass/fail signal as fast-ci-required and do no
+  # independent work. Remove once branch protection points at
+  # fast-ci-required / full-ci-required directly.
+  # See docs/ci/REQUIRED_CHECK_MIGRATION.md.
+  validate:
+    name: validate
+    needs: [fast-ci-required]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mirror fast-ci-required result
+        run: |
+          echo "fast-ci-required result: ${{ needs.fast-ci-required.result }}"
+          [ "${{ needs.fast-ci-required.result }}" = "success" ]
+
+  requirements-baseline:
+    name: requirements-baseline
+    needs: [fast-ci-required]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mirror fast-ci-required result
+        run: |
+          echo "fast-ci-required result: ${{ needs.fast-ci-required.result }}"
+          [ "${{ needs.fast-ci-required.result }}" = "success" ]
+
+  lint:
+    name: lint
+    needs: [fast-ci-required]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mirror fast-ci-required result
+        run: |
+          echo "fast-ci-required result: ${{ needs.fast-ci-required.result }}"
+          [ "${{ needs.fast-ci-required.result }}" = "success" ]
+
+  test:
+    name: test
+    needs: [fast-ci-required]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mirror fast-ci-required result
+        run: |
+          echo "fast-ci-required result: ${{ needs.fast-ci-required.result }}"
+          [ "${{ needs.fast-ci-required.result }}" = "success" ]
+
+  test-market-data:
+    name: test-market-data
+    needs: [fast-ci-required]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mirror fast-ci-required result
+        run: |
+          echo "fast-ci-required result: ${{ needs.fast-ci-required.result }}"
+          [ "${{ needs.fast-ci-required.result }}" = "success" ]
