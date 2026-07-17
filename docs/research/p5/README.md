@@ -22,7 +22,7 @@ Goal: filter bad, overfit, or under-evidenced strategies — not make a strategy
 ## Roadmap position
 
 ```text
-P4 – Research Engine (complete on main)
+P4 – Research Engine und Research Workspace V1 (in flight; not fully accepted)
   → P5 – Honest Validation of Trend Strategy V1  ← this milestone
     → P6 – Paper Trading Soak
       → P7 / P8 / P9 (not pre-empted by P5)
@@ -30,24 +30,31 @@ P4 – Research Engine (complete on main)
 
 P5 must not pre-empt paper soak, multi-asset work, or live trading.
 
+**Plan vs execute:** Closed issues #200–#203 are planning / helpers / harness only.
+They do **not** prove frozen Strategy V1 was validated. Actual runs: #251–#254.
+
 ## Binding dependency chain
 
 ```text
-P4 complete on main
+P4 usable enough on main (Engine + Workspace; Lab Abnahme/#245–#250 as needed)
   → #181 Public/Private Separation
     → P5-00 #196 Entry Gate + Candidate Freeze
       → P5-01 #197 Data Exposure Audit + Partition Lock
         → P5-02 #198 Protocol + Decision Freeze
           → P5-03 #199 Benchmarks + Regimes
-            → {P5-04 #200 Walk-Forward, P5-05 #201 Cost Stress,
-               P5-06 #202 Parameter Stability, P5-07 #203 Bootstrap/MC}
-              → Human Pre-OOS Approval
-                → P5-08 #204 Final Untouched OOS Once
-                  → P5-09 #205 Final Decision
-                    → ACCEPT_FOR_P6 → P6
-                    → REJECT → no promotion
-                    → INCONCLUSIVE → gather evidence, no promotion
+            → {P5-04 #200 … P5-07 #203 Planung/Helfer}
+              → {P5-04E #251 … P5-07E #254 tatsächliche Ausführung}
+                → Human Pre-OOS Approval
+                  → P5-08 #204 Final Untouched OOS Once
+                    → P5-09 #205 Final Decision
+                      → ACCEPT_FOR_P6 → P6
+                      → REJECT → no promotion
+                      → INCONCLUSIVE → gather evidence, no promotion
 ```
+
+Validation Study **infrastructure**: P4.7d [#249](https://github.com/Pain1234/save-money-trading-bot/issues/249).
+Strategy V1 study register (public metadata only): [#255](https://github.com/Pain1234/save-money-trading-bot/issues/255).
+Final decision remains [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205).
 
 Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181).
 

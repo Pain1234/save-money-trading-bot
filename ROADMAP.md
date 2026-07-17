@@ -17,14 +17,14 @@ Central project goal:
 | **P0** | Governance and Scope Freeze | **Complete** | No |
 | **P1** | Reproducible Baseline Release | **Complete** (post-tag follow-ups in PR #63) | No |
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
-| P2.5 | Dashboard Performance & Responsiveness | Not started | No |
+| P2.5 | Dashboard Performance & Responsiveness | Planned (seed issues closed; exit criteria **not** met — do not treat as complete) | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine und Research Workspace V1 | **In flight** (engine + read UI; Strategy Lab/start #242) | No |
-| P5 | Honest Validation of Trend Strategy V1 | **Planning** (honest validation protocol; no OOS opened) | No |
-| P6 | Paper Trading Soak | Not started (Railway paper deploy in progress) | No |
-| P7 | Multi-Asset and Independent Strategy Candidates | Not started (planning only) | No |
-| P8 | Separate Micro-Live System | Blocked | **Yes — explicit human approval** |
-| P9 | Controlled Scaling | Blocked | **Yes — explicit human approval** |
+| P4 | Research Engine und Research Workspace V1 | **In flight** (engine + read UI done; #242 Lab on `main`, UI-Abnahme offen; #245–#250 open) | No |
+| P5 | Honest Validation of Trend Strategy V1 | **Planning** (helpers #200–#203 ≠ execution; #251–#254 open; no OOS opened) | No |
+| P6 | Paper Trading Soak | **Not started** (Epic #46; sub-issues #256–#262; clock not started) | No |
+| P7 | Multi-Asset and Independent Strategy Candidates | Planning only (no new impl split until P5/P6 gates) | No |
+| P8 | Separate Micro-Live System | Blocked (boundary #184 only; no live impl issues) | **Yes — explicit human approval** |
+| P9 | Controlled Scaling | Blocked (boundary #185 only; detailed split after P8) | **Yes — explicit human approval** |
 
 **Evidence for current assessment (2026-07):**
 
@@ -37,9 +37,12 @@ Central project goal:
 - **P1 complete** (2026-07-14): tag `baseline-paper-v1.0.0` at `daacb627` (PR #62 merge). Post-tag doc/lock/CI improvements tracked in PR #63 (optional `baseline-paper-v1.0.1` after merge).
 - **P3 complete** (2026-07-14): versioned historical market data pipeline implemented (`services/market_data/`, migration `010_market_data_datasets`, issues #76–#84); reproducibility audit in `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md`.
 - Dashboard UI locally usable with real paper data (login, wallet, PnL, positions, fills, equity); **not** yet classified as production-accepted performant monitoring (`docs/railway-paper-trading-dashboard-v1.md` maturity levels).
-- **P4** engine complete; Research Workspace read-only browse (#240) and Strategy Lab + start (#242) on `main` / in flight. Compare/robustness/gates remain open — see `docs/project-management/p4-research-workspace-follow-ups.md`. **P5 blocked** until Engine + API + Workspace are jointly usable enough.
-- **P2.5** milestone and seed issues defined for dashboard/API performance baseline, instrumentation, and production acceptance (governance only — no runtime optimization yet).
-- **P7** renamed to Multi-Asset and Independent Strategy Candidates; HIP-3 equity/index/commodity perpetuals and asset profiles documented in ADR-014 (`docs/DECISION_LOG.md`); planning issues only.
+- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **reopened** until manual UI acceptance with a valid dataset catalog is documented. Open: #245 (durable jobs), #246–#249 (compare/robustness/gates/validation studies), #250 (E2E/UI-Abnahme). Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`. Governance sync: #244.
+- **P5** planning/helpers (#197–#203, #181) ≠ actual Strategy V1 validation. Execution issues: #251–#254; study register #255; final OOS #204 still blocked. See `docs/research/p5/README.md`.
+- **P6** soak **not started**. Epic #46 decomposed into #256–#262; private telemetry boundary #182.
+- **P2.5** seed issues are closed but ROADMAP exit criteria remain open — status drift documented in the coverage audit; not marked complete.
+- **P7** planning issues only (ADR-014); no implementation decomposition in this sync.
+- **P8/P9** blocked; only boundary issues (#184/#185). Detailed live/scaling split required before any activation — no wallet/order/signing work.
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
 ---
@@ -353,7 +356,7 @@ Persistent historical store with gap/duplicate detection, dataset manifests, dat
 
 ## P4 – Research Engine und Research Workspace V1
 
-**GitHub milestone:** `P4 – Research Engine` (extend / rename toward Research Workspace V1)
+**GitHub milestone:** `P4 – Research Engine und Research Workspace V1`
 
 ### Goal
 
@@ -366,16 +369,16 @@ Workspace that reads those artifacts without introducing a second research syste
 - `services/backtester/`, `services/strategy_engine/`, `services/risk_engine/`
 - `services/research/` (Spec, runner, registry, metrics, costs, benchmarks)
 - Read-only Research API + Dashboard Research UI (overview / list / detail)
+- Strategy Lab + async start (in-process V1; durable recovery is #245)
 - `docs/EXPERIMENT_TEMPLATE.md`, experiment issues
 - Cost and slippage assumptions documented per experiment
 
 ### Non-scope (this milestone still open)
 
-- Cancel / Retry / Re-run lifecycle (explicitly deferred)
-- Durable multi-process job queue (Celery/Redis) — V1 uses in-process threads
-- Compare View, Robustness Lab orchestration UI (follow-up)
-- Gate Evaluator persistence / promotion controls (follow-up)
+- Cancel / Retry / Re-run lifecycle (**bewusst zurückgestellt**)
+- Pflicht zu Celery/Redis (nur falls in #245 bewusst gewählt)
 - New Experiment Postgres tables; second registry; live/paper order actions from Research
+- Private P5 Strategy V1 economic results in the public repo
 
 ### Prerequisites
 
@@ -392,7 +395,7 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] Cost model field/version enforcement (stress evaluation is P5/P4.7 follow-up)
 - [x] Documented invalidation workflow for historical results
 
-#### Research Workspace — read-only slice (#240)
+#### Research Workspace — read-only slice (#240) — **abgeschlossen**
 
 - [x] Thin read API over ExperimentRegistry + run artifacts (`/api/v1/research/...`)
 - [x] Monitor / Research navigation; routes under `/dashboard/research`
@@ -400,27 +403,26 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] Missing values as „Nicht verfügbar“ / controlled errors; no productive mock data
 - [x] Path-traversal protection; unknown experiment → 404; no live-order access from Research
 
-#### Research Workspace — Strategy Lab + start (#242)
+#### Research Workspace — Strategy Lab + start (#242 / PR #243)
 
-- [x] Strategy Lab route `/dashboard/research/experiments/new`
-- [x] Write API: strategies/schema/datasets, create, start, status (POST allow-listed on private dashboard API)
-- [x] Filesystem `ResearchJobStore` + in-process worker wrapping `run_experiment` (no Celery/Redis)
-- [x] Same Spec/Runner/Registry/artifacts as CLI; atomic created→queued CAS; terminal create idempotent (no implicit Re-run); stale queued/running after restart fail-closed
-- [x] Detail job panel with polling; Overview CTA „Neues Experiment“
+- [x] Code on `main` (PR #243 merged): Lab route, write API, filesystem job store, in-process worker
+- [ ] **Manuelle UI-Abnahme** mit gültigem Dataset-Katalog dokumentiert → #242 remains open until then (also covered by #250)
 
-#### Still open (separate issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
+#### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
 
-- [ ] P4.7 Experiment- und Strategie-Vergleich
-- [ ] P4.7 Robustness-Orchestrierung
-- [ ] P4.7 Versionierter Gate Evaluator und Gate-Persistenz
-- [ ] P4.8 End-to-End-, Reproduzierbarkeits- und UI-Abnahmetests
-- [ ] Cancel / Retry / Re-run (explicitly deferred)
+- [ ] [#245](https://github.com/Pain1234/save-money-trading-bot/issues/245) P4.6b Durable Research Job Execution und Restart Recovery
+- [ ] [#246](https://github.com/Pain1234/save-money-trading-bot/issues/246) P4.7a Experiment- und Strategie-Vergleich
+- [ ] [#247](https://github.com/Pain1234/save-money-trading-bot/issues/247) P4.7b Robustness-Orchestrierung
+- [ ] [#248](https://github.com/Pain1234/save-money-trading-bot/issues/248) P4.7c Versionierter Gate Evaluator und Gate-Persistenz
+- [ ] [#249](https://github.com/Pain1234/save-money-trading-bot/issues/249) P4.7d Validation Studies API und UI
+- [ ] [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) P4.8 Research E2E, Reproduzierbarkeit und UI-Abnahme
+- [ ] Cancel / Retry / Re-run (explicitly deferred — no issue)
 
 ### Binding dependency chain
 
 ```
 P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → engine done
-→ #240 read-only workspace → #242 Strategy Lab + start → P4.7…P4.8 → P4 done → P5
+→ #240 read-only → #242 Lab/start (Abnahme offen) → #245 → {#246…#249} → #250 → P4 done → P5
 ```
 
 Docs preparation may run in parallel from #142.
@@ -432,7 +434,7 @@ Docs preparation may run in parallel from #142.
 - [x] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
 - [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
 - [x] Research Workspace usable for browsing real experiments (API + UI) without a parallel system
-- [ ] Lab / async runs / compare / robustness / gates delivered or explicitly deferred with issues
+- [ ] Lab UI-Abnahme + durable jobs / compare / robustness / gates / validation studies / E2E delivered or explicitly deferred with issues
 
 ### Stop criteria
 
@@ -442,9 +444,7 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism; UI inventing metrics not produced by the engine
 
-**Current gap:** Engine + read-only workspace on `main`. Strategy Lab + start (#242) in flight.
-Compare, robustness orchestration, and gate evaluator remain open.
-**P5 remains blocked** until Engine, Read-API, and Workspace are jointly usable enough.
+**Current gap:** Engine + read-only workspace + Lab code on `main`. #242 not fully accepted. #245–#250 open. **P4 not complete.** P5 economic execution remains gated on usable workspace + P5 execution chain.
 
 ---
 
@@ -461,38 +461,50 @@ Honestly decide whether frozen Strategy V1 warrants promotion evidence for P6 �
 - Research only; **no strategy parameter changes** under Strategy V1 without new version + new freeze
 - Data-exposure audit, candidate freeze, pre-registered protocol, walk-forward, cost stress, parameter stability, bootstrap/Monte Carlo, one-shot untouched OOS
 - Results stored as **private-edge** experiment artifacts (#181); public repo keeps methodology/templates only
+- Generic Validation Study **infrastructure** is P4.7d (#249); Strategy V1 study registration is [#255](https://github.com/Pain1234/save-money-trading-bot/issues/255) (metadata/status only)
 
 ### Non-scope
 
 - New strategies; new assets / HYPE / HIP-3; paper soak (P6); live trading; optimizing thresholds after seeing OOS
+- Treating closed #200–#203 as proof that V1 was validated
 
 ### Prerequisites
 
 - P4 research engine + usable Research Workspace (read API + browse UI at minimum; Lab/async as needed for P5 workflow)
 - #181 public/private separation complete before first real P5 result
 - Signed candidate freeze + validation protocol **before** opening final holdout
+- **Actual** robustness executions (#251–#254) + human review before #204
 
 ### Binding issue chain
 
 ```text
-#181 → #196 → #197 → #198 → #199 → {#200…#203} → human pre-OOS → #204 → #205
+#181 → #196 → #197 → #198 → #199 → {#200–#203 Planung/Helfer}
+  → {#251–#254 P5-04E–P5-07E Ausführung} → human pre-OOS → #204 → #205
 ```
 
 Canonical risk: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47). Canonical boundary: [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181).
 
+| Planung/Helfer | Tatsächliche Ausführung |
+|----------------|-------------------------|
+| #200 Walk-forward plan | [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251) P5-04E |
+| #201 Cost stress plan | [#252](https://github.com/Pain1234/save-money-trading-bot/issues/252) P5-05E |
+| #202 Parameter stability plan | [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253) P5-06E |
+| #203 Bootstrap/MC plan | [#254](https://github.com/Pain1234/save-money-trading-bot/issues/254) P5-07E |
+| P4.7d Validation Studies infra | [#255](https://github.com/Pain1234/save-money-trading-bot/issues/255) P5-10 register (no metrics) |
+
 ### Deliverables
 
 - Planning pack under `docs/research/p5/` (templates; no simulated results)
-- Frozen holdout + one-shot OOS report (private)
-- Walk-forward, cost-stress, stability, uncertainty reports (private)
-- Documented `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` in decision log
+- Frozen holdout + one-shot OOS report (private) — **not opened in this governance sync**
+- Walk-forward, cost-stress, stability, uncertainty reports (private) via #251–#254
+- Documented `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` in decision log (#205)
 
 ### Exit criteria
 
 - [ ] Strategy V1 uniquely frozen; exposure audited; protocol frozen before OOS view
 - [ ] Benchmarks + sample-sufficiency + decision rules pre-registered
-- [ ] Walk-forward, cost stress, parameter stability completed; bootstrap/MC completed or methodically N/A
-- [ ] Final OOS evaluated exactly once; no post-hoc parameter fishing; no leakage
+- [ ] Walk-forward, cost stress, parameter stability **executed** (#251–#253); bootstrap/MC **executed** or methodically N/A (#254)
+- [ ] Final OOS evaluated exactly once (#204); no post-hoc parameter fishing; no leakage
 - [ ] Outcome documented; human sign-off in decision log; #47 closed; #181 satisfied
 - [ ] No new strategy/assets; no P6/P8 pre-emption; no live-trading code
 
@@ -506,7 +518,7 @@ Full checklist: `docs/research/p5/P5_EXECUTION_CHECKLIST.md`.
 
 - Strategy overfitting; regime change; false OOS claims; public/private leakage
 
-**Current gap:** Planning documents and issue chain in progress; **no** final holdout opened; **no** formal V1 OOS decision yet.
+**Current gap:** Planning/helpers largely present; **no** actual #251–#254 execution; **no** final holdout opened; **no** formal V1 OOS decision.
 
 ---
 
@@ -522,10 +534,20 @@ Full checklist: `docs/research/p5/P5_EXECUTION_CHECKLIST.md`.
 
 - Railway paper stack (`bot.save-money.xyz` dashboard, worker, API, Postgres)
 - Monitoring and incident logging
+- Decomposed implementation under Epic [#46](https://github.com/Pain1234/save-money-trading-bot/issues/46):
+  - [#256](https://github.com/Pain1234/save-money-trading-bot/issues/256) P6-00 Soak Entry Gate und Configuration Freeze
+  - [#257](https://github.com/Pain1234/save-money-trading-bot/issues/257) P6-01 Soak Telemetry und Daily Snapshot
+  - [#258](https://github.com/Pain1234/save-money-trading-bot/issues/258) P6-02 Reconciliation Archive
+  - [#259](https://github.com/Pain1234/save-money-trading-bot/issues/259) P6-03 Incident und Abort Handling
+  - [#260](https://github.com/Pain1234/save-money-trading-bot/issues/260) P6-04 Execution-Decay Analysis
+  - [#261](https://github.com/Pain1234/save-money-trading-bot/issues/261) P6-05 Soak Progress UI
+  - [#262](https://github.com/Pain1234/save-money-trading-bot/issues/262) P6-06 Final P6 Decision
+- Private telemetry boundary: [#182](https://github.com/Pain1234/save-money-trading-bot/issues/182)
 
 ### Non-scope
 
 - Real orders; capital at risk
+- Treating #46 as a single mega-implementation PR
 
 ### Prerequisites
 
@@ -535,14 +557,16 @@ Full checklist: `docs/research/p5/P5_EXECUTION_CHECKLIST.md`.
 ### Deliverables
 
 - Soak log (daily reconciliation, heartbeat, readiness)
-- Decay metrics vs backtest
+- Decay metrics vs backtest (private)
 - Incident register entries
+- Final human decision (#262) — **no** automatic P8 activation
 
 ### Exit criteria
 
 - [ ] 90 consecutive days without unresolved S1
 - [ ] Daily reconciliation completed and archived
 - [ ] Paper-to-live decay documented with assumptions
+- [ ] #256–#262 complete or explicitly waived; #46 epic checklist done
 
 ### Stop criteria
 
@@ -552,7 +576,7 @@ Full checklist: `docs/research/p5/P5_EXECUTION_CHECKLIST.md`.
 
 - Paper fill model ≠ live fills; funding/slippage drift
 
-**Current gap:** Deployment in progress; 90-day soak not started.
+**Current gap:** Deployment may be in progress; **90-day soak not started**; sub-issues filed, not implemented.
 
 ---
 
@@ -579,6 +603,7 @@ Expand beyond BTC/ETH/SOL to additional Hyperliquid markets and independent stra
 - Treating synthetic equity perps as real stock ownership
 - Bypassing P5/P6 gates
 - Runtime trading implementation in this planning phase
+- **New implementation issues filed only to “complete” the matrix** (this sync documents gaps; decomposition waits for gates)
 
 ### Prerequisites
 
@@ -639,7 +664,7 @@ Expand beyond BTC/ETH/SOL to additional Hyperliquid markets and independent stra
 
 **Architecture target:** See `docs/ARCHITECTURE.md` § Multi-asset target architecture and ADR-014.
 
-**Current gap:** Planning issues only; no multi-asset runtime implementation.
+**Current gap:** Planning issues only (`#104`–`#106`, `#128`–`#130`, `#134`–`#135`, `#139`, `#183`); no multi-asset runtime implementation. Further impl decomposition **after** P5/P6 gates.
 
 ---
 
@@ -661,6 +686,8 @@ Technically separated live execution, minimal API permissions, bounded capital, 
 ### Non-scope
 
 - Scaling; strategy changes
+- Starting live implementation issues, wallet signing, or real order logic in this sync
+- Detailed decomposition is **required before activation** and is not started here (boundary only: [#184](https://github.com/Pain1234/save-money-trading-bot/issues/184))
 
 ### Prerequisites
 
@@ -680,7 +707,7 @@ Technically separated live execution, minimal API permissions, bounded capital, 
 
 - Exchange, key compromise, fat finger
 
-**Current gap:** Live execution explicitly not implemented.
+**Current gap:** Live execution explicitly not implemented; milestone **blockiert**.
 
 ---
 
@@ -698,13 +725,17 @@ Scale only on real evidence: capital limits, drawdown limits, correlation budget
 
 - P8 micro-live evidence; **human approval**
 
+### Non-scope (this sync)
+
+- No scaling implementation issues; detailed split only after P8 (boundary: [#185](https://github.com/Pain1234/save-money-trading-bot/issues/185))
+
 ### Exit criteria
 
 - [ ] Scaling rules in risk spec enforced in code
 - [ ] Drawdown breach triggers automatic downgrade
 - [ ] Documented economic review
 
-**Current gap:** Not applicable until P8.
+**Current gap:** Not applicable until P8; milestone **blockiert**.
 
 ---
 
@@ -714,3 +745,4 @@ Scale only on real evidence: capital limits, drawdown limits, correlation budget
 2. Create or select an **issue** with scope, non-scope, and acceptance criteria.
 3. One branch / one PR per issue (`docs/PROJECT_OPERATING_SYSTEM.md`).
 4. Update this file only when phase status changes with evidence (link PR/issue).
+5. Coverage audit: [`docs/project-management/MILESTONE_COVERAGE_AUDIT.md`](docs/project-management/MILESTONE_COVERAGE_AUDIT.md).

@@ -6,7 +6,7 @@
 
 P5 becomes executable only when all are evidenced:
 
-- [x] P4 complete on current `main`
+- [ ] P4 complete on current `main` — **Engine + read UI on main; Lab code merged (#242/#243) but UI-Abnahme and #245–#250 still open. Do not treat P4 milestone as closed.**
 - [x] Material P4 regression tests green (commands + log referenced on P5-00 / `P5_CANDIDATE_FREEZE.md`)
 - [x] ExperimentSpec versioned
 - [x] RunManifest immutable
@@ -50,26 +50,26 @@ After holdout open:
 - [ ] No “small bugfix” that changes economics without full invalidation + new candidate version
 - [ ] Failed outcome not repaired by retuning
 
-## Walk-forward plan notes (P5-04)
+## Walk-forward plan notes (P5-04 / execution P5-04E #251)
 
 - Chronological folds; frozen params identical across folds
 - Clear train/context/eval boundaries; no future peeking
 - Same cost logic; deterministic seeds
 - Report each fold + aggregate; do not keep only winning folds
 - Document gaps; purge/embargo as locked
+- **#200 = plan/helpers only; actual run = [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251)**
 
-## Cost stress plan notes (P5-05)
+## Cost stress plan notes (P5-05 / execution P5-05E #252)
 
-Document per scenario: economic rationale, source/assumption, version, entry/exit/funding application. Include base, elevated, extreme, fee, slippage, funding, combined. No post-hoc scenario shopping.
+Document per scenario: economic rationale, source/assumption, version, entry/exit/funding application. Include base, elevated, extreme, fee, slippage, funding, combined. No post-hoc scenario shopping. **Actual run = [#252](https://github.com/Pain1234/save-money-trading-bot/issues/252).**
 
-## Parameter stability notes (P5-06)
+## Parameter stability notes (P5-06 / execution P5-06E #253)
 
-Small symmetric neighborhood only; no grid-search promotion; neighbor cannot rescue failed candidate.
+Small symmetric neighborhood only; no grid-search promotion; neighbor cannot rescue failed candidate. **Actual run = [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253).**
 
-## Bootstrap / Monte Carlo notes (P5-07)
+## Bootstrap / Monte Carlo notes (P5-07 / execution P5-07E #254)
 
-Prefer block / stationary bootstrap or sequence-respecting trade resamples. Avoid IID daily-return shuffles and post-hoc seed fishing. Fix method, block length, n_sim, seed, CIs, quantiles, drawdown distribution. MC does not replace missing real evidence.
-
+Prefer block / stationary bootstrap or sequence-respecting trade resamples. Avoid IID daily-return shuffles and post-hoc seed fishing. Fix method, block length, n_sim, seed, CIs, quantiles, drawdown distribution. MC does not replace missing real evidence. **Actual run = [#254](https://github.com/Pain1234/save-money-trading-bot/issues/254).**
 ## Regime / symbol notes (P5-03 / N)
 
 BTC/ETH/SOL only. Define deterministic regimes **before** seeing results. No post-hoc regime rescue.
