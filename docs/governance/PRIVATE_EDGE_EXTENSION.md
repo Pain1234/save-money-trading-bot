@@ -8,21 +8,21 @@ Extend the public core from a **separate private repository** without copying pr
 
 ## Dependency direction (required)
 
-`	ext
+```text
 private repository
     depends on pinned public-core version (commit tag or release)
     provides private plugins / configuration
     stores private artifacts separately
-`
+```
 
 Forbidden direction:
 
-`	ext
+```text
 public repository
     imports private files conditionally
     holds secret placeholders with real names
     copies private results into public artifacts/
-`
+```
 
 Rules:
 
@@ -41,7 +41,7 @@ Private edge may supply:
 | Private ExperimentSpecs | Files only in private repo; invoke public CLI with private paths | Do not commit to public examples/ |
 | Private strategy implementations | Plugin entry point / installable private package importing public interfaces | See docs/research/STRATEGY_INTERFACE.md |
 | Private configuration | Env / private config dir outside public tree | Never commit live keys |
-| Private results | Private artifact root (not rtifacts/research in public clone) | Registry stays private |
+| Private results | Private artifact root (not artifacts/research in public clone) | Registry stays private |
 | Private data adapters | Private package implementing public data contracts | Public contracts remain generic |
 | Private live execution | Separate private live repo/service (#184) | Out of public core |
 | Private deployment config | Private ops repo / secrets store | Public deploy examples stay placeholders |
@@ -50,7 +50,7 @@ Preferred packaging: **pip-installable public package** (pip install from public
 
 ## Public CI
 
-Public workflows under .github/workflows/ must succeed with only this repository. No 	oken for private repos, no conditional private checkouts.
+Public workflows under .github/workflows/ must succeed with only this repository. No token for private repos, no conditional private checkouts.
 
 ## Verification checklist
 
