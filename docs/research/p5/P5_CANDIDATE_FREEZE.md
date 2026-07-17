@@ -90,9 +90,9 @@ Source: `docs/strategy-v1-parameter-inventory.md`, `docs/strategy-specification.
 
 | Contract | Version | Doc |
 |----------|---------|-----|
-| Cost model | `1.1` | `docs/research/FUNDING.md` |
+| Cost model | `1.1` | `docs/research/FUNDING.md` (`COST_MODEL_VERSION`) |
 | Fee / slippage / funding Spec fields | as Spec `model_version` | ExperimentSpec |
-| Metrics schema | `1.1` | `docs/research/METRICS_DEFINITIONS.md` |
+| Metrics schema | `1.2` | `docs/research/METRICS_DEFINITIONS.md` (net `benchmark_result` + `gross_return`; Spec cost parity) |
 | Report schema | research runner | ARTIFACT_FORMAT |
 | Dataset contracts | P3 DatasetManifest + P4 bind | market-data + dataset_binding |
 | Random seed (protocol default) | `42` until protocol freeze overrides | Must match protocol |
