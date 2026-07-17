@@ -37,6 +37,7 @@ def _register(tmp_path: Path, *, label: str):
             bundle=bundle,
             artifacts_root=root,
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     assert outcome.status == "complete", outcome.error

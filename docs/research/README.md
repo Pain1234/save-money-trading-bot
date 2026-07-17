@@ -70,7 +70,7 @@ python -m pytest tests/research/test_double_run_repro.py -v
 | Command | Purpose |
 |---------|---------|
 | `validate <spec>` | Load + JSON-schema validate ExperimentSpec |
-| `run <spec> --bundle <json> [--artifacts-root] [--dry-run]` | Execute or identity dry-run; registers on complete |
+| `run <spec> --bundle <json> [--artifacts-root] [--dry-run] [--allow-dirty-git]` | Execute or identity dry-run; registers on complete. Refuses complete runs if git HEAD is unreadable or the working tree is dirty unless `--allow-dirty-git` is set. |
 | `inspect <run_dir>` | Print manifest + metrics + experiment |
 | `list [--artifacts-root]` | List registry entries |
 | `show <run_id>` | Show one entry; verifies files against **registry** checksums (#165) |

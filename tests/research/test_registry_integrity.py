@@ -21,6 +21,7 @@ def _complete_run(tmp_path: Path):
             bundle=bundle,
             artifacts_root=tmp_path / "artifacts_root",
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     assert outcome.status == "complete", outcome.error

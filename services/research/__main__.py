@@ -36,6 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--bundle", required=True, help="HistoricalDataBundle JSON")
     p_run.add_argument("--artifacts-root", default=".")
     p_run.add_argument("--dry-run", action="store_true")
+    p_run.add_argument(
+        "--allow-dirty-git",
+        action="store_true",
+        help="Allow complete runs when the working tree is dirty (documented opt-out)",
+    )
 
     p_ins = sub.add_parser("inspect", help="Inspect a completed run directory")
     p_ins.add_argument("run_dir")
@@ -77,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
                 artifacts_root=Path(args.artifacts_root),
                 repo_root=root,
                 dry_run=args.dry_run,
+                allow_dirty_git=args.allow_dirty_git,
             )
         )
         print(json.dumps(outcome.__dict__, default=str))

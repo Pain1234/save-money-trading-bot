@@ -34,6 +34,7 @@ def test_mismatched_bundle_rejected(tmp_path: Path) -> None:
             bundle=other,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     assert outcome.status == "failed"
@@ -54,6 +55,7 @@ def test_same_declared_ref_different_bundles_no_shared_complete_run(
             bundle=a,
             artifacts_root=tmp_path / "a",
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     out_b = run_experiment(
@@ -62,6 +64,7 @@ def test_same_declared_ref_different_bundles_no_shared_complete_run(
             bundle=b,
             artifacts_root=tmp_path / "b",
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     assert out_a.status == "complete", out_a.error
@@ -140,6 +143,7 @@ def test_funding_change_outside_dataset_hash(tmp_path: Path) -> None:
             bundle=funded,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     assert outcome.status == "complete", outcome.error

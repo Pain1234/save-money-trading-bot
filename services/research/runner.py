@@ -29,7 +29,7 @@ from research.experiment_spec import (
     parse_experiment_spec,
     to_canonical_dict,
 )
-from research.identity import RunIdentityInputs, new_attempt_id
+from research.identity import RunIdentityInputs, compute_experiment_id, new_attempt_id
 from research.metrics_contract import (
     METRICS_SCHEMA_VERSION,
     ResearchMetrics,
@@ -40,7 +40,11 @@ from research.run_manifest import build_run_manifest, dumps_run_manifest
 from research.strategy_resolver import resolve_strategy
 
 
-def _git_commit(repo_root: Path) -> str:
+def resolve_git_commit(repo_root: Path, *, allow_dirty: bool = False) -> str:
+    """Return HEAD SHA; fail closed if git is unusable or the tree is dirty.
+
+    Dirty trees may proceed only when ``allow_dirty`` is True (explicit opt-out).
+    """
     try:
         out = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -48,9 +52,30 @@ def _git_commit(repo_root: Path) -> str:
             stderr=subprocess.DEVNULL,
             text=True,
         )
-        return out.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return "unknown"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        msg = "git provenance unavailable: cannot read HEAD"
+        raise ValueError(msg) from exc
+    commit = out.strip()
+    if not commit or commit.lower() == "unknown":
+        msg = "git provenance unavailable: empty or unknown HEAD"
+        raise ValueError(msg)
+    try:
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        msg = "git provenance unavailable: cannot read working tree status"
+        raise ValueError(msg) from exc
+    if status.strip() and not allow_dirty:
+        msg = (
+            "git provenance refused: working tree is dirty; "
+            "commit or pass allow_dirty_git / --allow-dirty-git"
+        )
+        raise ValueError(msg)
+    return commit
 
 
 def _environment_fingerprint() -> str:
@@ -67,6 +92,7 @@ class RunRequest:
     artifacts_root: Path
     repo_root: Path
     dry_run: bool = False
+    allow_dirty_git: bool = False
 
 
 @dataclass(frozen=True)
@@ -144,6 +170,20 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     """Validate, execute, and atomically persist a research run."""
     spec = request.spec
     require_cost_fields(spec)
+    try:
+        git_commit = resolve_git_commit(
+            request.repo_root,
+            allow_dirty=request.allow_dirty_git,
+        )
+    except ValueError as git_exc:
+        return RunOutcome(
+            experiment_id=compute_experiment_id(spec),
+            run_id="run_unprovenanced",
+            attempt_id=new_attempt_id(),
+            artifact_path=None,
+            status="failed",
+            error=str(git_exc),
+        )
     resolved = resolve_strategy(spec)
     attempt_id = new_attempt_id()
 
@@ -156,7 +196,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
     except Exception as bind_exc:  # noqa: BLE001 — fail closed before artifacts
         # Identity still computable from Spec pins for diagnostics.
         inputs = RunIdentityInputs(
-            git_commit=_git_commit(request.repo_root),
+            git_commit=git_commit,
             dataset_content_hash=spec.dataset_manifest_ref.content_hash,
             strategy_version=spec.strategy_version,
             cost_model_version=COST_MODEL_VERSION,
@@ -180,7 +220,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
         )
 
     inputs = RunIdentityInputs(
-        git_commit=_git_commit(request.repo_root),
+        git_commit=git_commit,
         dataset_content_hash=verified_hash,
         strategy_version=spec.strategy_version,
         cost_model_version=COST_MODEL_VERSION,

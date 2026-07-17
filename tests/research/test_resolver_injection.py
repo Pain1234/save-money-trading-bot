@@ -48,6 +48,7 @@ def test_runner_uses_resolved_strategy_engine(tmp_path: Path, monkeypatch) -> No
             bundle=bundle,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+                    allow_dirty_git=True,
         )
     )
     assert outcome.status == "complete", outcome.error
