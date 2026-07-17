@@ -185,7 +185,89 @@ function Resolve-CodexBin {
     if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_CODEX_BIN)) {
         return $env:AGENT_LOOP_CODEX_BIN.Trim()
     }
+    $cmd = Get-Command codex -ErrorAction SilentlyContinue
+    if ($null -eq $cmd) {
+        return "codex"
+    }
+    $src = [string]$cmd.Source
+    # Prefer the .cmd shim over .ps1 — Process.Start cannot launch .ps1 directly.
+    if ($src -match '\.ps1$') {
+        $cmdShim = [System.IO.Path]::ChangeExtension($src, ".cmd")
+        if (Test-Path -LiteralPath $cmdShim) {
+            return (Resolve-Path -LiteralPath $cmdShim).Path
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($src) -and (Test-Path -LiteralPath $src)) {
+        return $src
+    }
     return "codex"
+}
+
+function Resolve-CodexProcessStart {
+    <#
+      Map a Codex bin path to ProcessStartInfo FileName + leading args.
+      Handles Python mocks, Windows npm .cmd/.ps1 shims (via node + codex.js),
+      and native executables.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Bin,
+        [Parameter(Mandatory = $true)][System.Collections.Generic.List[string]]$ArgumentList
+    )
+    $fileName = $Bin
+    if ($Bin -match '\.py$') {
+        $py = Get-Command python -ErrorAction SilentlyContinue
+        if ($null -eq $py) {
+            throw "python not found on PATH (required to run Codex mock/bin '$Bin')."
+        }
+        $fileName = $py.Source
+        $ArgumentList.Insert(0, $Bin)
+        return $fileName
+    }
+
+    $shimPath = $null
+    if ($Bin -eq "codex") {
+        $cmd = Get-Command codex -ErrorAction SilentlyContinue
+        if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace([string]$cmd.Source)) {
+            $shimPath = [string]$cmd.Source
+        }
+    }
+    elseif ($Bin -match '\.(cmd|ps1|bat)$' -and (Test-Path -LiteralPath $Bin)) {
+        $shimPath = $Bin
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($shimPath)) {
+        $npmDir = Split-Path -Parent $shimPath
+        $jsCandidate = Join-Path $npmDir "node_modules\@openai\codex\bin\codex.js"
+        if (-not (Test-Path -LiteralPath $jsCandidate)) {
+            $jsCandidate = Join-Path $npmDir "node_modules/@openai/codex/bin/codex.js"
+        }
+        if (Test-Path -LiteralPath $jsCandidate) {
+            $node = Get-Command node -ErrorAction SilentlyContinue
+            if ($null -eq $node) {
+                throw "node not found on PATH (required to launch npm Codex shim)."
+            }
+            $ArgumentList.Insert(0, (Resolve-Path -LiteralPath $jsCandidate).Path)
+            return $node.Source
+        }
+        if ($shimPath -match '\.(cmd|bat)$') {
+            $comSpec = $env:ComSpec
+            if ([string]::IsNullOrWhiteSpace($comSpec)) {
+                $comSpec = "cmd.exe"
+            }
+            $ArgumentList.Insert(0, $shimPath)
+            $ArgumentList.Insert(0, "/c")
+            $ArgumentList.Insert(0, "/d")
+            return $comSpec
+        }
+        if ($shimPath -match '\.ps1$') {
+            throw ("Cannot Process.Start PowerShell shim '{0}'. Install Codex so node_modules/@openai/codex is present, or set AGENT_LOOP_CODEX_BIN to a native binary." -f $shimPath)
+        }
+        if (Test-Path -LiteralPath $shimPath) {
+            return (Resolve-Path -LiteralPath $shimPath).Path
+        }
+    }
+
+    return $fileName
 }
 
 function Test-CodexAvailable {
@@ -371,17 +453,10 @@ function Invoke-CodexCommand {
 
     $fileName = $Bin
     $argList = [System.Collections.Generic.List[string]]::new()
-    if ($Bin -match '\.py$') {
-        $py = Get-Command python -ErrorAction SilentlyContinue
-        if ($null -eq $py) {
-            throw "python not found on PATH (required to run Codex mock/bin '$Bin')."
-        }
-        $fileName = $py.Source
-        $argList.Add($Bin) | Out-Null
-    }
     foreach ($a in $ArgumentList) {
         $argList.Add([string]$a) | Out-Null
     }
+    $fileName = Resolve-CodexProcessStart -Bin $Bin -ArgumentList $argList
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $fileName
