@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #197 partitions)
+
+- Data-exposure audit: forward holdout lock; purge/label embargo separated from completed-monthly feature warmup.
+
+### Added (P5 execution — #196 candidate freeze)
+
+- Candidate freeze prep synced to metrics schema **1.2**; Phase A audit resynced (#206–#210 closed). Regression evidence marked stale until re-run on final merged main.
+
 ### Added (P5 execution — #181 public/private gate)
 
 - Private research store contract and public leakage gates for P5 artifacts.

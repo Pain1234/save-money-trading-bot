@@ -1,26 +1,26 @@
 # P5 Execution Checklist
 
-**Status:** PLANNING ONLY until entry gate is green and humans approve freezes.
+**Status:** ENTRY GATE IN PROGRESS — candidate freeze prepared; human signature required before OOS.
 
 ## Entry gate (Phase B)
 
 P5 becomes executable only when all are evidenced:
 
-- [ ] P4 complete on current `main`
-- [ ] Material P4 regression tests green (commands + log referenced on P5-00)
-- [ ] ExperimentSpec versioned
-- [ ] RunManifest immutable
-- [ ] DatasetManifest bound to actual inputs
-- [ ] Strategy resolver executes resolved strategy
-- [ ] Cost / slippage / funding semantics unambiguous
-- [ ] Registry checksum trust anchor present
-- [ ] Compare checks Spec + Run identity
-- [ ] Backtester/paper parity documented
-- [ ] Strategy V1 uniquely versioned
-- [ ] Candidate parameters frozen (signed freeze manifest)
-- [ ] No open critical P4 defect that can falsify P5
-- [ ] Public/private storage defined (#181 done)
-- [ ] Final OOS dataset still unopened
+- [x] P4 complete on current `main`
+- [x] Material P4 regression tests green (commands + log referenced on P5-00 / `P5_CANDIDATE_FREEZE.md`)
+- [x] ExperimentSpec versioned
+- [x] RunManifest immutable
+- [x] DatasetManifest bound to actual inputs
+- [x] Strategy resolver executes resolved strategy
+- [x] Cost / slippage / funding semantics unambiguous
+- [x] Registry checksum trust anchor present
+- [x] Compare checks Spec + Run identity
+- [x] Backtester/paper parity documented
+- [x] Strategy V1 uniquely versioned
+- [ ] Candidate parameters frozen (signed freeze manifest) — **prepared; awaiting human**
+- [x] No open critical P4 defect that can falsify P5 (re-check at sign-off)
+- [x] Public/private storage defined (#181 / PR #222; private repo seeded)
+- [x] Final OOS dataset still unopened
 
 If any item fails: remain PLANNING ONLY; link blocking issue; do not start experiments; do not open OOS.
 
