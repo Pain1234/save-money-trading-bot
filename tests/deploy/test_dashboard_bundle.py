@@ -128,7 +128,7 @@ def test_dashboard_pages_use_monitoring_error_helper() -> None:
 
 def test_dashboard_auth_middleware_protects_routes() -> None:
     source = MIDDLEWARE_PATH.read_text(encoding="utf-8")
-    assert 'matcher: ["/dashboard/:path*"]' in source
+    assert 'matcher: ["/dashboard/:path*", "/api/research/:path*"]' in source
     assert "session.isLoggedIn" in source
 
 

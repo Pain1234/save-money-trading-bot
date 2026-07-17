@@ -164,8 +164,8 @@ def test_overview_from_registry(research_client: TestClient) -> None:
     assert body["experiment_count"] == 2
     assert body["completed_count"] == 1
     assert body["failed_count"] == 1
-    assert body["running_available"] is False
-    assert body["running_count"] is None
+    assert body["running_available"] is True
+    assert body["running_count"] == 0
     assert body["status_distribution"]["complete"] == 1
     assert body["unavailable"]["promotions"] == "Nicht verfügbar"
     assert len(body["recent_experiments"]) == 2

@@ -230,24 +230,33 @@ class ResearchReadService:
         )
 
     def overview(self) -> dict[str, Any]:
-        entries = self.latest_entries()
+        items = self.list_experiments()
         status_counts: dict[str, int] = {}
-        for e in entries:
-            status_counts[e.status] = status_counts.get(e.status, 0) + 1
-        recent = sorted(entries, key=lambda e: e.created_at, reverse=True)[:10]
-        strategies = sorted({e.strategy_version for e in entries if e.strategy_version})
+        for row in items:
+            st = str(row.get("status") or "")
+            status_counts[st] = status_counts.get(st, 0) + 1
+        recent = items[:10]
+        strategies = sorted(
+            {
+                str(row["strategy_version"])
+                for row in items
+                if row.get("strategy_version")
+            }
+        )
         known = sorted(known_strategy_ids())
+        running = status_counts.get("running", 0) + status_counts.get("queued", 0)
         return {
-            "experiment_count": len(entries),
-            "completed_count": status_counts.get("complete", 0),
+            "experiment_count": len(items),
+            "completed_count": status_counts.get("complete", 0)
+            + status_counts.get("completed", 0),
             "failed_count": status_counts.get("failed", 0),
             "invalidated_count": status_counts.get("invalidated", 0),
-            "running_count": None,  # no running status in registry V1
-            "running_available": False,
+            "running_count": running,
+            "running_available": True,
             "strategy_version_count": len(strategies),
             "known_strategy_ids": known,
             "status_distribution": status_counts,
-            "recent_experiments": [self._enrich(e).__dict__ for e in recent],
+            "recent_experiments": recent,
             "unavailable": {
                 "validated_strategies": _UNAVAILABLE,
                 "paper_trading_candidates": _UNAVAILABLE,
@@ -265,6 +274,7 @@ class ResearchReadService:
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         items = [self._enrich(e) for e in self.latest_entries()]
+        items = self._merge_job_summaries(items)
         if status:
             items = [i for i in items if i.status == status]
         if strategy_version:
@@ -275,11 +285,64 @@ class ResearchReadService:
                 i
                 for i in items
                 if needle in i.experiment_id.lower()
-                or needle in i.strategy_version.lower()
+                or needle in (i.strategy_version or "").lower()
                 or needle in i.run_id.lower()
             ]
         items.sort(key=lambda i: i.created_at, reverse=True)
         return [i.__dict__ for i in items]
+
+    def _merge_job_summaries(
+        self, items: list[ExperimentSummary]
+    ) -> list[ExperimentSummary]:
+        from research.jobs import ResearchJobStore
+
+        store = ResearchJobStore(self.root)
+        by_id = {i.experiment_id: i for i in items}
+        for job in store.list_jobs():
+            job = store.mark_stale_if_needed(job)
+            if job.experiment_id in by_id:
+                base = by_id[job.experiment_id]
+                # Prefer live job lifecycle status over registry complete/failed label.
+                if job.status in {"created", "queued", "running", "failed", "completed"}:
+                    by_id[job.experiment_id] = ExperimentSummary(
+                        **{
+                            **base.__dict__,
+                            "status": (
+                                "complete"
+                                if job.status == "completed"
+                                else job.status
+                            ),
+                            "run_id": job.run_id or base.run_id,
+                            "created_at": job.created_at or base.created_at,
+                        }
+                    )
+            else:
+                by_id[job.experiment_id] = ExperimentSummary(
+                    experiment_id=job.experiment_id,
+                    run_id=job.run_id or "",
+                    status=(
+                        "complete" if job.status == "completed" else job.status
+                    ),
+                    strategy_version="",
+                    dataset_version="",
+                    cost_model_version="",
+                    benchmark_ref="",
+                    created_at=job.created_at,
+                    symbols=[],
+                    time_range_start=None,
+                    time_range_end=None,
+                    timeframe=None,
+                    git_commit=None,
+                    duration_seconds=None,
+                    net_pnl=None,
+                    max_drawdown=None,
+                    closed_trades=None,
+                    hit_rate=None,
+                    profit_factor=None,
+                    integrity_ok=True,
+                    integrity_error=None,
+                )
+        return list(by_id.values())
 
     def experiment_detail(self, experiment_id: str) -> dict[str, Any]:
         entry = self.get_entry(experiment_id)

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ExperimentJobPanel } from "@/components/research/ExperimentJobPanel";
 import { ResearchCharts } from "@/components/research/ResearchCharts";
 import { Card } from "@/components/ui/Card";
 import { PaperApiError } from "@/lib/paper-api/client";
@@ -63,9 +64,17 @@ export default async function ResearchExperimentDetailPage({
             {metadata.experiment_id}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            {displayValue(metadata.strategy_version)} · {displayValue(metadata.status)}
+            {displayValue(metadata.strategy_version)} ·{" "}
+            {displayValue(detail.job?.status ?? metadata.status)}
           </p>
         </div>
+
+        {detail.job && (
+          <ExperimentJobPanel
+            experimentId={metadata.experiment_id}
+            initialJob={detail.job}
+          />
+        )}
 
         <Card padding="sm">
           <h2 className="mb-3 text-sm font-medium">Metadaten</h2>

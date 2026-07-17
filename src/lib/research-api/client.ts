@@ -87,6 +87,15 @@ export interface ResearchExperimentDetail {
   drawdown: ResearchSeriesPoint[];
   artifacts: Record<string, boolean>;
   integrity: { ok: boolean; error: string | null };
+  job?: {
+    status: string;
+    started_at: string | null;
+    finished_at: string | null;
+    elapsed_seconds: number | null;
+    error: string | null;
+    error_detail: string | null;
+    worker_alive?: boolean;
+  } | null;
 }
 
 export function getResearchErrorMessage(error: unknown): string {

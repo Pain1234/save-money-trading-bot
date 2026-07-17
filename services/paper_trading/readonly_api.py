@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from research.api import is_research_write_path
 from research.api import router as research_router
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -48,10 +49,14 @@ app.include_router(research_router)
 
 class ReadonlyMethodMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):  # type: ignore[no-untyped-def]
-        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        method = request.method
+        path = request.url.path
+        # Research Strategy Lab write surface (Issue #242) — still no paper/live orders.
+        if method == "POST" and is_research_write_path(path):
+            return await call_next(request)
+        if method not in {"GET", "HEAD", "OPTIONS"}:
             return JSONResponse(status_code=405, content={"detail": "method not allowed"})
         return await call_next(request)
-
 
 app.add_middleware(ReadonlyMethodMiddleware)
 app.add_middleware(PerformanceLoggingMiddleware)

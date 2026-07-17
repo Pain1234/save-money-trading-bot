@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Not started | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine und Research Workspace V1 | **In flight** (engine complete; read-only workspace slice #240) | No |
+| P4 | Research Engine und Research Workspace V1 | **In flight** (engine + read UI; Strategy Lab/start #242) | No |
 | P5 | Honest Validation of Trend Strategy V1 | **Planning** (honest validation protocol; no OOS opened) | No |
 | P6 | Paper Trading Soak | Not started (Railway paper deploy in progress) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Not started (planning only) | No |
@@ -400,20 +400,27 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] Missing values as „Nicht verfügbar“ / controlled errors; no productive mock data
 - [x] Path-traversal protection; unknown experiment → 404; no live-order access from Research
 
+#### Research Workspace — Strategy Lab + start (#242)
+
+- [x] Strategy Lab route `/dashboard/research/experiments/new`
+- [x] Write API: strategies/schema/datasets, create, start, status (POST allow-listed on private dashboard API)
+- [x] Filesystem `ResearchJobStore` + in-process worker wrapping `run_experiment` (no Celery/Redis)
+- [x] Same Spec/Runner/Registry/artifacts as CLI; double-start prevented; stale running after restart documented
+- [x] Detail job panel with polling; Overview CTA „Neues Experiment“
+
 #### Still open (separate issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
 
-- [ ] P4.6 Strategy Lab und Experiment-Konfiguration (prefer split: form shell / spec builder / pickers)
-- [ ] P4.6 Async Research Runs und Job-Status (prefer split: job model / worker / UI controls)
 - [ ] P4.7 Experiment- und Strategie-Vergleich
 - [ ] P4.7 Robustness-Orchestrierung
 - [ ] P4.7 Versionierter Gate Evaluator und Gate-Persistenz
 - [ ] P4.8 End-to-End-, Reproduzierbarkeits- und UI-Abnahmetests
+- [ ] Cancel / Retry / Re-run (explicitly deferred)
 
 ### Binding dependency chain
 
 ```
 P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → engine done
-→ #240 read-only workspace → P4.6…P4.8 → P4 done → P5
+→ #240 read-only workspace → #242 Strategy Lab + start → P4.7…P4.8 → P4 done → P5
 ```
 
 Docs preparation may run in parallel from #142.
@@ -424,7 +431,7 @@ Docs preparation may run in parallel from #142.
 - [x] Acceptance/rejection criteria applied consistently (process/DoD; enforced via issue/PR template — ongoing discipline)
 - [x] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
 - [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
-- [ ] Research Workspace usable for browsing real experiments (API + UI) without a parallel system
+- [x] Research Workspace usable for browsing real experiments (API + UI) without a parallel system
 - [ ] Lab / async runs / compare / robustness / gates delivered or explicitly deferred with issues
 
 ### Stop criteria
@@ -435,8 +442,8 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism; UI inventing metrics not produced by the engine
 
-**Current gap:** Engine complete on `main`. Read-only workspace (#240) in progress / landing.
-Strategy Lab, async runs, compare, robustness orchestration, and gate evaluator remain open.
+**Current gap:** Engine + read-only workspace on `main`. Strategy Lab + start (#242) in flight.
+Compare, robustness orchestration, and gate evaluator remain open.
 **P5 remains blocked** until Engine, Read-API, and Workspace are jointly usable enough.
 
 ---
