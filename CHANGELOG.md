@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 planning — honest validation)
+
+- `docs/research/p5/` planning pack: Phase A audit, data-exposure audit template, candidate freeze template, validation protocol, decision rules (`ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE`), public/private artifact classification, execution checklist.
+- Roadmap P5 section updated for honest-validation purpose, dependency chain, and milestone DoD (no OOS opened; no strategy parameter changes).
+
 ### Fixed (P2.5 — Issue #121)
 
 - Confirmed ~2.13 s FastAPI residual as cross-region placement: moved paper-trading-api from sfo to europe-west4-drams3a with measured before/after Layer C (docs/operations/dashboard-fastapi-residual-121.md). Residual p95 fell ~97% on wallet/summary/status; API left co-located with Postgres/Dashboard.
