@@ -20,6 +20,7 @@ def test_dry_run_identity(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
             dry_run=True,
         )
     )
@@ -37,6 +38,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=out_root,
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
             dry_run=False,
         )
     )
@@ -60,6 +62,9 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
     assert costs["gross_net_required"] is True
     assert "fee_model_version" in costs
+    from research.costs import COST_MODEL_VERSION
+
+    assert costs["cost_model_version"] == COST_MODEL_VERSION
     verify_checksums(run_dir)
 
     again = run_experiment(
@@ -68,19 +73,24 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=out_root,
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     assert again.status == "failed"
     assert again.error is not None
 
     registry = ExperimentRegistry(out_root)
+    from research.__main__ import _cost_model_version_from_run
+
+    registered_cost_ver = _cost_model_version_from_run(run_dir)
+    assert registered_cost_ver == COST_MODEL_VERSION
     registry.register_complete(
         experiment_id=outcome.experiment_id,
         run_id=outcome.run_id,
         attempt_id=outcome.attempt_id,
         strategy_version=spec.strategy_version,
         dataset_version=spec.dataset_manifest_ref.dataset_id,
-        cost_model_version="1.0",
+        cost_model_version=registered_cost_ver,
         benchmark_ref=spec.benchmark,
         artifact_path=run_dir,
         checksums=load_checksums(run_dir),
@@ -88,6 +98,9 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     listed = registry.list_entries()
     assert len(listed) == 1
     assert listed[0].run_id == outcome.run_id
+    assert listed[0].cost_model_version == COST_MODEL_VERSION
+    man = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    assert listed[0].cost_model_version == man["cost_model_version"]
 
     sidecar = registry.invalidate(
         outcome.run_id,

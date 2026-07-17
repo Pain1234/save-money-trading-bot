@@ -33,6 +33,8 @@ def _metrics(**overrides: object) -> ResearchMetrics:
             benchmark_id="buy_and_hold_BTC",
             benchmark_version="1.0",
             calculation="test",
+            cost_model_version="1.1",
+            gross_return=Decimal("0"),
         ),
         benchmark_result=Decimal("0"),
     )
@@ -41,17 +43,18 @@ def _metrics(**overrides: object) -> ResearchMetrics:
 
 
 def test_current_versions_bumped() -> None:
-    assert METRICS_SCHEMA_VERSION == "1.1"
+    assert METRICS_SCHEMA_VERSION == "1.2"
     assert COST_MODEL_VERSION == "1.1"
     assert "1.0" in SUPPORTED_METRICS_SCHEMA_VERSIONS
     assert "1.1" in SUPPORTED_METRICS_SCHEMA_VERSIONS
+    assert "1.2" in SUPPORTED_METRICS_SCHEMA_VERSIONS
     assert "1.0" in SUPPORTED_COST_MODEL_VERSIONS
     assert "1.1" in SUPPORTED_COST_MODEL_VERSIONS
 
 
 def test_schema_1_1_enforces_gross_identity() -> None:
     m = _metrics()
-    assert m.schema_version == "1.1"
+    assert m.schema_version == "1.2"
     with pytest.raises(ValueError, match="gross_pnl must equal"):
         _metrics(gross_pnl=Decimal("1"))
 

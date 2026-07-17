@@ -9,9 +9,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-METRICS_SCHEMA_VERSION = "1.1"
-# 1.0 = pre-funding_costs field; 1.1 = funding_costs + gross identity includes funding
-SUPPORTED_METRICS_SCHEMA_VERSIONS: frozenset[str] = frozenset({"1.0", "1.1"})
+from research.costs import SUPPORTED_COST_MODEL_VERSIONS
+
+METRICS_SCHEMA_VERSION = "1.2"
+# 1.0 = pre-funding_costs; 1.1 = funding identity (benchmark_result was gross);
+# 1.2 = benchmark_result is net + required BenchmarkRef.gross_return/cost_model_version
+SUPPORTED_METRICS_SCHEMA_VERSIONS: frozenset[str] = frozenset({"1.0", "1.1", "1.2"})
 ReportStatus = Literal["complete", "incomplete", "invalid"]
 
 
@@ -40,6 +43,10 @@ class BenchmarkRef(BaseModel):
     period_parity: bool = True
     dataset_parity: bool = True
     cost_parity: bool = True
+    # Versioned cost pin + gross/net (#208). gross_return is price-only;
+    # net is carried as ResearchMetrics.benchmark_result.
+    cost_model_version: str = Field(default="", description="Cost model applied for net")
+    gross_return: Decimal | None = None
 
 
 class ResearchMetrics(BaseModel):
@@ -86,7 +93,50 @@ class ResearchMetrics(BaseModel):
             if self.funding_assumption.strip() == "":
                 msg = "funding_assumption must be non-empty for complete metrics"
                 raise ValueError(msg)
-            if self.schema_version == "1.1":
+            if self.schema_version in {"1.2"}:
+                if self.benchmark_result is None:
+                    msg = "benchmark_result required for complete metrics schema 1.2+"
+                    raise ValueError(msg)
+                cost_ver = self.benchmark.cost_model_version.strip()
+                if not cost_ver:
+                    msg = (
+                        "benchmark.cost_model_version required for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if cost_ver not in SUPPORTED_COST_MODEL_VERSIONS:
+                    msg = (
+                        "benchmark.cost_model_version "
+                        f"{cost_ver!r} is not supported; "
+                        f"supported={sorted(SUPPORTED_COST_MODEL_VERSIONS)}"
+                    )
+                    raise ValueError(msg)
+                if self.benchmark.gross_return is None:
+                    msg = (
+                        "benchmark.gross_return required for complete "
+                        "metrics schema 1.2+ (benchmark_result is net)"
+                    )
+                    raise ValueError(msg)
+                # Loaded complete 1.2 artifacts must keep parity claims honest.
+                if not self.benchmark.cost_parity:
+                    msg = (
+                        "benchmark.cost_parity must be true for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if not self.benchmark.period_parity:
+                    msg = (
+                        "benchmark.period_parity must be true for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if not self.benchmark.dataset_parity:
+                    msg = (
+                        "benchmark.dataset_parity must be true for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+            if self.schema_version in {"1.1", "1.2"}:
                 # Gross must restore fees + slippage + funding (identity contract).
                 expected = compute_gross_pnl(
                     self.net_pnl,
@@ -97,7 +147,7 @@ class ResearchMetrics(BaseModel):
                 if self.gross_pnl != expected:
                     msg = (
                         "gross_pnl must equal net_pnl + fees + slippage_costs "
-                        "+ funding_costs for schema 1.1"
+                        "+ funding_costs for schema 1.1+"
                     )
                     raise ValueError(msg)
         return self
@@ -194,9 +244,10 @@ def render_report_md(metrics: ResearchMetrics) -> str:
         (
             f"- benchmark: `{b.benchmark_id}@{b.benchmark_version}` "
             f"(period_parity={b.period_parity}, dataset_parity={b.dataset_parity}, "
-            f"cost_parity={b.cost_parity})"
+            f"cost_parity={b.cost_parity}, cost_model_version={b.cost_model_version})"
         ),
-        f"- benchmark_result: `{metrics.benchmark_result}`",
+        f"- benchmark_gross_return: `{b.gross_return}`",
+        f"- benchmark_result (net): `{metrics.benchmark_result}`",
         f"- calculation: {b.calculation}",
         "",
     ]

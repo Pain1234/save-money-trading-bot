@@ -19,6 +19,43 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _cost_model_version_from_run(run_dir: Path) -> str:
+    """Require matching sealed cost_model_version from costs.json and RunManifest.
+
+    Fail closed: both artifacts must exist with a non-empty string version, and
+    the two values must agree. Never substitute the runtime constant.
+    """
+    costs_path = run_dir / "costs.json"
+    manifest_path = run_dir / "run_manifest.json"
+    if not costs_path.is_file():
+        raise ValueError(f"registration blocked: missing {costs_path.name}")
+    if not manifest_path.is_file():
+        raise ValueError(f"registration blocked: missing {manifest_path.name}")
+
+    costs_raw = json.loads(costs_path.read_text(encoding="utf-8"))
+    manifest_raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(costs_raw, dict) or not isinstance(manifest_raw, dict):
+        raise ValueError("registration blocked: costs/manifest must be JSON objects")
+
+    def _require_version(raw: dict, label: str) -> str:
+        value = raw.get("cost_model_version")
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"registration blocked: {label} lacks a non-empty string "
+                "cost_model_version"
+            )
+        return value.strip()
+
+    costs_ver = _require_version(costs_raw, "costs.json")
+    manifest_ver = _require_version(manifest_raw, "run_manifest.json")
+    if costs_ver != manifest_ver:
+        raise ValueError(
+            "registration blocked: cost_model_version mismatch between "
+            f"costs.json ({costs_ver!r}) and run_manifest.json ({manifest_ver!r})"
+        )
+    return costs_ver
+
+
 def _load_bundle(path: Path) -> HistoricalDataBundle:
     raw = json.loads(path.read_text(encoding="utf-8"))
     return HistoricalDataBundle.model_validate(raw)
@@ -82,13 +119,18 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(outcome.__dict__, default=str))
         if outcome.status == "complete" and outcome.artifact_path is not None:
             registry = ExperimentRegistry(Path(args.artifacts_root))
+            try:
+                cost_ver = _cost_model_version_from_run(outcome.artifact_path)
+            except ValueError as exc:
+                print(json.dumps({"ok": False, "error": str(exc)}))
+                return 1
             registry.register_complete(
                 experiment_id=outcome.experiment_id,
                 run_id=outcome.run_id,
                 attempt_id=outcome.attempt_id,
                 strategy_version=spec.strategy_version,
                 dataset_version=spec.dataset_manifest_ref.dataset_id,
-                cost_model_version="1.0",
+                cost_model_version=cost_ver,
                 benchmark_ref=spec.benchmark,
                 artifact_path=outcome.artifact_path,
                 checksums=load_checksums(outcome.artifact_path),
