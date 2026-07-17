@@ -316,6 +316,7 @@ function Get-CodexChildEnvironment {
             "AGENT_LOOP_REQUIRE_AUTH",
             "AGENT_LOOP_MOCK_AUTH_OK",
             "AGENT_LOOP_AUTH_ENV_SEEN_FILE",
+            "AGENT_LOOP_AUTH_KEYS_FILE",
             "AGENT_LOOP_MOCK_STDERR_NOISE",
             "AGENT_LOOP_CODEX_STDERR_NOISE",
             "AGENT_LOOP_MOCK_FLOOD_STREAMS",
@@ -1246,7 +1247,6 @@ $wsInput
         $testMode = ($env:AGENT_LOOP_TEST_MODE -eq "1")
         $skipOsIsolation = $false
         $isUnix = $false
-        $windowsLiveMode = $false
 
         if ($wantSkipOs -and -not $testMode) {
             Write-ReviewFailedResult -ResultPath $resultPath `
@@ -1265,16 +1265,6 @@ $wsInput
         elseif ($PSVersionTable.PSVersion.Major -ge 6 -and ($IsLinux -or $IsMacOS)) {
             $isUnix = $true
         }
-        elseif (
-            ($PSVersionTable.PSVersion.Major -ge 6 -and $IsWindows) -or
-            ($env:OS -match 'Windows')
-        ) {
-            # Windows cannot chmod 000 the repo. Live reviews still use the
-            # allowlisted temp workspace + Codex --sandbox read-only + scrubbed env.
-            $windowsLiveMode = $true
-            Write-Warning ("Windows live review: chmod OS isolation unavailable; " +
-                "relying on allowlisted workspace + Codex read-only sandbox.")
-        }
         else {
             # Probe uname only when the command exists (avoids terminating errors on Windows).
             $unameCmd = Get-Command uname -ErrorAction SilentlyContinue
@@ -1290,23 +1280,24 @@ $wsInput
             }
         }
 
-        if (-not $skipOsIsolation -and -not $isUnix -and -not $windowsLiveMode) {
+        if (-not $skipOsIsolation -and -not $isUnix) {
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "OS isolation not available on this platform." `
+                -Summary "OS isolation not available on this platform (live Windows reviews are fail-closed)." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
                 -ReviewNotes @(
-                    "Live Codex reviews require Linux/macOS (chmod isolation) or Windows",
-                    "(allowlisted workspace + Codex --sandbox read-only).",
-                    "Set AGENT_LOOP_SKIP_OS_ISOLATION=1 and AGENT_LOOP_TEST_MODE=1 only for tests/mocks."
+                    "Live Codex reviews require Linux/macOS chmod isolation (e.g. WSL or CI).",
+                    "Windows cannot enforce the repo read lockdown used by this gate.",
+                    "Use WSL/Linux CI for live reviews, or -SkipCodex -MockResultPath for local tests.",
+                    "Set AGENT_LOOP_SKIP_OS_ISOLATION=1 and AGENT_LOOP_TEST_MODE=1 only for mocks."
                 )
             Write-Host "REVIEW_FAILED: OS isolation not available on this platform"
             exit $Script:ExitReviewFailed
         }
 
         # Ephemeral CODEX_HOME outside the review workspace so Codex cannot browse
-        # the real ~/.codex tree. Codex CLI 0.144+ ChatGPT login needs auth.json
-        # (id_token + access_token); env-only CODEX_ACCESS_TOKEN is insufficient.
-        # Copy a private auth.json into this temp home, then delete the home after.
+        # the real ~/.codex tree. Codex CLI 0.144+ ChatGPT login needs a minimized
+        # auth.json (id_token + access_token); env-only CODEX_ACCESS_TOKEN is insufficient.
+        # Write ONLY minimized tokens (never full auth / API keys), then delete after.
         $authHomeDir = Join-Path ([System.IO.Path]::GetTempPath()) (
             "codex-auth-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
         )
@@ -1350,11 +1341,18 @@ $wsInput
         }
 
         if (-not [string]::IsNullOrWhiteSpace($authSrc)) {
-            try {
-                Copy-Item -LiteralPath $authSrc -Destination (Join-Path $authHomeDir "auth.json") -Force
+            # Minimized auth.json only (never full user auth / never OPENAI_API_KEY).
+            $minimizeScript = Join-Path $Script:AgentLoopDir "minimize_codex_auth.py"
+            $authDest = Join-Path $authHomeDir "auth.json"
+            $prevMinEap = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            & python $minimizeScript --auth-json $authSrc --out-file $authDest 2>$null | Out-Null
+            $minExit = $LASTEXITCODE
+            $ErrorActionPreference = $prevMinEap
+            if ($minExit -eq 0 -and (Test-Path -LiteralPath $authDest)) {
                 $authJsonCopied = $true
             }
-            catch {
+            else {
                 $authJsonCopied = $false
             }
 
@@ -1449,6 +1447,12 @@ $wsInput
                 -Environment $codexChildEnv
         }
         catch {
+            try {
+                if (-not [string]::IsNullOrWhiteSpace($authHomeDir) -and (Test-Path -LiteralPath $authHomeDir)) {
+                    Remove-Item -LiteralPath $authHomeDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            catch { }
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "Cannot apply required Codex read-only sandbox flags: $($_.Exception.Message)" `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `

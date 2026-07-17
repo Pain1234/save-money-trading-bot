@@ -468,7 +468,12 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     argv_file = tmp_path / "codex-argv.txt"
     stdin_file = tmp_path / "codex-stdin.txt"
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"test-token","id_token":"test-id",'
+        '"refresh_token":"test-refresh","account_id":"test-acct"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
+    )
     mock_codex = fixtures_dir / "mock_codex.py"
     live_repo = _init_clean_live_repo(tmp_path / "readonly")
     before = subprocess.run(
@@ -536,7 +541,12 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     stdin_file = tmp_path / "codex-stdin.txt"
     auth_seen = tmp_path / "auth-env-seen.txt"
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"test-token","id_token":"test-id",'
+        '"refresh_token":"test-refresh","account_id":"test-acct"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
+    )
     mock_codex = fixtures_dir / "mock_codex.py"
     live_repo = _init_clean_live_repo(tmp_path / "wsauth")
     env = _gate_env(
@@ -608,7 +618,12 @@ def test_14b_keep_workspace_does_not_keep_auth(
     home_file = tmp_path / "codex-home.txt"
     stdin_file = tmp_path / "codex-stdin.txt"
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"tokens":{"access_token":"test-token"}}\n', encoding="utf-8")
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"test-token","id_token":"test-id",'
+        '"refresh_token":"test-refresh","account_id":"test-acct"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
+    )
     mock_codex = fixtures_dir / "mock_codex.py"
     live_repo = _init_clean_live_repo(tmp_path / "keepws")
     env = _gate_env(
@@ -893,7 +908,7 @@ def test_allow_diff_file_alone_insufficient(repo_root, fixtures_dir, gate_ps1):
 def test_productive_diff_uses_binary_two_dot_range(repo_root, gate_ps1, fixtures_dir, tmp_path):
     """5. Productive path (no DiffFile) runs git diff --binary merge-base..head via mock Codex."""
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"tokens":{"access_token":"tok-bin"}}\n', encoding="utf-8")
+    auth_src.write_text('{"auth_mode":"chatgpt","tokens":{"access_token":"tok-bin","id_token":"id-bin","refresh_token":"r-bin","account_id":"a-bin"},"OPENa-binI_a-binPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8")
     live_repo = _init_clean_live_repo(tmp_path / "binary")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
@@ -939,7 +954,7 @@ def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1
     env_keys = tmp_path / "env-keys.txt"
     temp_vals = tmp_path / "temp-vals.txt"
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"tokens":{"access_token":"tok-scrub"}}\n', encoding="utf-8")
+    auth_src.write_text('{"auth_mode":"chatgpt","tokens":{"access_token":"tok-scrub","id_token":"id-scrub","refresh_token":"r-scrub","account_id":"a-scrub"},"OPENa-scrubI_a-scrubPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8")
     mock_codex = fixtures_dir / "mock_codex.py"
     live_repo = _init_clean_live_repo(tmp_path / "scrub")
     env = _gate_env(
@@ -1028,7 +1043,7 @@ def test_live_codex_only_one_auth_key(repo_root, fixtures_dir, gate_ps1, tmp_pat
 def test_env_clear_failure_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
     """Simulated Environment.Clear failure → REVIEW_FAILED exit 3 (no blocklist fallback)."""
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"tokens":{"access_token":"tok"}}\n', encoding="utf-8")
+    auth_src.write_text('{"auth_mode":"chatgpt","tokens":{"access_token":"tok","id_token":"id","refresh_token":"r","account_id":"a"},"OPENaI_aPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8")
     live_repo = _init_clean_live_repo(tmp_path / "clearfail")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
@@ -1192,7 +1207,7 @@ def test_auth_json_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_pa
         capture_output=True,
     )
     (repo / "auth.json").write_text(
-        '{"tokens":{"access_token":"leak"}}\n', encoding="utf-8"
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"leak","id_token":"id-leak","refresh_token":"r-leak","account_id":"a-leak"},"OPENa-leakI_a-leakPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8"
     )
     subprocess.run(["git", "add", "auth.json"], cwd=repo, check=True, capture_output=True)
     subprocess.run(
@@ -1212,3 +1227,75 @@ def test_auth_json_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_pa
     assert _read_verdict(repo_root) == "REVIEW_FAILED"
     combined = (proc.stdout or "") + (proc.stderr or "")
     assert "leak" not in combined
+
+def test_minimized_auth_json_strips_api_key_fields(
+    repo_root, fixtures_dir, gate_ps1, tmp_path
+):
+    """Ephemeral auth.json must not contain OPENAI_API_KEY / extra secrets."""
+    home_file = tmp_path / "codex-home.txt"
+    keys_file = tmp_path / "auth-keys.txt"
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"test-token","id_token":"test-id",'
+        '"refresh_token":"test-refresh","account_id":"test-acct"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy","extra":"nope"}\n',
+        encoding="utf-8",
+    )
+    mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "minauth")
+    env = _gate_env(
+        AGENT_LOOP_CODEX_BIN=str(mock_codex),
+        AGENT_LOOP_CODEX_HOME_FILE=str(home_file),
+        AGENT_LOOP_AUTH_KEYS_FILE=str(keys_file),
+        AGENT_LOOP_SKIP_OS_ISOLATION="1",
+        AGENT_LOOP_AUTH_JSON_SOURCE=str(auth_src),
+        AGENT_LOOP_REQUIRE_AUTH="1",
+        AGENT_LOOP_KEEP_AUTH="1",
+    )
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert keys_file.is_file()
+    keys_text = keys_file.read_text(encoding="utf-8")
+    assert "OPENAI_API_KEY" not in keys_text
+    assert "extra" not in keys_text
+    assert "sk-should-not-copy" not in keys_text
+    assert "top=auth_mode,tokens" in keys_text.replace(" ", "")
+    assert "id_token" in keys_text
+    codex_home = Path(home_file.read_text(encoding="utf-8").strip())
+    assert not (codex_home / "auth.json").exists()
+    shutil.rmtree(codex_home, ignore_errors=True)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows fail-closed path only")
+def test_windows_live_reviews_fail_closed_without_unix_isolation(
+    repo_root, fixtures_dir, gate_ps1, tmp_path
+):
+    """Live Windows reviews must fail closed when chmod OS isolation is unavailable."""
+    auth_src = tmp_path / "auth.json"
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"t","id_token":"i"}}\n',
+        encoding="utf-8",
+    )
+    mock_codex = fixtures_dir / "mock_codex.py"
+    live_repo = _init_clean_live_repo(tmp_path / "winfail")
+    env = dict(os.environ)
+    env.update(
+        {
+            "AGENT_LOOP_CODEX_BIN": str(mock_codex),
+            "AGENT_LOOP_AUTH_JSON_SOURCE": str(auth_src),
+            "AGENT_LOOP_REQUIRE_AUTH": "1",
+        }
+    )
+    env.pop("AGENT_LOOP_TEST_MODE", None)
+    env.pop("AGENT_LOOP_SKIP_OS_ISOLATION", None)
+    env.pop("AGENT_LOOP_ALLOW_DIFF_FILE", None)
+    proc = _run_live_gate(gate_ps1=gate_ps1, live_repo=live_repo, env=env)
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "OS isolation not available" in combined
+    # Result JSON is written next to the gate script (PSScriptRoot), not the temp repo.
+    data = json.loads(_result_path(repo_root).read_text(encoding="utf-8"))
+    assert data["verdict"] == "REVIEW_FAILED"
+    assert "fail-closed" in (data.get("summary") or "").lower() or "OS isolation" in (
+        data.get("summary") or ""
+    )

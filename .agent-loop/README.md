@@ -144,8 +144,9 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
   `--ignore-user-config` (plus `--ask-for-approval never` when the CLI still advertises it,
   `--ignore-rules` / `--ephemeral` / `--output-last-message` when supported). Missing required
   sandbox flags → `REVIEW_FAILED`.
-- **Windows:** `chmod` OS isolation is unavailable. Live reviews still run using the allowlisted
-  temp workspace + Codex `--sandbox read-only` + scrubbed child env (no `uname` probe crash).
+- **Windows:** Live reviews are **fail-closed**. `chmod` OS isolation is unavailable;
+  run under WSL/Linux CI for live Codex, or use `-SkipCodex -MockResultPath` locally.
+  The `uname` probe no longer crashes; missing isolation yields a clear `REVIEW_FAILED`.
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
 - Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_TEST_MODE=1` + `AGENT_LOOP_SKIP_OS_ISOLATION=1`, `AGENT_LOOP_ALLOW_DIFF_FILE=1` for `-DiffFile`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.
@@ -198,6 +199,7 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 | `run-review-loop.ps1` | Alias wrapper |
 | `build_review_workspace.py` | Allowlisted Codex workspace (secret isolation) |
 | `extract_codex_auth_env.py` | Map auth.json → `CODEX_ACCESS_TOKEN` / `CODEX_API_KEY` (never `OPENAI_API_KEY`) |
+| `minimize_codex_auth.py` | Write minimized ChatGPT token auth.json for ephemeral `CODEX_HOME` |
 | `codex-review-prompt.md` | Codex instructions |
 | `codex-review-schema.json` | JSON Schema draft-07 |
 | `secret_scan.py` | Pre-Codex secret patterns |
