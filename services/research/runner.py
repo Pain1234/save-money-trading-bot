@@ -33,6 +33,7 @@ from research.identity import RunIdentityInputs, new_attempt_id
 from research.metrics_contract import (
     METRICS_SCHEMA_VERSION,
     ResearchMetrics,
+    compute_gross_pnl,
     save_metrics_and_report,
 )
 from research.run_manifest import build_run_manifest, dumps_run_manifest
@@ -104,7 +105,13 @@ def _metrics_from_result(
     )
     end_capital = result.end_capital
     net_pnl = end_capital - spec.starting_capital
-    gross_pnl = net_pnl + result.total_fees + result.total_slippage
+    funding_costs = result.total_funding
+    gross_pnl = compute_gross_pnl(
+        net_pnl,
+        result.total_fees,
+        result.total_slippage,
+        funding_costs,
+    )
     benchmark_ref, benchmark_result = compute_benchmark_result(spec, bundle)
     return ResearchMetrics(
         start_capital=spec.starting_capital,
@@ -113,6 +120,7 @@ def _metrics_from_result(
         net_pnl=net_pnl,
         fees=result.total_fees,
         slippage_costs=result.total_slippage,
+        funding_costs=funding_costs,
         funding_assumption=funding_assumption,
         signal_count=len(result.strategy_evaluations),
         order_count=len(result.trades),

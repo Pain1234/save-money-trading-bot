@@ -10,7 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from research.experiment_spec import ExperimentSpec
 
-COST_MODEL_VERSION = "1.0"
+COST_MODEL_VERSION = "1.1"
+# 1.0 = fee/slippage/funding fields without assumed_rate application semantics
+# 1.1 = assumed_rate applied per daily candle when enabled; funding_semantics in costs.json
+SUPPORTED_COST_MODEL_VERSIONS: frozenset[str] = frozenset({"1.0", "1.1"})
 
 
 class CostScenario(BaseModel):
@@ -104,5 +107,12 @@ def cost_manifest_fields(spec: ExperimentSpec) -> dict[str, Any]:
             if scenario.funding_assumed_rate is not None
             else None
         ),
+        "funding_semantics": (
+            "assumed_rate_per_daily_candle"
+            if scenario.funding_enabled
+            else "disabled"
+        ),
         "gross_net_required": True,
+        "gross_pnl_identity": "net + fees + slippage + funding_costs",
+        "supported_cost_model_versions": sorted(SUPPORTED_COST_MODEL_VERSIONS),
     }

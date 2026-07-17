@@ -9,8 +9,23 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-METRICS_SCHEMA_VERSION = "1.0"
+METRICS_SCHEMA_VERSION = "1.1"
+# 1.0 = pre-funding_costs field; 1.1 = funding_costs + gross identity includes funding
+SUPPORTED_METRICS_SCHEMA_VERSIONS: frozenset[str] = frozenset({"1.0", "1.1"})
 ReportStatus = Literal["complete", "incomplete", "invalid"]
+
+
+def compute_gross_pnl(
+    net_pnl: Decimal,
+    fees: Decimal,
+    slippage_costs: Decimal,
+    funding_costs: Decimal,
+) -> Decimal:
+    """Gross PnL restores all cost components embedded in net.
+
+    Identity: ``gross = net + fees + slippage + funding``.
+    """
+    return net_pnl + fees + slippage_costs + funding_costs
 
 
 class BenchmarkRef(BaseModel):
@@ -40,6 +55,7 @@ class ResearchMetrics(BaseModel):
     net_pnl: Decimal
     fees: Decimal
     slippage_costs: Decimal
+    funding_costs: Decimal = Decimal("0")
     funding_assumption: str
     signal_count: int = Field(ge=0)
     order_count: int = Field(ge=0)
@@ -59,11 +75,31 @@ class ResearchMetrics(BaseModel):
 
     @model_validator(mode="after")
     def _costs_required_for_complete(self) -> ResearchMetrics:
+        if self.schema_version not in SUPPORTED_METRICS_SCHEMA_VERSIONS:
+            msg = (
+                f"unsupported metrics schema_version {self.schema_version!r}; "
+                f"supported={sorted(SUPPORTED_METRICS_SCHEMA_VERSIONS)}"
+            )
+            raise ValueError(msg)
         if self.status == "complete":
             # Fees/slippage may be zero but must be present (Decimal fields enforce).
             if self.funding_assumption.strip() == "":
                 msg = "funding_assumption must be non-empty for complete metrics"
                 raise ValueError(msg)
+            if self.schema_version == "1.1":
+                # Gross must restore fees + slippage + funding (identity contract).
+                expected = compute_gross_pnl(
+                    self.net_pnl,
+                    self.fees,
+                    self.slippage_costs,
+                    self.funding_costs,
+                )
+                if self.gross_pnl != expected:
+                    msg = (
+                        "gross_pnl must equal net_pnl + fees + slippage_costs "
+                        "+ funding_costs for schema 1.1"
+                    )
+                    raise ValueError(msg)
         return self
 
 
@@ -149,6 +185,7 @@ def render_report_md(metrics: ResearchMetrics) -> str:
         f"- net_pnl: `{metrics.net_pnl}`",
         f"- fees: `{metrics.fees}`",
         f"- slippage_costs: `{metrics.slippage_costs}`",
+        f"- funding_costs: `{metrics.funding_costs}`",
         f"- funding_assumption: `{metrics.funding_assumption}`",
         f"- closed_trades: `{metrics.closed_trades}`",
         f"- hit_rate: `{metrics.hit_rate}`",

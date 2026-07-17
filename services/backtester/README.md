@@ -97,10 +97,16 @@ No positive slippage in favor of the strategy.
 
 ## Funding
 
-- Disabled by default (`funding_enabled = false` in result when off)
-- When enabled: funding events applied only while position is open
-- No future funding values; notional = quantity × entry price at event time
-- All payments recorded per trade
+- Disabled by default (`funding_enabled = false` / `FundingModel.enabled = false`)
+- When enabled **with** `FundingModel.assumed_rate`: apply that constant rate **once
+  per daily candle** while a position is open (research path). Bundle
+  `FundingEvent`s are ignored in this mode.
+- When enabled **without** `assumed_rate`: apply matching `FundingEvent`s from the
+  bundle whose timestamps fall inside the candle window (legacy/event path).
+- No future funding values; notional = quantity × entry price
+- All payments recorded per trade and in `total_funding`
+
+See also `docs/research/FUNDING.md`.
 
 ## Multi-Asset Sorting
 
