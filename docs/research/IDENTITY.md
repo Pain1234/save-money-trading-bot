@@ -21,3 +21,7 @@
 Two executions of the same Spec on the same commit/dataset must share `run_id` and produce identical **semantic** artifact hashes. `attempt_id` and timestamps are excluded from semantic hashes.
 
 Implemented by `research.repro.compare_semantic_run_dirs` and enforced in CI via `tests/research/test_double_run_repro.py` (job `research-repro`).
+
+## Git commit pin (#207)
+
+Complete research runs require a resolvable `git rev-parse HEAD` and a **clean** working tree by default. The runner never emits `git_commit=unknown`. Unit tests may set `RunRequest.allow_dirty_git=True`; the default CLI does not expose that flag.

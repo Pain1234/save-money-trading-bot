@@ -2,10 +2,18 @@
 
 **Issue:** #65
 **Branch:** `main` (GitHub default since Issue #64, 2026-07-14)
+**Enforcement mechanism:** GitHub **repository ruleset** `main` (id `19091297`),
+not classic branch protection. Classic `PUT .../branches/main/protection` returns
+HTTP 403 on this private free-plan repo; rulesets provide the equivalent gate.
+
 **Workflows:** `.github/workflows/ci-fast.yml` + `.github/workflows/ci-full.yml`
 (Stage 2 fast/full split — see `docs/ci/ACTIONS_OPTIMIZATION_STAGE_2.md`).
 `.github/workflows/ci.yml` is now a `workflow_dispatch`-only rollback stub;
 it no longer runs on PRs or pushes.
+
+**Status (2026-07-17):** Required status checks are **active** on the `main`
+ruleset (strict). Solo-maintainer PR rule: 0 required approvals; deletion and
+force-push blocked.
 
 **Migration status: Phase 1.** The required check *names* below are still
 the legacy `ci.yml` names. They are currently backed by thin compatibility
@@ -77,5 +85,9 @@ Merge is blocked when any required check fails.
 ## Verify settings
 
 ```bash
+# Active enforcement (ruleset)
+gh api repos/Pain1234/save-money-trading-bot/rulesets/19091297
+
+# Classic branch protection API — expected 404 on this private free plan
 gh api repos/Pain1234/save-money-trading-bot/branches/main/protection
 ```

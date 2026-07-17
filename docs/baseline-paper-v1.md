@@ -274,7 +274,9 @@ follow-up records the local blocker honestly.
 outside the above jobs. Reconcile counts with `pytest --collect-only` when the
 suite changes.
 
-Branch protection with **required** status checks is enabled on `main` (Issue #65).
+Branch protection with **required** status checks is enforced on `main` via
+GitHub **repository rulesets** (Issue #65; classic branch-protection API remains
+unavailable on this private free plan — rulesets are the active mechanism).
 See `docs/branch-protection.md` for the check list. CI runs on all PRs targeting
 `main`.
 
@@ -324,4 +326,4 @@ documentation-only or test-inventory updates without trading-logic changes.
 | Test commands documented | See table above |
 | Known failures recorded | Dashboard build test (local) |
 | Baseline tag exists | **Released** — `baseline-paper-v1.0.0` at `daacb627` (PR #62) |
-| Full CI for tests | `.github/workflows/ci.yml` (#53); ~609 unit + market_data + deploy + postgres; not all 782 tests; branch protection pending |
+| Full CI for tests | `.github/workflows/ci-fast.yml` + `ci-full.yml`; ruleset-required checks on `main` (#65) |
