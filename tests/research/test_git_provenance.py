@@ -104,6 +104,7 @@ def test_assert_git_commit_stable_ignores_artifact_prefix(tmp_path: Path) -> Non
 def test_run_fails_when_hook_dirties_tree(tmp_path: Path) -> None:
     """Integration: mid-run dirty tree cannot seal complete (allow_dirty=False)."""
     from research.runner import RunRequest, run_experiment
+
     from tests.research.fixtures import align_spec_to_bundle, btc_bundle
 
     bundle = btc_bundle()
