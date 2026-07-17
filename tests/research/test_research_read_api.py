@@ -169,6 +169,14 @@ def _write_run(
                             "close": "42800",
                             "volume": "12",
                         },
+                        {
+                            "time": "2024-01-20T00:00:00Z",
+                            "open": "42800",
+                            "high": "43500",
+                            "low": "42000",
+                            "close": "43000",
+                            "volume": "11",
+                        },
                     ],
                     "ETH": [],
                 },
@@ -465,10 +473,81 @@ def test_trades_and_chart_data_ok(research_client: TestClient) -> None:
     assert btc.status_code == 200
     chart = btc.json()
     assert chart["symbol"] == "BTC"
-    assert len(chart["candles"]) == 2
+    assert len(chart["candles"]) == 3
     assert chart["candles"][0]["close"] == "42000"
     assert len(chart["trades"]) == 1
     assert chart["trades"][0]["trailing_stop_history"][0]["effective_stop"] == "40500"
+
+
+def test_trades_reject_non_complete_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_run(
+        tmp_path,
+        experiment_id="exp-failed",
+        run_id="run-f",
+        status="failed",
+    )
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get("/api/v1/research/experiments/exp-failed/trades")
+        assert resp.status_code == 400
+        assert "complete" in resp.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_chart_rejects_timestamp_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-ts", run_id="run-ts")
+    trades = json.loads((run_dir / "trades.json").read_text(encoding="utf-8"))
+    trades[0]["entry_time"] = "2023-01-01T00:00:00Z"  # outside range + candles
+    (run_dir / "trades.json").write_text(json.dumps(trades), encoding="utf-8")
+    checksums = compute_artifact_checksums(run_dir)
+    registry = tmp_path / "artifacts" / "research" / "registry.jsonl"
+    entry = json.loads(registry.read_text(encoding="utf-8").strip().splitlines()[-1])
+    entry["checksums"] = checksums
+    registry.write_text(json.dumps(entry, sort_keys=True) + "\n", encoding="utf-8")
+
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get(
+            "/api/v1/research/experiments/exp-ts/chart-data",
+            params={"symbol": "BTC"},
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"].lower()
+        assert "time" in detail or "outside" in detail
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_chart_rejects_missing_dataset_binding_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-bind", run_id="run-b")
+    chart = json.loads((run_dir / "chart_data.json").read_text(encoding="utf-8"))
+    del chart["dataset_content_hash"]
+    (run_dir / "chart_data.json").write_text(
+        json.dumps(chart, sort_keys=True), encoding="utf-8"
+    )
+    checksums = compute_artifact_checksums(run_dir)
+    registry = tmp_path / "artifacts" / "research" / "registry.jsonl"
+    entry = json.loads(registry.read_text(encoding="utf-8").strip().splitlines()[-1])
+    entry["checksums"] = checksums
+    registry.write_text(json.dumps(entry, sort_keys=True) + "\n", encoding="utf-8")
+
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get(
+            "/api/v1/research/experiments/exp-bind/chart-data",
+            params={"symbol": "BTC"},
+        )
+        assert resp.status_code == 400
+        assert "dataset_content_hash" in resp.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
 
 
 def test_trades_symbol_filter_and_unknown(

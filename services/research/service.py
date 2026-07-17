@@ -7,6 +7,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -503,11 +504,110 @@ class ResearchReadService:
             "integrity": {"ok": True, "error": None},
         }
 
-    def _require_verified_run_dir(self, experiment_id: str) -> tuple[RegistryEntry, Path]:
+    def _require_verified_complete_run_dir(
+        self, experiment_id: str
+    ) -> tuple[RegistryEntry, Path]:
+        """Only complete registry entries with verified checksums may serve trades/charts."""
         entry = self.get_entry(experiment_id)
+        if entry.status != "complete":
+            msg = (
+                f"experiment {experiment_id!r} status is {entry.status!r}; "
+                "trades/chart-data require status 'complete'"
+            )
+            raise ValueError(msg)
         run_dir = self._artifact_dir(entry)
-        self._verify_complete(entry, run_dir)
+        # Always verify checksums for complete runs (never skip).
+        if not entry.checksums:
+            msg = f"registry entry for {entry.run_id} has empty trusted checksums"
+            raise ValueError(msg)
+        verify_checksums_against(run_dir, entry.checksums)
         return entry, run_dir
+
+    @staticmethod
+    def _parse_iso_datetime(raw: object, *, field: str) -> datetime:
+        if raw is None or raw == "":
+            msg = f"missing {field}"
+            raise ValueError(msg)
+        text = str(raw).replace("Z", "+00:00")
+        try:
+            value = datetime.fromisoformat(text)
+        except ValueError as exc:
+            msg = f"invalid {field}: {raw!r}"
+            raise ValueError(msg) from exc
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    def _spec_time_range_bounds(
+        self, spec: dict[str, Any]
+    ) -> tuple[datetime, datetime]:
+        tr = spec.get("time_range")
+        if not isinstance(tr, dict):
+            msg = "experiment.json time_range missing"
+            raise ValueError(msg)
+        start = self._parse_iso_datetime(tr.get("start"), field="time_range.start")
+        end = self._parse_iso_datetime(tr.get("end"), field="time_range.end")
+        if start > end:
+            msg = "experiment.json time_range.start is after time_range.end"
+            raise ValueError(msg)
+        return start, end
+
+    def _validate_trade_timestamps(
+        self,
+        trade: dict[str, Any],
+        *,
+        range_start: datetime,
+        range_end: datetime,
+        candle_times: set[datetime] | None = None,
+    ) -> None:
+        """Fail-closed when trade/stop times fall outside the experiment window or candles."""
+
+        def _in_range(ts: datetime, field: str) -> None:
+            if ts < range_start or ts > range_end:
+                msg = f"{field} {ts.isoformat()} outside experiment time_range"
+                raise ValueError(msg)
+
+        def _on_candle_axis(ts: datetime, field: str) -> None:
+            if candle_times is None:
+                return
+            # Allow exact candle open_time or same UTC calendar day as a candle.
+            if ts in candle_times:
+                return
+            days = {t.date() for t in candle_times}
+            if ts.date() in days:
+                return
+            msg = f"{field} {ts.isoformat()} does not match candle time axis"
+            raise ValueError(msg)
+
+        entry_time = self._parse_iso_datetime(
+            trade.get("entry_time"), field="entry_time"
+        )
+        _in_range(entry_time, "entry_time")
+        _on_candle_axis(entry_time, "entry_time")
+
+        signal_raw = trade.get("signal_time")
+        if signal_raw is not None and signal_raw != "":
+            signal_time = self._parse_iso_datetime(signal_raw, field="signal_time")
+            _in_range(signal_time, "signal_time")
+
+        exit_raw = trade.get("exit_time")
+        if exit_raw is not None and exit_raw != "":
+            exit_time = self._parse_iso_datetime(exit_raw, field="exit_time")
+            _in_range(exit_time, "exit_time")
+            _on_candle_axis(exit_time, "exit_time")
+            if exit_time < entry_time:
+                msg = "exit_time is before entry_time"
+                raise ValueError(msg)
+
+        for idx, snap in enumerate(trade.get("trailing_stop_history") or []):
+            if not isinstance(snap, dict):
+                msg = f"trailing_stop_history[{idx}] is invalid"
+                raise ValueError(msg)
+            snap_time = self._parse_iso_datetime(
+                snap.get("time"), field=f"trailing_stop_history[{idx}].time"
+            )
+            _in_range(snap_time, f"trailing_stop_history[{idx}].time")
+            _on_candle_axis(snap_time, f"trailing_stop_history[{idx}].time")
 
     def experiment_trades(
         self,
@@ -515,12 +615,13 @@ class ResearchReadService:
         *,
         symbol: str | None = None,
     ) -> dict[str, Any]:
-        """Return trades.json after integrity verification (fail-closed)."""
-        entry, run_dir = self._require_verified_run_dir(experiment_id)
+        """Return trades.json after complete-run integrity verification (fail-closed)."""
+        entry, run_dir = self._require_verified_complete_run_dir(experiment_id)
         spec = self._load_json(run_dir, "experiment.json")
         if not isinstance(spec, dict):
             msg = "experiment.json missing or invalid"
             raise ValueError(msg)
+        range_start, range_end = self._spec_time_range_bounds(spec)
         allowed = {
             str(s)
             for s in (spec.get("symbols") or [])
@@ -549,6 +650,11 @@ class ResearchReadService:
                 raise ValueError(msg)
             if symbol is not None and trade_symbol != symbol:
                 continue
+            self._validate_trade_timestamps(
+                row,
+                range_start=range_start,
+                range_end=range_end,
+            )
             trades.append(row)
 
         return {
@@ -570,11 +676,12 @@ class ResearchReadService:
         """Return run-bound candles + trade markers for one symbol."""
         from research.chart_data import CHART_DATA_SCHEMA_VERSION
 
-        entry, run_dir = self._require_verified_run_dir(experiment_id)
+        entry, run_dir = self._require_verified_complete_run_dir(experiment_id)
         spec = self._load_json(run_dir, "experiment.json")
         if not isinstance(spec, dict):
             msg = "experiment.json missing or invalid"
             raise ValueError(msg)
+        range_start, range_end = self._spec_time_range_bounds(spec)
         allowed = {
             str(s)
             for s in (spec.get("symbols") or [])
@@ -601,17 +708,26 @@ class ResearchReadService:
             raise ValueError(msg)
 
         manifest = self._load_json(run_dir, "run_manifest.json")
-        if isinstance(manifest, dict):
-            expected_hash = str(manifest.get("dataset_content_hash") or "")
-            chart_hash = str(chart_raw.get("dataset_content_hash") or "")
-            if expected_hash and chart_hash and expected_hash != chart_hash:
-                msg = "chart_data dataset_content_hash does not match RunManifest"
-                raise ValueError(msg)
-            expected_ds = str(manifest.get("dataset_id") or "")
-            chart_ds = str(chart_raw.get("dataset_id") or "")
-            if expected_ds and chart_ds and expected_ds != chart_ds:
-                msg = "chart_data dataset_id does not match RunManifest"
-                raise ValueError(msg)
+        if not isinstance(manifest, dict):
+            msg = "run_manifest.json missing or invalid"
+            raise ValueError(msg)
+
+        expected_hash = str(manifest.get("dataset_content_hash") or "").strip()
+        chart_hash = str(chart_raw.get("dataset_content_hash") or "").strip()
+        expected_ds = str(manifest.get("dataset_id") or "").strip()
+        chart_ds = str(chart_raw.get("dataset_id") or "").strip()
+        if not expected_hash or not chart_hash:
+            msg = "dataset_content_hash missing on RunManifest or chart_data"
+            raise ValueError(msg)
+        if not expected_ds or not chart_ds:
+            msg = "dataset_id missing on RunManifest or chart_data"
+            raise ValueError(msg)
+        if expected_hash != chart_hash:
+            msg = "chart_data dataset_content_hash does not match RunManifest"
+            raise ValueError(msg)
+        if expected_ds != chart_ds:
+            msg = "chart_data dataset_id does not match RunManifest"
+            raise ValueError(msg)
 
         symbols_map = chart_raw.get("symbols") or {}
         if not isinstance(symbols_map, dict) or symbol not in symbols_map:
@@ -622,7 +738,30 @@ class ResearchReadService:
             msg = f"invalid candle series for symbol {symbol!r}"
             raise ValueError(msg)
 
+        candle_times: set[datetime] = set()
+        for idx, row in enumerate(candles):
+            if not isinstance(row, dict):
+                msg = f"candle[{idx}] is invalid"
+                raise ValueError(msg)
+            ts = self._parse_iso_datetime(row.get("time"), field=f"candle[{idx}].time")
+            if ts < range_start or ts > range_end:
+                msg = f"candle[{idx}].time outside experiment time_range"
+                raise ValueError(msg)
+            candle_times.add(ts)
+
+        # Validate trades against range + candle axis (do not reuse trades endpoint
+        # alone — chart must enforce axis alignment).
         trades_payload = self.experiment_trades(experiment_id, symbol=symbol)
+        validated_trades: list[dict[str, Any]] = []
+        for trade in trades_payload["trades"]:
+            self._validate_trade_timestamps(
+                trade,
+                range_start=range_start,
+                range_end=range_end,
+                candle_times=candle_times,
+            )
+            validated_trades.append(trade)
+
         return {
             "experiment_id": entry.experiment_id,
             "run_id": entry.run_id,
@@ -633,7 +772,7 @@ class ResearchReadService:
             "dataset_version": entry.dataset_version,
             "schema_version": schema_version,
             "candles": candles,
-            "trades": trades_payload["trades"],
+            "trades": validated_trades,
             "integrity": {"ok": True, "error": None},
         }
 

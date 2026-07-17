@@ -13,6 +13,7 @@ import {
 } from "lightweight-charts";
 
 import { Card } from "@/components/ui/Card";
+import { buildStopSeriesPoints } from "@/lib/research/trade-chart";
 
 interface ChartCandle {
   time: string;
@@ -35,6 +36,7 @@ interface ResearchTrade {
   exit_time: string | null;
   entry_fill_price: string;
   exit_fill_price: string | null;
+  initial_stop?: string | null;
   net_pnl: string | null;
   exit_reason: string | null;
   strategy_reason_codes?: string[];
@@ -214,25 +216,20 @@ export function ResearchTradeChart({
       })),
     );
 
-    const stopPoints: Array<{ time: UTCTimestamp; value: number }> = [];
-    for (const trade of chartData.trades) {
-      for (const snap of trade.trailing_stop_history ?? []) {
-        stopPoints.push({
-          time: toUtcTimestamp(snap.time),
-          value: parseNum(snap.effective_stop),
-        });
-      }
-    }
-    stopPoints.sort((a, b) => (a.time as number) - (b.time as number));
-    if (stopPoints.length > 0) {
-      const stopSeries = chart.addSeries(LineSeries, {
-        color: colors.warning,
-        lineWidth: 1,
-        lineStyle: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      stopSeries.setData(stopPoints);
+    const stopSeries = chart.addSeries(LineSeries, {
+      color: colors.warning,
+      lineWidth: 1,
+      lineStyle: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const stopData = buildStopSeriesPoints(chartData.trades).map((p) =>
+      "value" in p
+        ? { time: p.time as UTCTimestamp, value: p.value }
+        : { time: p.time as UTCTimestamp },
+    );
+    if (stopData.length > 0) {
+      stopSeries.setData(stopData);
     }
 
     const markers = chartData.trades.flatMap((trade) => {
