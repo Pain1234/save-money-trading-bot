@@ -1,7 +1,7 @@
 # P5 Robustness execution plans
 
 **Status:** Public helpers land one issue at a time (#200–#203)
-**This PR:** #202 parameter stability
+**This PR:** #203 bootstrap (framework complete)
 
 ## #200 Walk-forward
 
@@ -41,9 +41,19 @@ Tests: `tests/research/test_p5_parameter_stability.py`.
 - Fragility gate: >= ceil(0.5*N) neighbors net>=0 on B (decision rules).
 - Neighbor success cannot rescue failed freeze candidate.
 
-## Later issues
+## #203 Bootstrap / MC
 
-- #203 path bootstrap — `bootstrap.py`
+| Module | Role |
+|--------|------|
+| `services/research/bootstrap.py` | Block bootstrap path net-PnL + max-drawdown quantiles |
+
+Tests: `tests/research/test_p5_bootstrap.py`.
+
+- Default proposal: block length 5 on daily net PnL increments; `n_simulations=1000`; `seed=42`.
+- Use `block_bootstrap_paths` for Accept evidence (path net-PnL + max-drawdown quantiles).
+- `block_bootstrap_means` is diagnostic only; it does **not** satisfy the 5% net-PnL Accept rule.
+- Prefer block bootstrap; avoid IID shuffle of daily returns.
+- Small-n / `block_length >= len(series)` / single-point series: helper **raises**; callers must document N/A (no false-confidence quantiles).
 
 ## Explicit non-execution here
 
