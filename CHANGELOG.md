@@ -15,7 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Playwright scenarios: stale heartbeat, summary 503, section endpoint failures
   (incl. equity/positions), and empty equity/positions/fills.
 - Postgres repository test: `open_only` includes OPEN+CLOSING, excludes CLOSED, cursor works.
-- Docs: `ARCHITECTURE.md` / `design-system.md` no longer claim mock dashboard data.
+- Docs: `ARCHITECTURE.md` / `design-system.md` no longer claim mock dashboard data
+  (design-system scope: Dashboard UI / paper monitoring, not Mock-Dashboard).
 
 ### Added (Dashboard design ↔ paper API — #238)
 

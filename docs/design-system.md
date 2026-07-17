@@ -2,7 +2,7 @@
 
 **Status:** Verbindlich ab Design-Freeze  
 **Version:** 1.0.0  
-**Scope:** Mock-Dashboard UI (`bot.save-money.xyz`)
+**Scope:** Dashboard UI (`bot.save-money.xyz`) — read-only Paper-Trading-Monitoring
 
 ---
 
