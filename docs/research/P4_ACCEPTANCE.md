@@ -48,6 +48,6 @@ Milestone DoD (from #147):
 - [x] No live-trading code added
 - [x] P5 gates not pre-empted (no OOS/walk-forward/cost-stress as P4 acceptance)
 
-Public-release gates (#176–#180) are tracked on the same GitHub milestone but are **not** research-engine ACs; they close after this docs issue.
+Public-release gates (#176–#180) closed via PRs #189–#193 (boundary, extension, disclaimer, license, security audit).
 
 See `ROADMAP.md` P4 section and [README.md](README.md).
