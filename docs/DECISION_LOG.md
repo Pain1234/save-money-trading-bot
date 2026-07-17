@@ -337,6 +337,29 @@ describe rulesets as the source of truth. Phase 2 may retarget check names per
 
 ---
 
+## ADR-017 – P5 execution uses forward holdout and private research store
+
+**Status:** Accepted (process)
+**Date:** 2026-07-17
+
+**Context:** P5 planning established that historical BTC/ETH/SOL periods cannot be proven untouched OOS. Economic results must not enter the public tree.
+
+**Decision:**
+
+1. Final OOS uses a **forward holdout** starting at human Candidate Freeze UTC (#197).
+2. Private Specs/results/decisions live in `Pain1234/save-money-trading-bot-private-research` (#181).
+3. Numeric ACCEPT/REJECT/INCONCLUSIVE gates are **proposed** in public docs and become binding only after human freeze comments on #198.
+4. Feature warmup (monthly EMA 20 ≈ 20 monthly bars) is separate from purge/label embargo; see exposure audit.
+5. One-shot OOS (#204) and final decision (#205) remain blocked until freezes, private robustness packs, and sample-sufficiency are met.
+
+**Alternatives:** Relabel historical windows as untouched OOS — rejected (leakage / honesty risk).
+
+**Consequences:** P5 may conclude `INCONCLUSIVE` if the forward window is too short; that is not a promotion. Public PRs carry methodology/framework only.
+
+**Related Issues / PRs:** #47, #181, #196–#205
+
+---
+
 ## Template for new entries
 
 ```text
