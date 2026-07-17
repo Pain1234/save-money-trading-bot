@@ -2,6 +2,8 @@
 
 Read-only market data layer for **BTC**, **ETH**, and **SOL**. Validates historical and live candles and exposes closed, look-ahead-safe bundles for the Strategy Engine.
 
+**Historical dataset contract (P3):** see [`docs/market-data-contract.md`](../../docs/market-data-contract.md).
+
 No wallet, orders, private APIs, or trading logic.
 
 ## Architecture

@@ -334,4 +334,20 @@ class HyperliquidWebSocketFeed:
                 await self._conn.close()
                 self._conn = None
             self._shutdown = False
-            await self.connect_and_subscribe()
+            try:
+                await self.connect_and_subscribe()
+            except asyncio.CancelledError:
+                if not self._shutdown:
+                    # asyncio.timeout() cancels the in-flight handshake before
+                    # translating cancellation into TimeoutError for the runtime.
+                    # Keep the transport retryable for the next scheduler poll.
+                    self._status = ConnectionStatus.RECONNECTING
+                    self._background_error = "WebSocket reconnect cancelled"
+                raise
+            except Exception as exc:
+                # connect_and_subscribe marks the feed CONNECTING before opening
+                # the socket. A failed handshake (for example HTTP 502) must
+                # return to RECONNECTING so the runtime retries on its next poll.
+                self._status = ConnectionStatus.RECONNECTING
+                self._background_error = str(exc)
+                raise

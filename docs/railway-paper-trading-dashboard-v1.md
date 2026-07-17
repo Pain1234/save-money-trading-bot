@@ -218,6 +218,7 @@ All routes are GET-only. Non-GET requests return `405`.
 | `/health` | Liveness |
 | `/readiness` | DB-backed readiness |
 | `/api/v1/status` | READY / DEGRADED / STOPPED summary |
+| `/api/v1/dashboard-summary` | Overview aggregate (status + wallet + open positions) |
 | `/api/v1/market-data` | Worker/market-data status |
 | `/api/v1/wallet` | Paper wallet |
 | `/api/v1/positions` | Paginated positions |
@@ -230,6 +231,52 @@ All routes are GET-only. Non-GET requests return `405`.
 
 No mutation, control, order, wallet-signing, or kill-switch endpoints are
 exposed on the read-only API service.
+
+**Deploy:** `deploy/Dockerfile.dashboard`, `deploy/railway/paper-trading-dashboard.toml`
+
+---
+
+## Dashboard maturity levels
+
+Honest classification of dashboard readiness. **Planning and acceptance criteria** — not claims of completed optimization.
+
+### Current
+
+- Route-level `loading.tsx` skeletons verified in CI (`tests/deploy/test_dashboard_bundle.py`)
+
+- Locally usable Next.js dashboard with login
+- Real paper-trading PostgreSQL data displayable (no mock requirement in production path)
+- Wallet, PnL, positions, fills, and equity visible
+- Read-only — no trading mutations via dashboard or public API
+- Subjectively high load times; not production-accepted as performant monitoring
+
+### After P2.5 acceptance
+
+- Production-accepted paper monitoring dashboard on Railway
+- Measurable performance against documented budgets
+- Visible loading states on all relevant routes
+- Instrumented API and DB timing (server, API, SQL separable)
+- Documented error and stale-data states (API down, stale heartbeat, reconciliation errors)
+
+### After P4/P5
+
+- Research and experiment evaluation views
+- Benchmark and strategy comparison surfaces tied to experiment registry
+
+### After P6
+
+- Reliable 90-day paper observation data
+- Paper-to-market deviation tracking
+- Long-horizon operational metrics in dashboard
+
+### P8 (future)
+
+- Monitoring for a **separate** micro-live system
+- Still no uncontrolled trading control via dashboard
+
+See `ROADMAP.md` § P2.5 for exit criteria and performance budgets.
+
+---
 
 ## Domain `bot.save-money.xyz`
 
@@ -245,9 +292,12 @@ exposed on the read-only API service.
 
 ## Backups
 
-Use Railway PostgreSQL backups/snapshots for `paper-trading-postgres`. Worker
-and API are stateless; recovery depends on PostgreSQL restore plus a single
-worker restart.
+Use Railway PostgreSQL volume backups/snapshots for `paper-trading-postgres` when enabled in
+the service Backups tab (manual and scheduled backups per
+[Railway backups reference](https://docs.railway.com/reference/backups)). Fallback: manual
+`pg_dump` — see [`docs/runbooks/backup-restore.md`](runbooks/backup-restore.md).
+
+Worker and API are stateless; recovery depends on PostgreSQL restore plus a single worker restart.
 
 ## Logs
 

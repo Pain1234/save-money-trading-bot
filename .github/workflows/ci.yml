@@ -1,0 +1,398 @@
+# Mandatory CI gate for Python tests, lint, and governance checks (Issue #53).
+# Branch protection on `main` with required checks: Issue #65.
+#
+# Runs on: pull_request → main, push → main, and workflow_dispatch.
+# Docs-only changes skip heavy jobs (required checks report skipped = pass).
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_ci: ${{ steps.detect.outputs.run_ci }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect non-documentation changes
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "workflow_dispatch: always run CI"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              echo "run_ci=true" >> "$GITHUB_OUTPUT"
+              echo "missing before SHA: run CI"
+              exit 0
+            fi
+          fi
+
+          mapfile -t files < <(git diff --name-only "$BASE" "$HEAD")
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+            echo "no file list: run CI"
+            exit 0
+          fi
+
+          # Skip heavy jobs only when every path is documentation / license noise.
+          # Any executable or config-relevant path forces a full CI run.
+          run_ci=false
+          for f in "${files[@]}"; do
+            if [[ "$f" == *.md ]] \
+              || [[ "$f" == docs/* ]] \
+              || [[ "$f" == LICENSE || "$f" == LICENSE.* ]] \
+              || [[ "$f" == .gitignore ]] \
+              || [[ "$f" == .gitkeep || "$f" == */.gitkeep ]]; then
+              continue
+            fi
+            run_ci=true
+            break
+          done
+
+          echo "run_ci=${run_ci}" >> "$GITHUB_OUTPUT"
+          echo "changed files (${#files[@]}):"
+          printf '  %s\n' "${files[@]}"
+          echo "run_ci=${run_ci}"
+
+  validate:
+    name: validate
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate Python syntax
+        run: |
+          python -m compileall -q services scripts tests
+
+      - name: Validate issue template YAML files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for path in sorted(Path(".github/ISSUE_TEMPLATE").glob("*.yml")):
+              if path.name == "config.yml":
+                  continue
+              text = path.read_text(encoding="utf-8")
+              for key in ("name:", "description:", "body:"):
+                  if key not in text:
+                      raise SystemExit(f"missing {key!r} in {path}")
+              print(f"ok: {path}")
+          PY
+
+      - name: Run governance unit tests
+        run: python -m unittest discover -s tests/governance -p 'test_*.py' -v
+
+      - name: Check pull request diff for whitespace errors
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --check \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+  requirements-baseline:
+    name: requirements-baseline
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-baseline.txt
+
+      - name: Sanity check baseline file has no local paths
+        run: |
+          if grep -E '(^-e |file://|[@] file:)' requirements-baseline.txt; then
+            echo "requirements-baseline.txt contains editable or file:// paths"
+            exit 1
+          fi
+
+      - name: Install from requirements-baseline.txt in clean venv
+        run: |
+          python -m venv .venv-baseline-test
+          .venv-baseline-test/bin/pip install --upgrade pip
+          .venv-baseline-test/bin/pip install -r requirements-baseline.txt
+
+  lint:
+    name: lint
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: python -m ruff check .
+
+  test:
+    name: test
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run unit tests (no PostgreSQL, no live, no soak, no reporting, no dashboard build)
+        run: |
+          python -m pytest tests/ \
+            --ignore=tests/deploy \
+            -m "not postgres and not live and not soak and not reporting" \
+            -q
+
+  research-repro:
+    name: research-repro
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Research schema + identity + runner + registry gate
+        run: |
+          python -m pytest tests/research \
+            tests/paper_trading/test_backtester_parity.py \
+            tests/paper_trading/test_backtester_signal_parity.py \
+            -q --tb=short
+          python -c "from research.experiment_spec import load_experiment_spec; load_experiment_spec('examples/research/btc_eth_sol_experiment.example.json', check_json_schema=True)"
+
+      - name: Double-run semantic artifact gate (#146)
+        run: |
+          python -m pytest tests/research/test_double_run_repro.py -v --tb=short
+
+  test-market-data:
+    name: test-market-data
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run market_data tests (no live network, no PostgreSQL)
+        run: |
+          python -m pytest tests/market_data -m "not live and not postgres" -q --tb=short
+
+  test-deploy:
+    name: test-deploy
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Python dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run deploy tests (dashboard build + bundle checks)
+        env:
+          SESSION_SECRET: "01234567890123456789012345678901"
+          PRIVATE_PAPER_API_URL: "http://127.0.0.1:8080"
+          AUTH_USERNAME: monitor
+          AUTH_PASSWORD_HASH: "$2a$12$testhashfortestbuildonlyxxxxxxxxxxxxxxxxxxxxxx"
+        run: |
+          python -m pytest tests/deploy -q --tb=short
+
+  postgres:
+    name: postgres
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: paper_trading_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d paper_trading_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PAPER_TRADING_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/paper_trading_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run PostgreSQL integration tests
+        run: |
+          python -m pytest tests/paper_trading tests/market_data -m "postgres and not soak" -q --tb=short
+
+  perf-reporting:
+    name: perf-reporting
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Issue #102: reporting measurements + JSON artifact (not a hard latency gate).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: paper_trading_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d paper_trading_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PAPER_TRADING_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/paper_trading_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Python dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run reporting performance tests (PostgreSQL)
+        # Latency budgets soft (in artifact); HTTP/schema failures still fail.
+        run: |
+          python -m pytest tests/perf -m "reporting and postgres" -q --tb=short
+
+      - name: Upload dashboard perf regression artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-perf-regression-report
+          path: |
+            docs/operations/dashboard-perf-regression-report.json
+          if-no-files-found: warn
+          retention-days: 30

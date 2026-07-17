@@ -14,6 +14,14 @@ from sqlalchemy.orm import Session
 
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.session import create_db_engine, create_session_factory
+from paper_trading.perf_observability import (
+    attach_engine_connect_metrics,
+    attach_engine_query_metrics,
+    breakdown_enabled,
+    detach_engine_connect_metrics,
+    detach_engine_query_metrics,
+    get_request_metrics,
+)
 from paper_trading.repository import PaperTradingRepository
 
 
@@ -37,17 +45,30 @@ def get_config() -> PaperTradingConfig:
 
 
 def get_db_session(
+    request: Request,
     config: Annotated[PaperTradingConfig, Depends(get_config)],
 ) -> Generator[Session, None, None]:
+    metrics = get_request_metrics(request)
+    t0 = time.perf_counter()
     engine = create_db_engine(
         str(config.database_url),
         application_name="paper-readonly-api",
     )
+    metrics.engine_create_ms = (time.perf_counter() - t0) * 1000.0
+    on_connect = None
+    if breakdown_enabled():
+        on_connect = attach_engine_connect_metrics(engine, metrics)
+    t1 = time.perf_counter()
     factory = create_session_factory(engine)
     session = factory()
+    metrics.session_setup_ms = (time.perf_counter() - t1) * 1000.0
+    before, after = attach_engine_query_metrics(engine, metrics)
     try:
         yield session
     finally:
+        detach_engine_query_metrics(engine, before, after)
+        if on_connect is not None:
+            detach_engine_connect_metrics(engine, on_connect)
         session.close()
         engine.dispose()
 

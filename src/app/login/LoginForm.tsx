@@ -46,6 +46,7 @@ export default function LoginForm() {
         <label className="mb-4 block text-sm text-text-secondary">
           Username
           <input
+            name="username"
             className="mt-1 w-full rounded-md border border-border-subtle bg-bg-base px-3 py-2"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -56,6 +57,7 @@ export default function LoginForm() {
         <label className="mb-4 block text-sm text-text-secondary">
           Password
           <input
+            name="password"
             type="password"
             className="mt-1 w-full rounded-md border border-border-subtle bg-bg-base px-3 py-2"
             value={password}

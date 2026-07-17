@@ -6,6 +6,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv-baseline/
 venv/
 
 # Node / Next.js
@@ -19,3 +20,15 @@ test-results/
 .env
 .env.*
 !.env.example
+
+# Local restore drill artifacts (Issue #11)
+paper_backup.dump
+restore_drill_snapshot.json
+# Codex review gate (Issue #149)
+.agent-loop/codex-review-result.json
+.agent-loop/current-review-input.txt
+.agent-loop/*.log
+.agent-loop/tmp/
+.agent-loop/review-history/*
+!.agent-loop/review-history/.gitkeep
+.codex/

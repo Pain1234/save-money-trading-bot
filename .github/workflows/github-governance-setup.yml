@@ -1,0 +1,109 @@
+# Projects v2 is intentionally excluded because GITHUB_TOKEN is repository-scoped.
+# Project configuration remains a separate manual or explicitly authorized action.
+
+name: GitHub governance setup
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "scripts/github_project_setup.py"
+      - "tests/governance/**"
+      - ".github/workflows/github-governance-setup.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "ROADMAP.md"
+      - "README.md"
+      - "AGENTS.md"
+      - "CHANGELOG.md"
+      - "docs/PROJECT_OPERATING_SYSTEM.md"
+
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply labels, milestones and seed issues"
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: github-governance-setup-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate Python syntax
+        run: python -m py_compile scripts/github_project_setup.py
+
+      - name: Validate issue template YAML files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for path in sorted(Path(".github/ISSUE_TEMPLATE").glob("*.yml")):
+              if path.name == "config.yml":
+                  continue
+              text = path.read_text(encoding="utf-8")
+              for key in ("name:", "description:", "body:"):
+                  if key not in text:
+                      raise SystemExit(f"missing {key!r} in {path}")
+              print(f"ok: {path}")
+          PY
+
+      - name: Run governance unit tests
+        run: python -m unittest tests/governance/test_github_project_setup.py -v
+
+      - name: Check pull request diff for whitespace errors
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --check \
+            "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+      - name: Check working tree for whitespace errors
+        if: github.event_name == 'workflow_dispatch'
+        run: git diff --check
+
+      - name: Dry run governance setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/github_project_setup.py --dry-run --skip-project
+
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.apply == true
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Apply governance setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/github_project_setup.py --apply --skip-project

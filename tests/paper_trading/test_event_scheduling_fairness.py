@@ -242,6 +242,8 @@ def test_restart_fairness_cursor_survives_new_bridge_instance() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.postgres
+@requires_postgres
 async def test_postgres_restart_cursor_fairness_with_new_bridge(
     migrated_engine,
     postgres_commit_session,

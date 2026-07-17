@@ -9,7 +9,7 @@ export default async function StatusPage() {
   try {
     const [status, marketData] = await Promise.all([fetchStatus(), fetchMarketData()]);
     return (
-      <div className="space-y-4">
+      <div data-testid="dashboard-page-ready" className="space-y-4">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">Status & Readiness</h1>
           <StatusBadge status={status.display_status} />

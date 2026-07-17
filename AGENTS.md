@@ -6,6 +6,8 @@ Binding rules for Cursor, Codex, and other coding agents working in this reposit
 
 **Source of truth:** GitHub (issues, milestones, pull requests, `docs/DECISION_LOG.md`). Chat is the workbench; GitHub is the project memory.
 
+**Default branch:** `main` (see `docs/default-branch-migration-plan.md`, Issue #64). Open PRs target `main`; required CI checks on merge are documented in `docs/branch-protection.md`.
+
 ---
 
 ## Project status
@@ -76,6 +78,7 @@ Read, in order:
    - `docs/governance/PUBLIC_PRIVATE_BOUNDARY.md` (public core vs private edge)
    - `docs/strategy-specification.md`, `docs/risk-specification.md` (when touching strategy/risk)
    - `docs/paper-trading-orchestrator-v1.md` (when touching paper trading)
+   - `docs/RISK_REGISTER.md` (when assessing or updating risks)
    - Area-specific READMEs under `services/*/`
 
 Do not start implementation without a clear issue scope.
@@ -109,6 +112,11 @@ Without an explicit issue **and** human approval where noted:
 | Production start commands | `deploy/scripts/*.sh`, Railway TOML start commands |
 | Database schema | Alembic migrations |
 | Live trading | Wallet, signing, real exchange orders |
+
+**Specification Freeze / parameter inventory:**
+
+- Strategy/Risk V1 defaults are published in `docs/strategy-v1-parameter-inventory.md` and governed via `docs/DECISION_LOG.md` (ADR-001, ADR-002, ADR-009).
+- Any change to frozen parameters (including defaults or validation caps) requires a **dedicated GitHub issue + PR review** and must update the relevant spec table(s) and the inventory in the same PR.
 
 **Paper trading V1:** Real Hyperliquid private API, wallet signing, and live orders are **not implemented** — do not enable.
 
@@ -160,6 +168,8 @@ Use `docs/EXPERIMENT_TEMPLATE.md`.
 - Behavior change → tests + doc update in the same PR when reasonable.
 - Governance-only changes → update relevant governance docs.
 
+**Definition of Done:** Every PR must satisfy `docs/DEFINITION_OF_DONE.md`. Reviewers reject PRs missing test evidence (commands + results) unless the issue explicitly waives testing.
+
 ---
 
 ## 10. Never fabricate test results
@@ -205,16 +215,81 @@ Link the GitHub issue and PR. Do not rely on chat-only documentation for decisio
 
 ---
 
+## Codex review gate
+
+Independent read-only Codex review for feature diffs lives under `.agent-loop/` (see `.agent-loop/README.md`). Cursor may run at most **3** automatic review rounds addressing confirmed BLOCKER/MAJOR findings; after that, stop and escalate. The gate never auto-merges.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 -BaseRef origin/main
+```
+
 ## Quick references
 
 | Task | Command / path |
 |------|----------------|
-| Tests (paper, postgres) | `python -m pytest tests/paper_trading -m postgres -v` |
+| P1 baseline (start, versions, tests) | `docs/baseline-paper-v1.md` |
+| System architecture | `docs/ARCHITECTURE.md` |
+| Definition of Done | `docs/DEFINITION_OF_DONE.md` |
+| Lint (pre-push) | `python -m ruff check .` |
+| Types (pre-push) | `python -m mypy .` |
+| Unit tests (CI-shaped, pre-push) | `python -m pytest tests/ --ignore=tests/deploy -m "not postgres and not live and not soak and not reporting" -q` |
+| Tests (paper, postgres) | `python -m pytest tests/paper_trading tests/market_data -m "postgres and not soak" -q` |
 | Full tests | `python -m pytest tests/ -v` |
-| Lint | `ruff check .` |
-| Types | `mypy .` (if configured) |
 | Migrations | `python -m alembic upgrade head` |
 | Worker start (prod path) | `deploy/scripts/start-worker.sh` |
-| Governance setup (dry) | `python scripts/github_project_setup.py --dry-run` |
+| Governance setup (dry) | `python scripts/github_project_setup.py --dry-run --skip-project` |
+| Governance setup (official) | GitHub Actions workflow `github-governance-setup.yml` |
+
+Governance setup: sequential idempotency is covered by automated tests; official
+apply runs are serialized through GitHub Actions concurrency and use `--skip-project`.
+Uncoordinated parallel local apply processes are not claimed to be fully atomic.
+
+The official GitHub Actions apply path intentionally uses `--skip-project`.
+The repository-scoped `GITHUB_TOKEN` manages labels, milestones and issues only.
+GitHub Projects v2 setup requires a separately authorized token or manual setup.
+
+Duplicate repair is hard-restricted to `Pain1234/save-money-trading-bot`.
+Before mutation, repository, issue numbers and expected titles are verified.
+Repair fails closed when identity cannot be proven.
 
 See `README.md` and service READMEs for environment variables. Never commit secrets.
+
+---
+
+## Cursor Cloud specific instructions
+
+Setup and standard commands live in `README.md`, `pyproject.toml`, and
+`services/paper_trading/README.md`. The dependency-refresh update script
+(nvm Node 24, Python `.venv` + `pip install -e ".[dev,api]"`, `npm ci`) runs
+automatically on VM startup — do not re-run it by hand. Python is the system
+Python 3.12 in `.venv`; the dashboard uses Node 24 via nvm.
+
+Non-obvious caveats:
+
+- Node shadowing: a `/exec-daemon/node` (v22) may win in non-interactive shells.
+  If `node --version` is not 24, run `nvm use 24.15.0` or prefix
+  `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"`.
+- PostgreSQL is required for `-m postgres` tests and the paper API. It is installed
+  locally (not Docker) and must be started each boot:
+  `sudo pg_ctlcluster 16 main start`. Test role/db (local only, no prod creds):
+  role `paper_trading_test` / password `paper_trading_test`, db `paper_trading_test`;
+  the superuser `postgres` password is `postgres` (one safety test connects as
+  `postgres:postgres@localhost/postgres`). If the cluster/role/db is missing after a
+  cold start, recreate the role+db and run `python -m alembic upgrade head`.
+  Connection URL:
+  `export PAPER_TRADING_DATABASE_URL="postgresql+psycopg://paper_trading_test:paper_trading_test@localhost:5432/paper_trading_test"`
+- Tests: `ruff check .`, `python -m pytest tests/ -m "not live and not soak"` (needs
+  Postgres up + Node on PATH — one deploy test runs `next build`). `live` tests hit
+  the Hyperliquid network and are skipped by default.
+- Populate demo data (deterministic, no network):
+  `python scripts/run_paper_soak.py --database-url-env PAPER_TRADING_DATABASE_URL --days 365 --seed 1 --reset-db`.
+- Run services (dev): read-only API —
+  `PAPER_API_ENABLED=1 PAPER_API_PORT=8080 python -m paper_trading.api_runner` (`:8080`);
+  dashboard — `npm run dev` (Next.js, `:3000`, may fall back to `:3001` if `3000`
+  is taken). The dashboard needs `.env.local` (gitignored) with `SESSION_SECRET`
+  (32+ chars), `PRIVATE_PAPER_API_URL=http://127.0.0.1:8080`, `AUTH_USERNAME`, and
+  `AUTH_PASSWORD_HASH` (bcrypt, generate with `bcryptjs`).
+- **Dashboard `.env.local` gotcha:** Next.js expands `$` in `.env` values, which
+  corrupts bcrypt hashes (they are full of `$`). Escape every `$` as `\$` in
+  `AUTH_PASSWORD_HASH`, otherwise login fails with "invalid credentials".
+- Do NOT enable live trading / wallet signing / real orders (not implemented in V1).

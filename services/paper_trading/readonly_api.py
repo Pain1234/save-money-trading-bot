@@ -12,7 +12,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from paper_trading.api import (
     _position_response,
-    _runtime_response,
     _sanitize_error,
     _sanitize_payload,
 )
@@ -25,6 +24,7 @@ from paper_trading.api_models import (
     PaginatedResponse,
     PortfolioResponse,
     ReadinessResponse,
+    RuntimeResponse,
     SchedulerRunResponse,
     WalletResponse,
     decode_cursor,
@@ -36,6 +36,8 @@ from paper_trading.api_models import (
 from paper_trading.clock import SystemClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.enums import RuntimeStatus
+from paper_trading.models import RuntimeState
+from paper_trading.perf_observability import PerformanceLoggingMiddleware
 from paper_trading.readiness import ReadinessService
 from paper_trading.repository import PaperTradingRepository
 
@@ -50,35 +52,35 @@ class ReadonlyMethodMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(ReadonlyMethodMiddleware)
+app.add_middleware(PerformanceLoggingMiddleware)
 
 
 def _infer_market_data_ready(
-    repo: PaperTradingRepository,
+    runtime: RuntimeState | None,
     config: PaperTradingConfig,
 ) -> bool:
-    runtime = repo.get_runtime_state()
     if runtime is None or runtime.status != RuntimeStatus.READY:
         return False
     age = SystemClock().now() - runtime.heartbeat_at
     return age <= timedelta(seconds=config.stale_runtime_threshold_seconds)
 
 
-def _readiness_body(
+def _runtime_readiness_snapshot(
     repo: PaperTradingRepository,
     config: PaperTradingConfig,
-) -> ReadinessResponse:
-    # API sessions are request-scoped, but explicitly expire here as defense
-    # against dependency overrides or future pooling that reuses a Session.
+) -> tuple[RuntimeState | None, ReadinessResponse]:
+    """Single consistent snapshot for status, readiness, and summary endpoints."""
     repo.session.expire_all()
-    market_data_ready = _infer_market_data_ready(repo, config)
+    runtime = repo.get_runtime_state()
+    market_data_ready = _infer_market_data_ready(runtime, config)
     snapshot = ReadinessService(repo, config).evaluate(
         market_data_ready=market_data_ready,
         advisory_lock=None,
         scheduler_active=True,
         recovery_active=False,
+        runtime=runtime,
     )
-    runtime = repo.get_runtime_state()
-    return ReadinessResponse(
+    readiness = ReadinessResponse(
         process_liveness=snapshot.process_liveness,
         runtime_readiness=snapshot.runtime_readiness,
         entry_readiness=snapshot.entry_readiness,
@@ -91,30 +93,60 @@ def _readiness_body(
         reasons=snapshot.reasons,
         last_error=_sanitize_error(runtime.last_error if runtime else None),
     )
+    return runtime, readiness
+
+
+def _runtime_dict(runtime: RuntimeState) -> dict[str, Any]:
+    return RuntimeResponse(
+        instance_id=format_uuid(runtime.instance_id),
+        status=runtime.status.value,
+        last_error=_sanitize_error(runtime.last_error),
+        started_at=format_utc(runtime.started_at) if runtime.started_at else None,
+        heartbeat_at=format_utc(runtime.heartbeat_at),
+        kill_switch=runtime.kill_switch,
+        paused=runtime.paused,
+        current_cycle_id=(
+            format_uuid(runtime.current_cycle_id) if runtime.current_cycle_id else None
+        ),
+        version=runtime.version,
+    ).model_dump()
+
+
+def _display_status(
+    runtime: RuntimeState | None,
+    readiness: ReadinessResponse,
+) -> str:
+    if runtime is None:
+        return "STOPPED"
+    if runtime.status == RuntimeStatus.FAILED:
+        return "STOPPED"
+    if readiness.runtime_readiness:
+        return "READY"
+    return "DEGRADED"
+
+
+def _readiness_body(
+    repo: PaperTradingRepository,
+    config: PaperTradingConfig,
+) -> ReadinessResponse:
+    _runtime, readiness = _runtime_readiness_snapshot(repo, config)
+    return readiness
 
 
 def _status_payload(
     repo: PaperTradingRepository,
     config: PaperTradingConfig,
 ) -> dict[str, Any]:
-    repo.session.expire_all()
-    runtime = repo.get_runtime_state()
-    readiness = _readiness_body(repo, config)
+    runtime, readiness = _runtime_readiness_snapshot(repo, config)
     heartbeat_age_seconds: float | None = None
-    display_status = "STOPPED"
     if runtime is not None:
         heartbeat_age_seconds = (
             SystemClock().now() - runtime.heartbeat_at
         ).total_seconds()
-        if runtime.status == RuntimeStatus.FAILED:
-            display_status = "STOPPED"
-        elif readiness.runtime_readiness:
-            display_status = "READY"
-        else:
-            display_status = "DEGRADED"
+    display_status = _display_status(runtime, readiness)
     return {
         "display_status": display_status,
-        "runtime": _runtime_response(repo).model_dump() if runtime else None,
+        "runtime": _runtime_dict(runtime) if runtime else None,
         "readiness": readiness.model_dump(),
         "heartbeat_age_seconds": heartbeat_age_seconds,
         "stale_heartbeat_threshold_seconds": config.stale_runtime_threshold_seconds,
@@ -134,7 +166,10 @@ def readiness(
 ) -> JSONResponse:
     body = _readiness_body(repo, config)
     status_code = 200 if body.runtime_readiness else 503
-    return JSONResponse(content=body.model_dump(), status_code=status_code)
+    response = JSONResponse(content=body.model_dump(), status_code=status_code)
+    if status_code != 200:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/v1/status")
@@ -145,6 +180,65 @@ def api_status(
     return _status_payload(repo, config)
 
 
+@app.get("/api/v1/dashboard-summary")
+def api_dashboard_summary(
+    repo: Annotated[PaperTradingRepository, Depends(get_repository)],
+    config: Annotated[PaperTradingConfig, Depends(get_config)],
+) -> dict[str, Any]:
+    """Overview-only aggregated read snapshot (read-only, no mutations)."""
+    runtime, readiness = _runtime_readiness_snapshot(repo, config)
+    heartbeat_age_seconds: float | None = None
+    if runtime is not None:
+        heartbeat_age_seconds = (
+            SystemClock().now() - runtime.heartbeat_at
+        ).total_seconds()
+    display_status = _display_status(runtime, readiness)
+    wallet = repo.get_wallet()
+    open_positions = repo.get_open_positions()
+    warnings: list[str] = list(readiness.reasons)
+    if (
+        heartbeat_age_seconds is not None
+        and heartbeat_age_seconds > config.stale_runtime_threshold_seconds
+        and "stale_heartbeat" not in readiness.reasons
+    ):
+        warnings.append("stale_heartbeat")
+    hyperliquid_network = __import__("os").environ.get("HYPERLIQUID_NETWORK", "testnet")
+    return {
+        "display_status": display_status,
+        "status": {
+            "display_status": display_status,
+            "runtime": _runtime_dict(runtime) if runtime else None,
+            "readiness": readiness.model_dump(),
+            "heartbeat_age_seconds": heartbeat_age_seconds,
+            "stale_heartbeat_threshold_seconds": config.stale_runtime_threshold_seconds,
+            "hyperliquid_network": hyperliquid_network,
+        },
+        "readiness": readiness.model_dump(),
+        "heartbeat_at": format_utc(runtime.heartbeat_at) if runtime else None,
+        "wallet": (
+            {
+                "cash": format_decimal(wallet.cash),
+                "total_realized_pnl": format_decimal(wallet.total_realized_pnl),
+                "updated_at": format_utc(wallet.updated_at),
+            }
+            if wallet is not None
+            else None
+        ),
+        "open_position_count": len(open_positions),
+        "position_summary": [
+            {
+                "symbol": p.symbol,
+                "status": p.status.value,
+                "quantity": format_decimal(p.quantity),
+                "unrealized_pnl": format_decimal(p.unrealized_pnl),
+            }
+            for p in open_positions[:10]
+        ],
+        "warnings": warnings,
+        "hyperliquid_network": hyperliquid_network,
+    }
+
+
 @app.get("/api/v1/market-data")
 def api_market_data(
     repo: Annotated[PaperTradingRepository, Depends(get_repository)],
@@ -152,7 +246,7 @@ def api_market_data(
 ) -> dict[str, Any]:
     repo.session.expire_all()
     runtime = repo.get_runtime_state()
-    market_data_ready = _infer_market_data_ready(repo, config)
+    market_data_ready = _infer_market_data_ready(runtime, config)
     return {
         "hyperliquid_network": __import__("os").environ.get("HYPERLIQUID_NETWORK", "testnet"),
         "market_data_ready": market_data_ready,

@@ -34,13 +34,21 @@ def test_dashboard_client_uses_server_side_env_only() -> None:
     assert "NEXT_PUBLIC_" not in source
 
 
-def test_dashboard_status_bypasses_next_cache() -> None:
+def test_dashboard_client_cache_policy() -> None:
     source = _client_source()
-    assert 'cache: "no-store"' in source
-    assert "noStore: true" in source
+    assert "REVALIDATE" in source
+    # Object keys and/or usages (mergeable across stacked PR bases).
+    assert "STATUS:" in source or "REVALIDATE.STATUS" in source
+    assert "SUMMARY:" in source or "REVALIDATE.SUMMARY" in source
+    assert "fetchDashboardSummary" in source
     assert "next: { revalidate:" in source
-    assert "REVALIDATE.MONITORING" in source
-    assert "REVALIDATE.HISTORY" in source
+    assert "revalidate: REVALIDATE.SUMMARY" in source
+
+
+def test_dashboard_overview_uses_summary_fetch() -> None:
+    source = (DASHBOARD_ROOT / "page.tsx").read_text(encoding="utf-8")
+    assert "fetchDashboardSummary" in source
+    assert "Promise.all" not in source
 
 
 def test_dashboard_client_has_api_timeout() -> None:
@@ -49,6 +57,11 @@ def test_dashboard_client_has_api_timeout() -> None:
     assert "API_TIMEOUT_MS = 5000" in source
     assert "PaperApiTimeoutError" in source
     assert "getMonitoringErrorMessage" in source
+
+
+def test_dashboard_status_parallelizes_fetches() -> None:
+    source = (DASHBOARD_ROOT / "status/page.tsx").read_text(encoding="utf-8")
+    assert "Promise.all" in source
 
 
 def test_dashboard_loading_states_exist() -> None:
@@ -79,16 +92,6 @@ def test_dashboard_auth_middleware_protects_routes() -> None:
     assert "session.isLoggedIn" in source
 
 
-def test_dashboard_overview_parallelizes_fetches() -> None:
-    source = (DASHBOARD_ROOT / "page.tsx").read_text(encoding="utf-8")
-    assert "Promise.all" in source
-
-
-def test_dashboard_status_parallelizes_fetches() -> None:
-    source = (DASHBOARD_ROOT / "status/page.tsx").read_text(encoding="utf-8")
-    assert "Promise.all" in source
-
-
 def test_dashboard_build_succeeds() -> None:
     result = subprocess.run(
         ["npm", "run", "build"],
@@ -96,7 +99,6 @@ def test_dashboard_build_succeeds() -> None:
         capture_output=True,
         text=True,
         timeout=300,
-        shell=True,
         env={
             **__import__("os").environ,
             "SESSION_SECRET": "x" * 32,

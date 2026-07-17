@@ -12,7 +12,7 @@ Cursor/Codex chats must not be the only record of decisions, bugs, or experiment
 
 ```text
 Roadmap (ROADMAP.md)
-  → GitHub Milestone (P0–P9)
+  → GitHub Milestone (P0–P2.5, P3–P9)
     → GitHub Issue (scope, acceptance criteria)
       → Branch (one issue)
         → Implementation
@@ -128,7 +128,8 @@ Automated creation is attempted by `scripts/github_project_setup.py` when `gh` i
 
 | Field | Type | Notes |
 |-------|------|-------|
-| Phase | Single select | P0–P9 |
+| Phase | Single select | P0, P1, P2, P2.5, P3–P9 |
+| Workstream | Single select | Platform, Operations, Research, Risk |
 | Type | Single select | bug, feature, research, operations, documentation, incident |
 | Area | Single select | data, research, strategy, risk, execution, accounting, monitoring, dashboard, infrastructure, security, governance |
 | Severity | Single select | S1–S4 (bugs/incidents) |
@@ -157,15 +158,35 @@ Add issues from milestones created by setup script.
 
 ```bash
 # Preview only (no GitHub writes)
-python scripts/github_project_setup.py --dry-run
+python scripts/github_project_setup.py --dry-run --skip-project
 
 # Create missing labels, milestones, seed issues
-python scripts/github_project_setup.py --apply
+python scripts/github_project_setup.py --apply --skip-project
+
+# One-time duplicate repair (configured list only; approved repository only)
+python scripts/github_project_setup.py --repair-duplicates --dry-run
+python scripts/github_project_setup.py --repair-duplicates --apply
 ```
 
 Requirements: [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`).
 
-The script **never** closes issues, deletes labels/milestones, changes branch protection, or touches secrets.
+**Idempotency guarantees:** Sequential idempotency is covered by automated tests.
+Official apply runs are serialized through GitHub Actions concurrency
+(`.github/workflows/github-governance-setup.yml`) and use `--skip-project`.
+Uncoordinated parallel local apply processes are not claimed to be fully atomic.
+
+The official GitHub Actions apply path intentionally uses `--skip-project`.
+The repository-scoped `GITHUB_TOKEN` manages labels, milestones and issues only.
+GitHub Projects v2 setup requires a separately authorized token or manual setup.
+
+Duplicate repair is hard-restricted to `Pain1234/save-money-trading-bot`.
+Before mutation, repository, issue numbers and expected titles are verified.
+Repair fails closed when identity cannot be proven.
+
+The normal setup script **never** closes issues, deletes labels/milestones,
+changes branch protection, or touches secrets. The explicit
+`--repair-duplicates` mode comments and closes only the configured duplicate list
+after identity verification in the approved repository.
 
 If `gh` is unavailable, perform label/milestone/issue creation manually using lists in `scripts/github_project_setup.py` source.
 
@@ -174,6 +195,16 @@ If `gh` is unavailable, perform label/milestone/issue creation manually using li
 ## Definition of Done
 
 All work must satisfy `docs/DEFINITION_OF_DONE.md` before merge unless explicitly waived in the issue with rationale.
+
+### Pull request review (binding)
+
+Reviewers **must request changes** when:
+
+- The PR omits executed test commands and results (or a justified exception)
+- Acceptance criteria are not addressed
+- The DoD section is checked without supporting evidence in the PR body
+
+See `docs/DEFINITION_OF_DONE.md` § Review policy (adopted).
 
 ---
 

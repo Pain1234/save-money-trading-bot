@@ -1,9 +1,14 @@
 export const API_TIMEOUT_MS = 5000;
 
 export const REVALIDATE = {
-  STATUS: 4,
+  /** Status and summary: 1–2s (P2.5 cache policy) */
+  STATUS: 2,
+  SUMMARY: 2,
+  /** Wallet and positions: 3–5s */
   MONITORING: 5,
-  HISTORY: 10,
+  /** Orders, fills, equity history: 5–30s */
+  TABLES: 5,
+  HISTORY: 30,
 } as const;
 
 export type DisplayStatus = "READY" | "DEGRADED" | "STOPPED";
@@ -30,6 +35,23 @@ export interface StatusResponse {
     runtime_readiness: boolean;
     reasons: string[];
   };
+}
+
+export interface DashboardSummaryResponse {
+  display_status: DisplayStatus;
+  status: StatusResponse;
+  readiness: StatusResponse["readiness"];
+  heartbeat_at: string | null;
+  wallet: Pick<WalletResponse, "cash" | "total_realized_pnl" | "updated_at"> | null;
+  open_position_count: number;
+  position_summary: Array<{
+    symbol: string;
+    status: string;
+    quantity: string;
+    unrealized_pnl: string;
+  }>;
+  warnings: string[];
+  hyperliquid_network: string;
 }
 
 export interface WalletResponse {
@@ -164,7 +186,13 @@ export async function fetchPaperApi<T>(
 
 export async function fetchStatus(): Promise<StatusResponse> {
   return fetchPaperApi<StatusResponse>("/api/v1/status", {
-    noStore: true,
+    revalidate: REVALIDATE.STATUS,
+  });
+}
+
+export async function fetchDashboardSummary(): Promise<DashboardSummaryResponse> {
+  return fetchPaperApi<DashboardSummaryResponse>("/api/v1/dashboard-summary", {
+    revalidate: REVALIDATE.SUMMARY,
   });
 }
 
@@ -182,13 +210,13 @@ export async function fetchPositions(): Promise<Paginated<PositionItem>> {
 
 export async function fetchOrders(): Promise<Paginated<OrderItem>> {
   return fetchPaperApi<Paginated<OrderItem>>("/api/v1/orders?limit=50", {
-    revalidate: REVALIDATE.MONITORING,
+    revalidate: REVALIDATE.TABLES,
   });
 }
 
 export async function fetchFills(): Promise<Paginated<FillItem>> {
   return fetchPaperApi<Paginated<FillItem>>("/api/v1/fills?limit=50", {
-    revalidate: REVALIDATE.MONITORING,
+    revalidate: REVALIDATE.TABLES,
   });
 }
 

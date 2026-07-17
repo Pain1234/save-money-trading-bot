@@ -1,0 +1,125 @@
+{
+  "measurement": "layer_c_fastapi",
+  "issue": 121,
+  "environment": "railway-production",
+  "network_path": "paper-trading-dashboard -> PRIVATE_PAPER_API_URL -> paper-trading-api",
+  "base_url_host_only": "paper-trading-api.railway.internal:8080",
+  "region_probe_service": "paper-trading-dashboard",
+  "regions": {
+    "paper-trading-api": "europe-west4-drams3a",
+    "paper-trading-dashboard": "europe-west4-drams3a",
+    "paper-trading-postgres": "europe-west4-drams3a"
+  },
+  "public_dashboard_url": "https://bot.save-money.xyz",
+  "evidence_doc": "docs/operations/dashboard-railway-performance-evidence.md",
+  "warm_runs": 20,
+  "warmup_runs": 3,
+  "warmup_note": "warmup_runs are discarded probes to stabilize the process; p95 uses warm_runs only (default 20/3 matches measure_dashboard_layer_c_api.py).",
+  "measured_at": "2026-07-15T22:39:30.456Z",
+  "routes": [
+    {
+      "name": "status",
+      "path": "/api/v1/status",
+      "status": "MEASURED",
+      "warm_client_p50_ms": 62.85514499999999,
+      "warm_client_p95_ms": 70.21104600000012,
+      "warm_header_total_p50_ms": 58.5,
+      "warm_header_total_p95_ms": 66,
+      "warm_header_db_p50_ms": 11.5,
+      "warm_header_db_p95_ms": 14.2,
+      "warm_unattributed_api_p50_ms": 47.3,
+      "warm_unattributed_api_ms": 51.8,
+      "warm_private_hop_p50_ms": 4.211046000000124,
+      "warm_private_hop_p95_ms": 5.469765999999893,
+      "warm_query_count_p50": 4,
+      "warm_query_count_p95": 4,
+      "warm_response_bytes_p50": 638,
+      "warm_response_bytes_max": 638,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "5df8ce75-7c59-441d-bb57-91533324199f",
+        "c31ccdb6-b991-48ae-93f5-1a9564083f7a",
+        "5a86a5b6-deae-4481-bf7f-67a2e2eb7c6d",
+        "99e6441c-aadb-47ac-a89b-ba2feb9e73f8",
+        "a1c23b4c-fdfe-4769-8edf-c6287aba282e"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "dashboard_summary",
+      "path": "/api/v1/dashboard-summary",
+      "status": "MEASURED",
+      "warm_client_p50_ms": 69.14796700000011,
+      "warm_client_p95_ms": 74.53202899999997,
+      "warm_header_total_p50_ms": 64.8,
+      "warm_header_total_p95_ms": 71.2,
+      "warm_header_db_p50_ms": 15.4,
+      "warm_header_db_p95_ms": 15.7,
+      "warm_unattributed_api_p50_ms": 49.4,
+      "warm_unattributed_api_ms": 53.800000000000004,
+      "warm_private_hop_p50_ms": 3.775501999999868,
+      "warm_private_hop_p95_ms": 4.371575999999919,
+      "warm_query_count_p50": 6,
+      "warm_query_count_p95": 6,
+      "warm_response_bytes_p50": 1174,
+      "warm_response_bytes_max": 1174,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "3b8f44a8-f0b1-4cab-98a5-22498919d6f5",
+        "819e1271-7273-4948-b494-4d3e66ea753f",
+        "c76e67fa-8ae6-4d6f-94db-c25003ade146",
+        "c9ac98e8-d0c2-446d-b0e4-79e48189562f",
+        "510ff868-808e-4537-915c-99c0850653a4"
+      ],
+      "sample_count": 20,
+      "note": ""
+    },
+    {
+      "name": "wallet",
+      "path": "/api/v1/wallet",
+      "status": "MEASURED",
+      "warm_client_p50_ms": 52.861339000000044,
+      "warm_client_p95_ms": 57.740342000000055,
+      "warm_header_total_p50_ms": 48.9,
+      "warm_header_total_p95_ms": 53.7,
+      "warm_header_db_p50_ms": 4.2,
+      "warm_header_db_p95_ms": 5.1,
+      "warm_unattributed_api_p50_ms": 44.2,
+      "warm_unattributed_api_ms": 49.1,
+      "warm_private_hop_p50_ms": 3.5953569999999644,
+      "warm_private_hop_p95_ms": 4.593778000000199,
+      "warm_query_count_p50": 1,
+      "warm_query_count_p95": 1,
+      "warm_response_bytes_p50": 238,
+      "warm_response_bytes_max": 238,
+      "events_payload_json_bytes_p50": null,
+      "events_payload_json_share_p50": null,
+      "sample_status_codes": [
+        200
+      ],
+      "sample_correlation_ids": [
+        "1aba5c20-2788-4a03-9f48-2ea33e33687c",
+        "8be9333a-4a17-4198-abb5-c3b861b410fc",
+        "1dea8fa1-f4cf-4d20-b1dd-8fa80994ec39",
+        "ef216d79-679f-42ed-b0c7-fdb99ca6581b",
+        "d7e7bdca-37d8-494a-bd0a-c9cd90c1dcf2"
+      ],
+      "sample_count": 20,
+      "note": ""
+    }
+  ],
+  "phase": "after-region",
+  "captured_at_utc": "2026-07-15T22:39:30.703335+00:00",
+  "local_git_head": "ad702863c01aaa99f5243228ba258497d0dc3a0e",
+  "deployment_sha_api": "ad702863c01aaa99f5243228ba258497d0dc3a0e",
+  "single_factor": "paper-trading-api region sfo -> europe-west4-drams3a"
+}

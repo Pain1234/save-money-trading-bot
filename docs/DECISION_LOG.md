@@ -108,9 +108,8 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 ## ADR-007 – GitHub as project memory (governance)
 
-**Status:** Proposed (pending merge of governance PR)
-
-**Date:** 2026-07
+**Status:** Accepted  
+**Date:** 2026-07-13
 
 **Context:** Roadmap, bugs, and research decisions were spread across chat and scattered docs without unified issue/PR discipline.
 
@@ -120,7 +119,7 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 
 **Consequences:** Agents must link PRs to issues; seed issues created for P0–P2 gaps.
 
-**Issues / PRs:** Governance branch `chore/project-governance`.
+**Issues / PRs:** PR #29 (`chore/project-governance`), Issue #2.
 
 ---
 
@@ -135,6 +134,157 @@ Architecture and governance decisions in ADR style. Only **Accepted** entries be
 **Alternatives:** Paper-only indefinitely; micro-live on Hyperliquid — TBD.
 
 **Consequences:** TBD upon human approval issue.
+
+---
+
+## ADR-009 – Strategy/Risk V1 parameter inventory and change control
+
+**Status:** Accepted  
+**Date:** 2026-07-13
+
+**Context:** Strategy V1 and Risk V1 are frozen references, but parameters can drift when defaults live across docs and code. Research validity requires explicit, published parameters and controlled changes.
+
+**Decision:** Publish a single parameter inventory in `docs/strategy-v1-parameter-inventory.md` derived from the frozen specs and the code defaults. Any parameter change (including defaults, validation maximums, or coupled execution guardrails) requires a dedicated GitHub issue and PR review; changes must update the relevant spec tables and the inventory together.
+
+**Alternatives:** Implicit defaults in code only — rejected for auditability and reproducibility.
+
+**Consequences:** Parameter drift becomes a governance defect. Backtests and paper runs must record the inventory version (commit hash) used.
+
+**Related Issues / PRs:** Issue #4 (Bestehende Strategieparameter dokumentieren und einfrieren).
+
+---
+
+## ADR-010 – Definition of Done adoption
+
+**Status:** Accepted  
+**Date:** 2026-07-13
+
+**Context:** `docs/DEFINITION_OF_DONE.md` existed but was not enforced in review. Governance PRs #29, #36, #43 used the PR template DoD section; formal adoption was missing.
+
+**Decision:** Bind DoD to review via PR template, `AGENTS.md`, `docs/PROJECT_OPERATING_SYSTEM.md`, and `docs/DEFINITION_OF_DONE.md` § Review policy. Reviewers must reject PRs lacking test evidence (commands + results) unless explicitly waived in the issue.
+
+**Alternatives:** Wait for CI automation — deferred; manual review policy adopted first.
+
+**Consequences:** Merge without test evidence is a process defect. Optional CI comment remains future work.
+
+**Related Issues / PRs:** Issue #5.
+
+---
+
+## ADR-011 – Solo-maintainer DoD enforcement (interim)
+
+**Status:** Accepted
+**Date:** 2026-07-14
+
+**Context:** Issue #5 requires test evidence in post-governance PRs and reviewer rejection of missing test evidence. The repository currently has a single active maintainer; merged PRs #29–#57 have no formal GitHub reviews. Blocking P0 on retroactive reviews would delay governance exit without improving safety.
+
+**Decision:** DoD is enforced in the solo-maintainer phase as follows:
+
+1. Every PR must include the PR template **Tests** section with executed commands and results, or an explicit N/A justification tied to the issue scope.
+2. The **Definition of Done** checklist in the PR body must be completed honestly before merge.
+3. Governance-related paths are validated by `.github/workflows/github-governance-setup.yml` on pull requests.
+4. Formal GitHub review (approve / request changes) becomes mandatory when a second maintainer is added or a reviewer is explicitly assigned on the PR.
+
+**Baseline post-governance PRs with test evidence:** #50, #54, #57 (merged after governance rollout #29).
+
+**DoD checklist in PR body:** first demonstrated in #57; mandatory for all merges from ADR-011 onward. PR template and docs reference DoD since #29.
+
+**Alternatives:** Require retroactive reviews on closed PRs — rejected as performative without adding verification.
+
+**Consequences:** Solo merges without test commands in the PR body remain a process defect. Full reviewer enforcement deferred until team growth; tracked when #52 or staffing changes.
+
+**Related Issues / PRs:** Issue #5, PR #50, PR #54, PR #57.
+
+---
+
+## ADR-012 – P2 dependency decision for P3 historical data
+
+**Status:** Accepted
+**Date:** 2026-07-14
+
+**Context:** P3 (versioned historical market data) requires an operational baseline for database backup and restore when storage ADR selects PostgreSQL. Issue #11 (backup/restore drill) has a completed local restore drill (PR #71 merged) but an outstanding Railway non-production restore.
+
+**Decision:**
+
+The local PostgreSQL restore drill and recovery procedures provide the operational minimum required for P3 planning and implementation.
+
+The outstanding Railway non-production restore in Issue #11 remains mandatory for full P2 completion but does **not** block local P3 historical-data development.
+
+P3 changes must not depend on untested Railway restore behavior.
+
+**Alternatives:** Block all P3 work until Railway restore is proven — rejected; local drill satisfies planning and implementation risk for dataset work.
+
+**Consequences:** #11 stays open on the P2 milestone. Epic #45 and P3 sub-issues may proceed. Any P3 storage implementation that shares PostgreSQL must document backup/restore assumptions explicitly.
+
+**Related Issues / PRs:** Issue #11, Issue #45, PR #71, `docs/P3_HISTORICAL_DATA_PLAN.md`.
+
+---
+
+## ADR-013 – Immutable dataset storage (hybrid PostgreSQL + filesystem)
+
+**Status:** Accepted
+**Date:** 2026-07-14
+
+**Context:** P3 requires append-only dataset catalog, immutable raw provider payloads, and normalized candle persistence (#79). Options: PostgreSQL only, filesystem/object store only, or hybrid. Paper trading already uses Railway PostgreSQL (ADR-004); local backup/restore drill exists (ADR-012, #71).
+
+**Decision:** Adopt a **hybrid** storage architecture:
+
+1. **PostgreSQL** (shared paper DB, new `market_data_*` tables only): dataset manifest catalog, normalized candle rows, quarantine/quality metadata references. Append-only by convention: no `UPDATE`/`DELETE` on published dataset rows; corrections insert new `dataset_id` with `parent_dataset_id`.
+2. **Filesystem** (configurable `MARKET_DATA_DATASET_ROOT`): content-addressed raw JSON artifacts at `raw/{sha256}.json`. Immutable: write-if-not-exists; hash verified on read.
+3. **Lookup:** Research and import tooling resolve `dataset_id` via PostgreSQL catalog; raw bytes loaded by `raw_content_hash` / path.
+
+**Alternatives considered:**
+
+| Option | Rejected because |
+|--------|------------------|
+| PostgreSQL only (bytea blobs) | Large raw payloads bloat DB backups and migration cost |
+| Filesystem only | No transactional catalog alongside paper trading; weaker query by `dataset_id` |
+| Separate database | Extra Railway service and backup scope for solo-maintainer phase |
+
+**Backup/restore impact (R-009):**
+
+- PostgreSQL tables included in existing `pg_dump` / restore drill scope.
+- Raw files require `MARKET_DATA_DATASET_ROOT` volume backup documented in storage runbook addendum (#79).
+- P3 must not depend on untested Railway restore (#11 waiver per ADR-012).
+
+**Consequences:** Alembic migration `010` adds market-data tables only; paper-trading tables untouched. Import pipeline (#80) writes raw files before normalization.
+
+**Related Issues / PRs:** Issue #78, Issue #79, `docs/market-data-contract.md`.
+
+---
+
+## ADR-014 – One Hyperliquid multi-asset platform with asset-specific profiles
+
+**Status:** Accepted
+**Date:** 2026-07-15
+
+**Context:** The roadmap expands beyond BTC/ETH/SOL crypto perpetuals to HIP-3 equity, index, and commodity perpetuals on the same Hyperliquid ecosystem. A governance decision is needed on repository boundaries, asset modeling, and phase gates before any implementation.
+
+**Decision:**
+
+1. Crypto, equity, index, and commodity **perpetuals** are supported within the **same** research and paper-trading platform (single repository unless future technical or regulatory limits prove otherwise).
+2. Asset-class differences are modeled via **asset metadata profiles**, provider/DEX configuration, cost/funding models, and risk profiles — not by treating all symbols identically.
+3. Planned profile types: `CRYPTO_24_7`, `HIP3_EQUITY_PERP`, `HIP3_INDEX_PERP`, `HIP3_COMMODITY_PERP`.
+4. Equity/index/commodity exposure is **synthetic perpetual exposure**; the system must not describe these as holding real shares or physical commodities.
+5. **P7** allows research, backtest, shadow, and paper only. **P8 live trading** still requires human approval.
+6. Multi-asset expansion must **not** bypass **P5** (validation) or **P6** (paper soak).
+7. Architectural split into separate repositories is required only if evidenced by technical or regulatory constraints.
+
+**Alternatives:**
+
+| Option | Rejected because |
+|--------|------------------|
+| Separate repo per asset class | Duplicates research, risk, and monitoring infrastructure |
+| Single undifferentiated asset model | Ignores funding, oracle, session, and corporate-action differences |
+
+**Consequences:**
+
+- Asset profiles become mandatory before new markets trade in paper or live paths.
+- Costs and risks must be validated per profile.
+- P7 milestone renamed to **Multi-Asset and Independent Strategy Candidates**.
+- Planning issues for metadata contract, HIP-3 equity validation, and correlated exposure model are tracked on P7; implementation is out of scope until those gates pass.
+
+**Related Issues / PRs:** `ROADMAP.md` § P7, `docs/ARCHITECTURE.md` § Multi-asset target architecture, P7 planning issues (governance setup).
 
 ---
 

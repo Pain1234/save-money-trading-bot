@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "verdict": "REVIEW_FAILED",
+  "reviewed_base": "WILL_BE_SET",
+  "reviewed_head": "WILL_BE_SET",
+  "reviewed_diff_hash": "WILL_BE_SET",
+  "summary": "Review could not be completed.",
+  "findings": [],
+  "required_tests": [],
+  "review_notes": [
+    "Simulated Codex failure."
+  ]
+}

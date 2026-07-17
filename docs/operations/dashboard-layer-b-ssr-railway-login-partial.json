@@ -1,0 +1,11 @@
+{
+  "measurement": "layer_b_public_login_only",
+  "issue": 101,
+  "environment": "railway-production",
+  "status": "PARTIAL",
+  "note": "Authenticated dashboard SSR (full Layer B) requires PAPER_DASHBOARD_USER/PASSWORD. Public /login only.",
+  "measured_at": "2026-07-15T21:25:06.450760+00:00",
+  "warm_ttfb_p95_ms": 187.4414999911096,
+  "html_bytes_p50": 6222,
+  "samples": 8
+}
