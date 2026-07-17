@@ -1,7 +1,7 @@
 # P5 Validation Protocol (pre-registration template)
 
 **Status:** PLANNING / NOT FROZEN
-**Issue:** P5-02
+**Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) (P5-02)
 **Hard rule:** Freeze and human-approve this protocol **before** opening the final OOS dataset. Never change thresholds after seeing results.
 
 ## 1. Research question

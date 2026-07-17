@@ -1,7 +1,7 @@
 # P5 Decision Rules (ACCEPT / REJECT / INCONCLUSIVE)
 
 **Status:** PLANNING / NOT FROZEN
-**Issue:** P5-02 / P5-09
+**Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) / [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205) (P5-02 / P5-09)
 **Hard rule:** Freeze before final OOS. No post-hoc threshold changes. Positive return alone never promotes.
 
 ## Outcomes

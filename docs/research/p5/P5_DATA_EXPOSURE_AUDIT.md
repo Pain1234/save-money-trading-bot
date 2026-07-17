@@ -1,7 +1,7 @@
 # P5 Data Exposure Audit (planning template)
 
 **Status:** PLANNING / TEMPLATE — no final partition lock until human review
-**Issue:** P5-01 (linked after creation)
+**Issue:** [#197](https://github.com/Pain1234/save-money-trading-bot/issues/197) (P5-01)
 **Related:** #47, #181
 
 ## Rules (binding)
