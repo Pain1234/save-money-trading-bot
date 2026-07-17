@@ -26,6 +26,7 @@ def test_double_run_semantic_hashes_match(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=root_a,
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     out_b = run_experiment(
@@ -34,6 +35,7 @@ def test_double_run_semantic_hashes_match(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=root_b,
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     assert out_a.status == "complete", out_a.error
@@ -70,6 +72,7 @@ def test_same_root_second_run_refuses_overwrite(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     assert first.status == "complete", first.error
@@ -79,6 +82,7 @@ def test_same_root_second_run_refuses_overwrite(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=tmp_path / "out",
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     assert second.status == "failed"
@@ -95,6 +99,7 @@ def test_compare_detects_divergence(tmp_path: Path) -> None:
             bundle=bundle,
             artifacts_root=tmp_path / "ok",
             repo_root=REPO_ROOT,
+            allow_dirty_git=True,
         )
     )
     assert out.status == "complete" and out.artifact_path is not None

@@ -39,7 +39,7 @@ Three workflows replace the single monolithic `ci.yml`:
 3. **`targeted-tests`** — conditional on `run_targeted_tests` (i.e. not a
    pure docs-only diff). Runs the pytest slice(s) matching whichever
    service-area flags are set (`research`, `market_data`, `paper_trading`,
-   `backtest`+`strategy`, `risk`, `deploy`, `agent_loop`), or the entire
+   `backtest`+`strategy`, `risk`, `deploy`), or the entire
    fast-lane suite when `run_all_fast` is set.
 4. **`fast-ci-required`** — the actual merge gate. Uses
    `scripts/ci/check_required_gate.py` to verify `plan` succeeded, and that

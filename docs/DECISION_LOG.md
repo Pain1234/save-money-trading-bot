@@ -288,6 +288,29 @@ P3 changes must not depend on untested Railway restore behavior.
 
 ---
 
+## ADR-015 – Retire Codex review gate
+
+**Status:** Accepted
+
+**Date:** 2026-07-17
+
+**Context:** The read-only Codex review gate (Issue #149, `.agent-loop/`) blocked productive Windows workflows (OS isolation fail-closed), added high operational cost, and did not improve merge safety enough to justify keeping it.
+
+**Decision:** Remove the Codex review gate and all mandatory Codex-approval requirements. Quality gate is: implement → tests → CI → human merge. Agents must not auto-merge or auto-deploy.
+
+**Alternatives:** Keep gate with WSL/CI-only APPROVED — rejected as too costly relative to value.
+
+**Consequences:**
+
+- `.agent-loop/`, `tests/agent_loop/`, and `00-mandatory-codex-review.mdc` are removed.
+- CI path classifier no longer has an `agent_loop` slice.
+- Label `agent:codex-review` is no longer seeded by governance setup.
+- Issue #149 is closed as superseded by this retirement.
+
+**Related Issues / PRs:** #149; PR for `chore/remove-codex-review-gate`.
+
+---
+
 ## Template for new entries
 
 ```text

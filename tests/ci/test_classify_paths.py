@@ -203,12 +203,7 @@ class ClassifyDatabaseTests(unittest.TestCase):
         self.assertTrue(flags["run_all_fast"])
 
 
-class ClassifyAgentLoopAndPerformanceTests(unittest.TestCase):
-    def test_agent_loop_directory_change(self) -> None:
-        flags = classify([".agent-loop/config.yml"])
-        self.assertTrue(flags["agent_loop"])
-        self.assertFalse(flags["run_all_fast"])
-
+class ClassifyPerformanceTests(unittest.TestCase):
     def test_perf_test_change(self) -> None:
         flags = classify(["tests/perf/test_dashboard_api_baseline.py"])
         self.assertTrue(flags["performance"])
@@ -321,7 +316,6 @@ class ClassifyOutputContractTests(unittest.TestCase):
             "risk",
             "deploy",
             "database",
-            "agent_loop",
             "performance",
             "workflows",
             "run_all_fast",
