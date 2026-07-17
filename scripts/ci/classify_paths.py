@@ -39,7 +39,6 @@ FLAG_NAMES: tuple[str, ...] = (
     "risk",
     "deploy",
     "database",
-    "agent_loop",
     "performance",
     "workflows",
     "run_all_fast",
@@ -210,10 +209,6 @@ def _is_database_path(path: str) -> bool:
     return basename == "alembic.ini"
 
 
-def _is_agent_loop_path(path: str) -> bool:
-    return path.startswith(".agent-loop/") or path.startswith("tests/agent_loop/")
-
-
 def _is_performance_path(path: str) -> bool:
     if path.startswith("tests/perf/"):
         return True
@@ -254,7 +249,6 @@ _CATEGORY_MATCHERS: tuple[tuple[str, Callable[[str], bool]], ...] = (
     ("risk", _is_risk_path),
     ("deploy", _is_deploy_path),
     ("database", _is_database_path),
-    ("agent_loop", _is_agent_loop_path),
     ("performance", _is_performance_path),
     ("shared_python", _is_shared_python_path),
 )

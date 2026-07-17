@@ -20,7 +20,7 @@ Central project goal:
 | P2.5 | Dashboard Performance & Responsiveness | Not started | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
 | P4 | Research Engine | **Complete** (research #141–#147/#163–#167 + public-release gates #176–#180) | No |
-| P5 | Honest Validation of Trend Strategy V1 | Not started | No |
+| P5 | Honest Validation of Trend Strategy V1 | **Planning** (honest validation protocol; no OOS opened) | No |
 | P6 | Paper Trading Soak | Not started (Railway paper deploy in progress) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Not started (planning only) | No |
 | P8 | Separate Micro-Live System | Blocked | **Yes — explicit human approval** |
@@ -414,42 +414,59 @@ Docs preparation may run in parallel from #142.
 
 ### Goal
 
-Untouched out-of-sample test, walk-forward, cost stress, parameter stability, bootstrap/Monte Carlo, documented accept/reject criteria for Strategy V1 (`docs/strategy-specification.md`).
+Honestly decide whether frozen Strategy V1 warrants promotion evidence for P6 — not prove profitability. Allowed outcomes only: `ACCEPT_FOR_P6`, `REJECT`, `INCONCLUSIVE` (`INCONCLUSIVE` is not promotion). Planning and gates: [`docs/research/p5/`](docs/research/p5/README.md).
 
 ### Scope
 
-- Research only; **no strategy parameter changes** without explicit issue + approval
-- Results stored as experiment artifacts
+- Research only; **no strategy parameter changes** under Strategy V1 without new version + new freeze
+- Data-exposure audit, candidate freeze, pre-registered protocol, walk-forward, cost stress, parameter stability, bootstrap/Monte Carlo, one-shot untouched OOS
+- Results stored as **private-edge** experiment artifacts (#181); public repo keeps methodology/templates only
 
 ### Non-scope
 
-- New strategies; live trading
+- New strategies; new assets / HYPE / HIP-3; paper soak (P6); live trading; optimizing thresholds after seeing OOS
 
 ### Prerequisites
 
-- P4 experiment pipeline; frozen parameters (P0 issue)
+- P4 research engine complete on `main`
+- #181 public/private separation complete before first real P5 result
+- Signed candidate freeze + validation protocol **before** opening final holdout
+
+### Binding issue chain
+
+```text
+#181 → #196 → #197 → #198 → #199 → {#200…#203} → human pre-OOS → #204 → #205
+```
+
+Canonical risk: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47). Canonical boundary: [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181).
 
 ### Deliverables
 
-- OOS report with frozen holdout
-- Walk-forward and stress reports
-- Documented accept/reject decision
+- Planning pack under `docs/research/p5/` (templates; no simulated results)
+- Frozen holdout + one-shot OOS report (private)
+- Walk-forward, cost-stress, stability, uncertainty reports (private)
+- Documented `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` in decision log
 
 ### Exit criteria
 
-- [ ] OOS never used for tuning
-- [ ] All robustness tests completed or explicitly waived with rationale
-- [ ] Human sign-off on accept/reject recorded in decision log
+- [ ] Strategy V1 uniquely frozen; exposure audited; protocol frozen before OOS view
+- [ ] Benchmarks + sample-sufficiency + decision rules pre-registered
+- [ ] Walk-forward, cost stress, parameter stability completed; bootstrap/MC completed or methodically N/A
+- [ ] Final OOS evaluated exactly once; no post-hoc parameter fishing; no leakage
+- [ ] Outcome documented; human sign-off in decision log; #47 closed; #181 satisfied
+- [ ] No new strategy/assets; no P6/P8 pre-emption; no live-trading code
+
+Full checklist: `docs/research/p5/P5_EXECUTION_CHECKLIST.md`.
 
 ### Stop criteria
 
-- Strategy fails OOS or stress → reject for paper/live promotion; no parameter fishing
+- Leakage, unclear dataset, freeze violation, unreproducible results, missing costs, public leak of private results, critical P4 defect, or retuning after failed OOS → halt; no promotion; human decision
 
 ### Risks
 
-- Strategy overfitting; regime change
+- Strategy overfitting; regime change; false OOS claims; public/private leakage
 
-**Current gap:** Not started as formal gated validation.
+**Current gap:** Planning documents and issue chain in progress; **no** final holdout opened; **no** formal V1 OOS decision yet.
 
 ---
 
