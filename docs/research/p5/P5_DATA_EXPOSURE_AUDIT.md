@@ -46,12 +46,22 @@
 
 **Binding decision:** Do **not** promote `HIST-UNKNOWN` to final OOS. Use forward holdout (option 2).
 
-## Purge / embargo
+## Purge / label embargo vs feature warmup (separate)
+
+These must **not** be conflated:
+
+| Control | Proposed value | Purpose | What it is **not** |
+|---------|----------------|---------|---------------------|
+| **Purge / label embargo** | 90 calendar days | Gap so evaluation labels are not adjacent to prior-fold evaluation / holdout edge | Not feature history for indicators |
+| **Feature warmup** | Monthly EMA-20 ⇒ **≥20 completed monthly bars** (calendar upper bound **620 days** = 20×31 in `walk_forward.DEFAULT_FEATURE_WARMUP_DAYS_MONTHLY_EMA_20`) | Indicator state before first eval bar | Not covered by a 90-day embargo |
+
+Rules:
 
 - Chronological splits only.
-- **Proposed embargo:** 90 calendar days (≥ monthly EMA 20 lookback in calendar time for daily bars, conservative).
-- Apply embargo between fold train/eval boundaries and before holdout start.
-- Human must approve embargo length before partition lock is final.
+- Apply **label embargo** between fold label-context and eval, and before holdout start.
+- **Feature context** may include the embargo calendar window for prices/indicators; **labels must not**.
+- First fold must have non-empty feature context spanning warmup; empty context is a hard error.
+- Human must approve embargo length **and** acknowledge warmup separately before partition lock is final.
 
 ## Missing / short holdout
 

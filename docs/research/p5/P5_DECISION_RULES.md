@@ -22,6 +22,8 @@
 - Net PnL under **base** costs ≤ 0 on OOS (proposed hard floor)
 - Top-3 trades contribute > 50% of OOS net PnL
 - Walk-forward: fewer than 2 of ≥3 folds with net PnL ≥ 0 under base costs (proposed)
+- Cost stress: net PnL < 0 under **`combined_elevated`** on the same window used for the cost-stress pack (proposed)
+- Parameter fragility fails the measurable rule below
 - Severe backtester / execution inconsistency vs documented parity
 - Public leak of private results that compromises process integrity
 
@@ -41,14 +43,25 @@ Default when sufficiency fails: `INCONCLUSIVE`, not `ACCEPT_FOR_P6`.
 - [ ] OOS net PnL > 0 under base costs
 - [ ] OOS max drawdown ≥ −25% bound (not worse)
 - [ ] Walk-forward fold rule passed
-- [ ] Parameter sensitivity not extremely fragile (no cliff where only exact freeze point works)
-- [ ] Bootstrap/MC 5% net-PnL quantile ≥ 0 **or** documented N/A with sufficiency still met
+- [ ] Cost stress: net PnL ≥ 0 under **`combined_elevated`** (required)
+- [ ] Parameter sensitivity **not extremely fragile** per measurable rule below
+- [ ] Bootstrap/MC: **5% path net-PnL quantile ≥ 0** via `block_bootstrap_paths` **or** documented N/A with sufficiency still met
 - [ ] Sample sufficiency passed
 - [ ] No leakage findings
 - [ ] Full reproducibility
 - [ ] Human approval in `docs/DECISION_LOG.md`
 
 Benchmark excess vs `eq_weight_btc_eth_sol@1.0` is **informational** for V1 (not a hard ACCEPT gate) to avoid unsuitable-benchmark flattery; cash/net and drawdown remain hard.
+
+## Parameter fragility (measurable, pre-registered)
+
+Let `N` = number of variants from `symmetric_neighborhood(frozen)` **excluding** the frozen point itself.
+On partition B under **base** costs, with identical dataset/window:
+
+- **Pass (not extremely fragile):** at least `ceil(0.5 * N)` neighbors have net PnL ≥ 0.
+- **Fail (extremely fragile → hard REJECT):** fewer than `ceil(0.5 * N)` neighbors have net PnL ≥ 0.
+
+Neighbor success still cannot replace a failed frozen candidate (frozen must pass its own gates).
 
 ## Numeric gates (proposed — human must approve)
 
@@ -60,8 +73,10 @@ Benchmark excess vs `eq_weight_btc_eth_sol@1.0` is **informational** for V1 (not
 | Min trades (OOS) | ≥ | 30 | Sufficiency | Pending |
 | Max top-3 trade PnL share | ≤ | 50% | Fragility | Pending |
 | Walk-forward fold pass | ≥ | 2 of n (n≥3) net≥0 | Stability | Pending |
-| Cost-stress survival | net≥0 under combined elevated | required | Realism | Pending |
+| Cost-stress survival (`combined_elevated`) | net≥0 | required | Realism; also on Accept checklist | Pending |
 | Combined extreme stress | informational / soft | may be <0 | Document; not sole REJECT unless base also fails | Pending |
+| Parameter neighborhood | ≥ ceil(0.5×N) neighbors net≥0 | required | Removes “not extremely fragile” discretion | Pending |
+| Bootstrap 5% path net-PnL quantile | ≥ | 0 | Path dependence; not mean-of-means | Pending |
 
 Until human comments `DECISION RULES FROZEN` on #198, OOS execution remains blocked.
 

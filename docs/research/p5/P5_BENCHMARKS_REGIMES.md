@@ -11,7 +11,7 @@ All benchmarks use the same evaluation period, DatasetManifest, quote currency (
 | benchmark_id | version | Definition | Costs | Rebalance |
 |--------------|---------|------------|-------|-----------|
 | `cash_null` | `1.0` | Flat cash equity = start capital | none | n/a |
-| `buy_and_hold_BTC` | `1.0` | P4 buy-and-hold on BTC daily closes | trading costs = 0 by P4 definition; `cost_parity=true` declares that | buy once at first close |
+| `buy_and_hold_BTC` | `1.0` | P4 buy-and-hold on BTC daily closes; report **net** (`benchmark_result`) and **gross** (`BenchmarkRef.gross_return`) under metrics schema **1.2** | Spec fee/slippage/funding via execution primitives when `cost_parity=true` (parity ≠ zero costs; #208) | buy once at first close |
 | `buy_and_hold_ETH` | `1.0` | same for ETH | same | same |
 | `buy_and_hold_SOL` | `1.0` | same for SOL | same | same |
 | `eq_weight_btc_eth_sol` | `1.0` | 1/3 notional each at period start; **monthly** calendar rebalance to 1/3 using closes | apply Spec base fee+slippage on rebalance turns only; funding off unless Spec enables | monthly |

@@ -6,71 +6,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added (P5 execution â€” #181 public/private gate)
+### Added (P5 execution — review blocker fixes)
 
-- Defined private research store `Pain1234/save-money-trading-bot-private-research` layout and leakage rules in `docs/research/p5/P5_PUBLIC_PRIVATE_ARTIFACTS.md`.
-- PR template checklist for P5/private-edge leakage prevention.
+- Synced P5 freeze/protocol/benchmark/audit docs to metrics schema **1.2** (gross/net + Spec cost parity per #208).
+- Separated purge/label embargo from feature warmup (monthly EMA-20 ≈ 20 monthly bars); hardened walk_forward.py.
+- ootstrap.py: path net-PnL and max-drawdown quantiles for #203 Accept rule (5% net-PnL quantile).
+- Decision rules: combined_elevated on Accept checklist; measurable fragility threshold.
 
-### Added (P5 planning â€” honest validation)
+### Added (P5 execution — #181 public/private gate)
+
+- Private research store contract and public leakage gates for P5 artifacts.
+
+### Added (P5 planning — honest validation)
 
 - `docs/research/p5/` planning pack: Phase A audit, data-exposure audit template, candidate freeze template, validation protocol, decision rules (`ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE`), public/private artifact classification, execution checklist.
 - Roadmap P5 section updated for honest-validation purpose, dependency chain, and milestone DoD (no OOS opened; no strategy parameter changes).
 
-### Fixed (P2.5 â€” Issue #121)
+### Fixed (P2.5 — Issue #121)
 
 - Confirmed ~2.13 s FastAPI residual as cross-region placement: moved paper-trading-api from sfo to europe-west4-drams3a with measured before/after Layer C (docs/operations/dashboard-fastapi-residual-121.md). Residual p95 fell ~97% on wallet/summary/status; API left co-located with Postgres/Dashboard.
 - Opt-in setup timing headers behind PAPER_API_PERF_BREAKDOWN for further residual attribution (no pooling change in this experiment).
 
 
-### Added (governance â€” P2.5 and P7 roadmap)
+### Added (governance — P2.5 and P7 roadmap)
 
-- **P2.5** milestone `P2.5 â€“ Dashboard Performance & Responsiveness` with performance budgets and exit criteria in `ROADMAP.md`.
+- **P2.5** milestone `P2.5 – Dashboard Performance & Responsiveness` with performance budgets and exit criteria in `ROADMAP.md`.
 - Nine P2.5 seed issues: performance baseline, instrumentation, redundant DB read removal, dashboard summary API, cache policy, loading states, SQL/index audit, regression tests, production dashboard acceptance.
-- **P7** renamed to `Multi-Asset and Independent Strategy Candidates` with sub-phases P7Aâ€“P7D (crypto, HIP-3 equity, HIP-3 index/commodity, independent strategy portfolio).
+- **P7** renamed to `Multi-Asset and Independent Strategy Candidates` with sub-phases P7A–P7D (crypto, HIP-3 equity, HIP-3 index/commodity, independent strategy portfolio).
 - Three P7 planning seed issues: multi-asset metadata contract, HIP-3 equity perpetual validation requirements, correlated multi-asset exposure model.
-- ADR-014 in `docs/DECISION_LOG.md` â€” one Hyperliquid multi-asset platform with asset-specific profiles.
-- `docs/github-project-p25-p7-setup.md` â€” GitHub Project field setup for P2.5/P7 issues.
+- ADR-014 in `docs/DECISION_LOG.md` — one Hyperliquid multi-asset platform with asset-specific profiles.
+- `docs/github-project-p25-p7-setup.md` — GitHub Project field setup for P2.5/P7 issues.
 - Dashboard maturity levels in `docs/railway-paper-trading-dashboard-v1.md`.
 - Multi-asset target architecture section in `docs/ARCHITECTURE.md`.
 - Risk register entries R-019 through R-024 (dashboard performance and multi-asset planning risks).
 
 ### Changed (governance)
 
-- `ROADMAP.md` â€” P3 status **Complete** with evidence; P2.5 phase added; P7 renamed and expanded.
-- `docs/RISK_REGISTER.md` â€” R-018 updated for multi-asset correlation; R-019â€“R-024 added.
-- `docs/PROJECT_OPERATING_SYSTEM.md` â€” Phase field includes P2.5; Workstream field added.
-- `scripts/github_project_setup.py` â€” P2.5 milestone, renamed P7, 12 new seed issues, milestone title repair, decimal phase keys.
+- `ROADMAP.md` — P3 status **Complete** with evidence; P2.5 phase added; P7 renamed and expanded.
+- `docs/RISK_REGISTER.md` — R-018 updated for multi-asset correlation; R-019–R-024 added.
+- `docs/PROJECT_OPERATING_SYSTEM.md` — Phase field includes P2.5; Workstream field added.
+- `scripts/github_project_setup.py` — P2.5 milestone, renamed P7, 12 new seed issues, milestone title repair, decimal phase keys.
 
 ### Note
 
 No runtime performance optimizations, multi-asset trading, HIP-3 implementation, or live-trading changes in this governance batch. Issue numbers for new seed issues assigned on first `github_project_setup.py --apply`.
 
-### Added (P2.5 â€” dashboard performance)
+### Added (P2.5 — dashboard performance)
 
-- `scripts/measure_dashboard_api_baseline.py` and `docs/operations/dashboard-performance-baseline.md` â€” reproducible API latency baseline (Issue #95).
-- `services/paper_trading/perf_observability.py` â€” request timing middleware with `total_ms`, `db_ms`, `query_count`, correlation IDs (Issue #96).
-- `GET /api/v1/dashboard-summary` â€” overview aggregate endpoint; shared `_runtime_readiness_snapshot()` reduces redundant DB reads (Issues #97, #98).
+- `scripts/measure_dashboard_api_baseline.py` and `docs/operations/dashboard-performance-baseline.md` — reproducible API latency baseline (Issue #95).
+- `services/paper_trading/perf_observability.py` — request timing middleware with `total_ms`, `db_ms`, `query_count`, correlation IDs (Issue #96).
+- `GET /api/v1/dashboard-summary` — overview aggregate endpoint; shared `_runtime_readiness_snapshot()` reduces redundant DB reads (Issues #97, #98).
 - Cache-Control TTLs on read-only API routes and Next.js `REVALIDATE` fetch policy (Issue #99).
-- `docs/operations/dashboard-sql-audit.md` â€” SQL/index audit checklist (Issue #101).
-- `tests/perf/` â€” reporting-only latency regression checks (Issue #102).
-- `docs/operations/dashboard-production-acceptance.md` â€” Railway acceptance checklist (Issue #103).
+- `docs/operations/dashboard-sql-audit.md` — SQL/index audit checklist (Issue #101).
+- `tests/perf/` — reporting-only latency regression checks (Issue #102).
+- `docs/operations/dashboard-production-acceptance.md` — Railway acceptance checklist (Issue #103).
 
 ### Changed (P2.5)
 
 - Dashboard overview uses `fetchDashboardSummary()` instead of parallel status/wallet fetches.
-- `services/paper_trading/api_dependencies.py` â€” per-request SQLAlchemy query metrics for read-only API sessions.
-- Issue #101 audit protocol expanded beyond the #117 checklist: layered Aâ€“D measurement harnesses, evidence-based index gate, Railway private-DNS measurement path, events `payload_json` analysis, and honest `NOT_MEASURED` placeholders (no invented p50/p95).
+- `services/paper_trading/api_dependencies.py` — per-request SQLAlchemy query metrics for read-only API sessions.
+- Issue #101 audit protocol expanded beyond the #117 checklist: layered A–D measurement harnesses, evidence-based index gate, Railway private-DNS measurement path, events `payload_json` analysis, and honest `NOT_MEASURED` placeholders (no invented p50/p95).
 
-### Added (P2.5 â€” Issue #101 measurable audit)
+### Added (P2.5 — Issue #101 measurable audit)
 
-- `scripts/measure_dashboard_layer_c_api.py` â€” FastAPI Layer C harness (`X-Perf-*` headers, events payload share).
-- `scripts/measure_dashboard_ssr.py` â€” Next.js Layer B TTFB / HTML size harness.
-- `scripts/audit_dashboard_sql_explain.py` â€” PostgreSQL Layer D `EXPLAIN (ANALYZE, BUFFERS)` first + cursor page.
-- `tests/e2e/dashboard-layer-a-perf.spec.ts` â€” Browser Layer A cold/warm/soft timings to visible content.
+- `scripts/measure_dashboard_layer_c_api.py` — FastAPI Layer C harness (`X-Perf-*` headers, events payload share).
+- `scripts/measure_dashboard_ssr.py` — Next.js Layer B TTFB / HTML size harness.
+- `scripts/audit_dashboard_sql_explain.py` — PostgreSQL Layer D `EXPLAIN (ANALYZE, BUFFERS)` first + cursor page.
+- `tests/e2e/dashboard-layer-a-perf.spec.ts` — Browser Layer A cold/warm/soft timings to visible content.
 - `X-Perf-Total-Ms` / `X-Perf-Db-Ms` / `X-Perf-Query-Count` / `X-Perf-Response-Bytes` response headers for audit scripts.
 - Skeleton `data-testid="dashboard-skeleton"` for Layer A observation.
 
-### Fixed (P2.5 â€” Issue #101 harness review)
+### Fixed (P2.5 — Issue #101 harness review)
 
 - Layer A: heading timing no longer waits on skeleton timeout; LCP via `PerformanceObserver`; true cold contexts; Overview soft-nav starts from Status.
 - Layer C: fail-closed `PARTIAL` when `X-Perf-*` headers missing; warm-up probes renamed (not cold).
@@ -78,7 +84,7 @@ No runtime performance optimizations, multi-asset trading, HIP-3 implementation,
 - Layer B: reject login-redirect HTML without dashboard auth marker.
 - Layer A cold wording: fresh authenticated context (login may warm assets; not zero-cache).
 
-### Added (P3 â€” historical market data)
+### Added (P3 — historical market data)
 
 - `docs/market-data-contract.md` - canonical historical market data contract (Issue #76).
 - `services/market_data/manifest.py`, `content_hash.py` - dataset manifest schema and SHA-256 hashing (#77).
@@ -116,8 +122,8 @@ No runtime performance optimizations, multi-asset trading, HIP-3 implementation,
 - GitHub default branch migrated from `cursor/railway-paper-dashboard-v1` to `main`
   (Issue #64, commit `10000d3`). Rollback branch retained.
 - Branch protection with required CI checks enabled on `main` (Issue #65).
-- `.github/workflows/ci.yml` â€” CI push trigger includes `main`.
-- `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` â€” post-migration
+- `.github/workflows/ci.yml` — CI push trigger includes `main`.
+- `docs/default-branch-migration-plan.md`, `docs/branch-protection.md` — post-migration
   status.
 - `docs/runbooks/reconciliation-daily.md` - weekly reconciliation procedure (Issue #12).
 - docs/runbooks/README.md - runbook index; backup/restore linked (Issue #11).
@@ -131,62 +137,62 @@ Issue #15 bundles three runbooks; see docs/P2-PR-SPLIT.md.
 P2 kill-switch runbook remains partial (production = Railway worker stop).
 Issue #11: local restore drill with snapshot compare passed; Railway non-prod restore remains open.
 
-## [baseline-paper-v1.0.1] â€” 2026-07-14
+## [baseline-paper-v1.0.1] — 2026-07-14
 
 Tagged at commit `daacb627` (merge of PR #62). P1 reproducible paper-trading baseline.
 
 ### Added
 
-- `.github/workflows/ci.yml` â€” CI gate (validate, lint, unit test, PostgreSQL integration).
-- `docs/default-branch-migration-plan.md` â€” plan for `main` default branch (#52; migration not executed).
+- `.github/workflows/ci.yml` — CI gate (validate, lint, unit test, PostgreSQL integration).
+- `docs/default-branch-migration-plan.md` — plan for `main` default branch (#52; migration not executed).
 
 ### Changed
 
-- `docs/baseline-paper-v1.md` â€” P1 reproducible baseline reference (start paths, versions, test inventory).
-- `README.md` â€” aligned with PostgreSQL/Railway architecture.
+- `docs/baseline-paper-v1.md` — P1 reproducible baseline reference (start paths, versions, test inventory).
+- `README.md` — aligned with PostgreSQL/Railway architecture.
 
 ### Notes
 
 - Branch protection and mandatory required checks remain pending human approval (#52 execution issue).
 - Full 782-test suite is not entirely CI-gated; see `docs/baseline-paper-v1.md` for counts.
 
-## [Unreleased â€” prior entries]
+## [Unreleased — prior entries]
 
 ### Changed
 
-- `ROADMAP.md` â€” P0 marked complete with documented deviations (#52, ADR-011).
-- `docs/DEFINITION_OF_DONE.md` â€” Issue #5 closed; test-evidence baseline PRs (#50, #54, #57); DoD section demonstrated in #57.
-- `docs/DECISION_LOG.md` â€” ADR-011 solo-maintainer DoD enforcement.
-- `docs/ARCHITECTURE.md` â€” CI section corrected: governance workflow present; full pytest CI gap (#53) documented (Issue #3).
-- `docs/DEFINITION_OF_DONE.md` â€” removed incorrect post-governance baseline PR table; enforcement per ADR-011.
+- `ROADMAP.md` — P0 marked complete with documented deviations (#52, ADR-011).
+- `docs/DEFINITION_OF_DONE.md` — Issue #5 closed; test-evidence baseline PRs (#50, #54, #57); DoD section demonstrated in #57.
+- `docs/DECISION_LOG.md` — ADR-011 solo-maintainer DoD enforcement.
+- `docs/ARCHITECTURE.md` — CI section corrected: governance workflow present; full pytest CI gap (#53) documented (Issue #3).
+- `docs/DEFINITION_OF_DONE.md` — removed incorrect post-governance baseline PR table; enforcement per ADR-011.
 
 ### Added
 
-- `docs/baseline-paper-v1.md` â€” P1 reproducible baseline (start paths, runtime versions, test inventory, tag criteria).
-- `docs/ARCHITECTURE.md` â€” evidence-based system architecture map.
-- `docs/PROJECT_OPERATING_SYSTEM.md` â€” GitHub-centric workflow, bugfix process, WIP limits, GitHub Project manual steps.
-- `docs/DEFINITION_OF_DONE.md` â€” general, research, and bugfix checklists.
-- `docs/DECISION_LOG.md` â€” ADR-style decision register (evidence-based entries).
-- `docs/RISK_REGISTER.md` â€” initial risk catalog with status (open/planned/partial).
+- `docs/baseline-paper-v1.md` — P1 reproducible baseline (start paths, runtime versions, test inventory, tag criteria).
+- `docs/ARCHITECTURE.md` — evidence-based system architecture map.
+- `docs/PROJECT_OPERATING_SYSTEM.md` — GitHub-centric workflow, bugfix process, WIP limits, GitHub Project manual steps.
+- `docs/DEFINITION_OF_DONE.md` — general, research, and bugfix checklists.
+- `docs/DECISION_LOG.md` — ADR-style decision register (evidence-based entries).
+- `docs/RISK_REGISTER.md` — initial risk catalog with status (open/planned/partial).
 - `docs/EXPERIMENT_TEMPLATE.md`, `docs/STRATEGY_LIFECYCLE.md`, `docs/strategies/README.md`.
 - `docs/incidents/` and `docs/runbooks/` template structures.
-- `.cursor/rules/project-governance.mdc` â€” persistent Cursor agent rules.
-- `.github/ISSUE_TEMPLATE/` â€” bug, roadmap task, research experiment, incident forms.
+- `.cursor/rules/project-governance.mdc` — persistent Cursor agent rules.
+- `.github/ISSUE_TEMPLATE/` — bug, roadmap task, research experiment, incident forms.
 - `.github/PULL_REQUEST_TEMPLATE.md`.
-- `scripts/github_project_setup.py` â€” GitHub labels, milestones, and seed issues (`--dry-run` / `--apply`); stable seed keys and sequential idempotency tests (Issue #51).
-- `.github/workflows/github-governance-setup.yml` â€” PR validation and manual governance apply with concurrency serialization; official apply uses `--skip-project`.
-- `tests/governance/test_github_project_setup.py` â€” governance setup unit tests including repository fail-closed repair guards.
+- `scripts/github_project_setup.py` — GitHub labels, milestones, and seed issues (`--dry-run` / `--apply`); stable seed keys and sequential idempotency tests (Issue #51).
+- `.github/workflows/github-governance-setup.yml` — PR validation and manual governance apply with concurrency serialization; official apply uses `--skip-project`.
+- `tests/governance/test_github_project_setup.py` — governance setup unit tests including repository fail-closed repair guards.
 
 ### Changed
 
-- `docs/ARCHITECTURE.md` â€” verified production entrypoints table; migrations `001`â€“`009`; `trading_constraints` module (Issue #3).
-- `docs/DEFINITION_OF_DONE.md` â€” binding review policy (ADR-010); enforcement evidence tracked in Issue #5.
-- `docs/RISK_REGISTER.md` â€” top-5 risks linked to GitHub issues #45â€“#49 (Issue #6).
-- `scripts/github_project_setup.py` â€” stable seed keys, refresh-before-create, duplicate repair mode, repository fail-closed guards, and sequential idempotency tests (Issue #51).
-- Governance docs â€” idempotency claims corrected; official Actions apply uses `--skip-project`; duplicate repair restricted to approved repository with identity verification.
-- `README.md` â€” aligned with PostgreSQL/Railway architecture; links P1 baseline doc.
-- `ROADMAP.md` â€” P1 in progress; P0 exit remains open (see PR #57).
-- `services/paper_trading/README.md` â€” migration range corrected to `001`â€“`009`.
+- `docs/ARCHITECTURE.md` — verified production entrypoints table; migrations `001`–`009`; `trading_constraints` module (Issue #3).
+- `docs/DEFINITION_OF_DONE.md` — binding review policy (ADR-010); enforcement evidence tracked in Issue #5.
+- `docs/RISK_REGISTER.md` — top-5 risks linked to GitHub issues #45–#49 (Issue #6).
+- `scripts/github_project_setup.py` — stable seed keys, refresh-before-create, duplicate repair mode, repository fail-closed guards, and sequential idempotency tests (Issue #51).
+- Governance docs — idempotency claims corrected; official Actions apply uses `--skip-project`; duplicate repair restricted to approved repository with identity verification.
+- `README.md` — aligned with PostgreSQL/Railway architecture; links P1 baseline doc.
+- `ROADMAP.md` — P1 in progress; P0 exit remains open (see PR #57).
+- `services/paper_trading/README.md` — migration range corrected to `001`–`009`.
 
 ### Security
 

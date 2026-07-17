@@ -20,7 +20,8 @@ Reference [P5_DATA_EXPOSURE_AUDIT.md](P5_DATA_EXPOSURE_AUDIT.md):
 - B Walk-Forward / Validation (only cleared `VALIDATION_ELIGIBLE`)
 - C Forward holdout (sealed until #204)
 
-**Purge/embargo:** 90 calendar days (proposed; human approve with #197).
+**Purge/label embargo:** 90 calendar days (proposed; human approve with #197).
+**Feature warmup:** separate — monthly EMA-20 needs ≈20 monthly bars (~620 calendar days upper bound); see exposure audit.
 
 ## 4. Benchmarks
 
@@ -35,6 +36,7 @@ See [P5_BENCHMARKS_REGIMES.md](P5_BENCHMARKS_REGIMES.md) (#199). Minimum:
 ## 5. Cost assumptions
 
 - Base: P4 fee/slippage/funding (`COST_MODEL_VERSION` `1.1`).
+- Metrics emit schema **`1.2`**: `benchmark_result` is **net**; `BenchmarkRef.gross_return` + `cost_model_version` required; `cost_parity=true` means Spec costs apply to benchmarks (not zero costs).
 - Stress scenarios (#201): base, fee×2, slippage×2, funding on+stress, combined elevated, combined extreme.
 - Gross and net always separated.
 - No post-hoc stress shopping.
@@ -104,7 +106,7 @@ As in original protocol: fail-closed, quarantine, sufficiency→INCONCLUSIVE, on
 | Item | Value |
 |------|-------|
 | Primary random seed | `42` |
-| Metrics schema | `1.1` |
+| Metrics schema | `1.2` |
 | Cost model | `1.1` |
 
 ## Protocol freeze sign-off
