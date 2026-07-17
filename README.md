@@ -4,7 +4,20 @@ Research and operations repository for trend Strategy V1, paper trading, backtes
 
 **Governance source of truth:** GitHub (issues, milestones, pull requests). Chat is the workbench; GitHub is the project memory.
 
-**Current workstream:** P1 — Reproducible Baseline Release (`ROADMAP.md`). Baseline reference: `docs/baseline-paper-v1.md`. CI: `.github/workflows/ci.yml`.
+
+## Public development disclaimer
+
+This repository is **public infrastructure / research framework** under active development.
+
+- Paper trading and offline research only in the public core — **not** a live trading product and **not** financial advice.
+- No profitability claims; reference strategies are **not** trading recommendations.
+- No guarantee of correctness or fitness for any purpose; APIs and schemas may change.
+- **You** bear all risk if you run any part of this software.
+- **Live trading is not released** in this public core.
+- **Public Core / Private Edge:** generic engine and docs may be public; validated candidates, optimized parameters, confidential results, production configs, and live execution stay private. See [docs/governance/PUBLIC_PRIVATE_BOUNDARY.md](docs/governance/PUBLIC_PRIVATE_BOUNDARY.md) and [docs/governance/PRIVATE_EDGE_EXTENSION.md](docs/governance/PRIVATE_EDGE_EXTENSION.md).
+- Roadmap: [ROADMAP.md](ROADMAP.md). Public-release checklist: [docs/governance/PUBLIC_RELEASE_CHECKLIST.md](docs/governance/PUBLIC_RELEASE_CHECKLIST.md).
+
+**Current workstream:** P4 research engine complete on main; public-release gates #176–#180. See ROADMAP.md. Baseline: docs/baseline-paper-v1.md. CI: .github/workflows/ci.yml.
 
 ## Quick start
 
