@@ -9,7 +9,7 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 
 | Wave | Issue | Public deliverable | Blocking human / time gate |
 |------|-------|--------------------|----------------------------|
-| 0 | #181 | Private repo + leakage docs | Merge; confirm private ACL |
+| 0 | #181 | Private repo + leakage docs | **Merged** (PR #222); confirm private ACL |
 | 1 | #196 | Candidate freeze prepared (metrics **1.2**) | `FREEZE APPROVED` + **final merged main** SHA + refreshed 76+3 |
 | 2 | #197 | Partitions / exposure audit | `PARTITIONS LOCKED` + embargo + monthly warmup ack |
 | 3 | #198 | Protocol + decision rules | `PROTOCOL FROZEN` / `DECISION RULES FROZEN` |
@@ -25,7 +25,7 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 
 Do **not** open holdout C until all are true:
 
-- [ ] #181 merged / private store usable
+- [x] #181 merged / private store usable
 - [ ] Human `FREEZE APPROVED` on #196 (regression evidence on final merged `main`)
 - [ ] Human partition lock on #197 (embargo **and** completed-monthly warmup acknowledged)
 - [ ] Human protocol + decision freeze on #198

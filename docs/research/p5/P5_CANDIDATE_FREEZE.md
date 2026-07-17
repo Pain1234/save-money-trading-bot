@@ -11,29 +11,31 @@
 | `strategy_id` | `trend_v1` | Matches resolver key in P4 docs |
 | `strategy_version` | `1.0.0` | Must match code + spec |
 | Git commit (freeze pin) | **Set at human sign-off** to public `main` tip SHA | Do not freeze against a dirty worktree |
-| Regression evidence SHA | **STALE — refresh after merge** (was `8a9c7e0…` on diverged prep branch) | Re-run 76+3 on **final merged `main`** before `FREEZE APPROVED`; do not freeze against this prep SHA |
-| Strategy code hash (SHA-256 of `services/strategy_engine/**/*.py`) | `c1536efa3d179cf98ad595241b461bf7c0a9cbe34039654e5ec3118050b62b18` | 10 files; path+bytes |
-| Risk code hash (SHA-256 of `services/risk_engine/**/*.py`) | `90e9d833227c3f8dabdc34a767d8435089aac940eee9bbebb70df07f6efe4c68` | 8 files; coupled V1 |
+| Regression evidence SHA | `b51bde6fc186505f4ffb30c5d65665a50a801ed4` | Current `main` tip when entry tests were re-run (2026-07-17) |
+| Strategy code hash (SHA-256 of `services/strategy_engine/**/*.py`) | `e96558b9dcae64dd7d4ce92544fb8ed8e715294ed1f49d0114b494ae68e2b43a` | 10 files; posix path + NUL + bytes + NUL |
+| Risk code hash (SHA-256 of `services/risk_engine/**/*.py`) | `2b51f5f55eace6369f906472bb2cef10537fcd62fc94c14376777a70cf5b7d28` | 8 files; coupled V1; same hash method |
 | Freeze timestamp (UTC) | **Set at human sign-off** | Starts forward holdout clock |
 | Human approver | **REQUIRED** | Comment on #196 with SHA + UTC |
 | Private Spec path | `Pain1234/save-money-trading-bot-private-research` → `specs/trend_v1_1.0.0/` | Per #181 |
 
 ## Entry-gate evidence (#196)
 
-Commands (2026-07-17, evidence SHA above):
+Commands (2026-07-17 UTC, evidence SHA `b51bde6fc186505f4ffb30c5d65665a50a801ed4` = `origin/main` tip):
 
 ```text
-python -m pytest tests/research tests/paper_trading/test_backtester_signal_parity.py tests/paper_trading/test_backtester_parity.py -q
-# 76 passed
+PYTHONPATH=services python -m pytest tests/research tests/paper_trading/test_backtester_signal_parity.py tests/paper_trading/test_backtester_parity.py -q
+# 113 passed
 
-python -m pytest tests/research/test_double_run_repro.py -q
+PYTHONPATH=services python -m pytest tests/research/test_double_run_repro.py -q
 # 3 passed
 ```
+
+(Count rose vs earlier “76” prep run because P5 walk-forward / cost-stress / bootstrap / neighborhood tests landed on `main`.)
 
 | Prerequisite | Status | Evidence |
 |--------------|--------|----------|
 | P4 complete on `main` | Met (docs) | ROADMAP / P4_ACCEPTANCE |
-| Material P4 regressions green | **STALE / PENDING** — re-run 76+3 on final merged main | commands above are prep-only; not freeze evidence |
+| Material P4 regressions green | **Met on evidence SHA** | commands above (113+3) |
 | ExperimentSpec versioned | Met | #141 |
 | RunManifest immutable | Met | #142 |
 | DatasetManifest binding | Met (contract) | #163 |
@@ -44,8 +46,8 @@ python -m pytest tests/research/test_double_run_repro.py -q
 | Backtester/paper parity docs | Met | BACKTESTER_PAPER_PARITY.md |
 | Strategy V1 version unique | Met | `1.0.0` |
 | Candidate freeze signed | **Pending human** | this file |
-| No open critical P4-fix | No open P4-fix found at prep | re-check at sign-off |
-| Public/private storage | Met pending #181 merge | PR #222 / private repo |
+| No open critical P4-fix | No open P4-fix found at evidence run | re-check at sign-off |
+| Public/private storage | Met (#181 merged) | PR #222 / private repo |
 | Final OOS unopened | Met | no P5 OOS artifacts |
 
 ## Parameters (Spec Freeze 1.0 / inventory)
