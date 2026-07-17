@@ -556,9 +556,11 @@ def test_14b_live_codex_workspace_outside_repo_and_auth(
     assert home_file.is_file(), "mock should record CODEX_HOME"
     codex_home = Path(home_file.read_text(encoding="utf-8").strip())
     assert codex_home.is_dir()
-    assert not (codex_home / "auth.json").exists(), "auth.json must not be under CODEX_HOME"
-    assert (codex_home / "auth-via-env.ok").is_file()
-    assert auth_seen.is_file(), "mock should record env auth was present"
+    # Ephemeral CODEX_HOME may hold auth.json during the run; KEEP_AUTH still
+    # deletes auth.json afterward (marker only remains).
+    assert not (codex_home / "auth.json").exists(), "auth.json must be scrubbed after the run"
+    assert (codex_home / "auth-via-home-copy.ok").is_file()
+    assert auth_seen.is_file(), "mock should record auth was present during exec"
     assert "AGENT_LOOP_AUTH_ENV_SEEN=1" in auth_seen.read_text(encoding="utf-8")
     assert codex_home.name.startswith("codex-auth-")
 

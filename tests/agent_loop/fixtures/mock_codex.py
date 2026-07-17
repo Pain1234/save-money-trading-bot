@@ -77,13 +77,16 @@ def main(argv: list[str]) -> int:
 
     if os.environ.get("AGENT_LOOP_REQUIRE_AUTH", "").strip() == "1":
         mock_ok = os.environ.get("AGENT_LOOP_MOCK_AUTH_OK", "").strip() == "1"
+        home = os.environ.get("CODEX_HOME", "").strip()
+        has_auth_file = bool(home) and (Path(home) / "auth.json").is_file()
         has_key = bool(
             os.environ.get("CODEX_ACCESS_TOKEN", "").strip()
             or os.environ.get("CODEX_API_KEY", "").strip()
+            or has_auth_file
         )
         if not mock_ok and not has_key:
             print(
-                "mock_codex: CODEX_ACCESS_TOKEN/CODEX_API_KEY missing "
+                "mock_codex: CODEX_ACCESS_TOKEN/CODEX_API_KEY/auth.json missing "
                 "(or set AGENT_LOOP_MOCK_AUTH_OK=1)",
                 file=sys.stderr,
             )

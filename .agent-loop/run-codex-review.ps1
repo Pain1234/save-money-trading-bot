@@ -1303,16 +1303,19 @@ $wsInput
             exit $Script:ExitReviewFailed
         }
 
-        # Ephemeral CODEX_HOME WITHOUT auth.json — auth is env-only for the child.
-        # Sibling temp dir (outside workspace) so Codex cannot browse user ~/.codex.
+        # Ephemeral CODEX_HOME outside the review workspace so Codex cannot browse
+        # the real ~/.codex tree. Codex CLI 0.144+ ChatGPT login needs auth.json
+        # (id_token + access_token); env-only CODEX_ACCESS_TOKEN is insufficient.
+        # Copy a private auth.json into this temp home, then delete the home after.
         $authHomeDir = Join-Path ([System.IO.Path]::GetTempPath()) (
             "codex-auth-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
         )
         New-Item -ItemType Directory -Force -Path $authHomeDir | Out-Null
 
-        # Resolve CODEX_* credentials for the scrubbed child env only (never OPENAI_API_KEY).
+        # Resolve credentials: scrubbed child env (CODEX_* only) and/or ephemeral auth.json.
         $childAuth = @{}
         $authEnvApplied = $false
+        $authJsonCopied = $false
         $authEnvFile = $null
 
         if (-not [string]::IsNullOrWhiteSpace($env:CODEX_ACCESS_TOKEN)) {
@@ -1324,30 +1327,38 @@ $wsInput
             $authEnvApplied = $true
         }
 
-        if (-not $authEnvApplied) {
-            $authCandidates = [System.Collections.Generic.List[string]]::new()
-            if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_AUTH_JSON_SOURCE)) {
-                $authCandidates.Add($env:AGENT_LOOP_AUTH_JSON_SOURCE.Trim()) | Out-Null
+        $authCandidates = [System.Collections.Generic.List[string]]::new()
+        if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_AUTH_JSON_SOURCE)) {
+            $authCandidates.Add($env:AGENT_LOOP_AUTH_JSON_SOURCE.Trim()) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($prevCodexHome)) {
+            $authCandidates.Add((Join-Path $prevCodexHome "auth.json")) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+            $authCandidates.Add((Join-Path $env:HOME ".codex/auth.json")) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+            $authCandidates.Add((Join-Path $env:USERPROFILE ".codex\auth.json")) | Out-Null
+        }
+
+        $authSrc = $null
+        foreach ($cand in $authCandidates) {
+            if (Test-Path -LiteralPath $cand) {
+                $authSrc = $cand
+                break
             }
-            if (-not [string]::IsNullOrWhiteSpace($prevCodexHome)) {
-                $authCandidates.Add((Join-Path $prevCodexHome "auth.json")) | Out-Null
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($authSrc)) {
+            try {
+                Copy-Item -LiteralPath $authSrc -Destination (Join-Path $authHomeDir "auth.json") -Force
+                $authJsonCopied = $true
             }
-            if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
-                $authCandidates.Add((Join-Path $env:HOME ".codex/auth.json")) | Out-Null
-            }
-            if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-                $authCandidates.Add((Join-Path $env:USERPROFILE ".codex\auth.json")) | Out-Null
+            catch {
+                $authJsonCopied = $false
             }
 
-            $authSrc = $null
-            foreach ($cand in $authCandidates) {
-                if (Test-Path -LiteralPath $cand) {
-                    $authSrc = $cand
-                    break
-                }
-            }
-
-            if (-not [string]::IsNullOrWhiteSpace($authSrc)) {
+            if (-not $authEnvApplied) {
                 $extractScript = Join-Path $Script:AgentLoopDir "extract_codex_auth_env.py"
                 $authEnvFile = Join-Path ([System.IO.Path]::GetTempPath()) (
                     "codex-auth-env-" + [guid]::NewGuid().ToString("N") + ".env"
@@ -1368,10 +1379,8 @@ $wsInput
                             $childAuth[$k] = $v
                             $authEnvApplied = $true
                         }
-                        # Ignore OPENAI_API_KEY if ever present in extract output.
                     }
                 }
-                # Always delete the temp env file (never KEEP).
                 try {
                     Remove-Item -LiteralPath $authEnvFile -Force -ErrorAction SilentlyContinue
                 }
@@ -1385,6 +1394,7 @@ $wsInput
         $hasChildKey = (
             $childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -or
             $childAuth.ContainsKey("CODEX_API_KEY") -or
+            $authJsonCopied -or
             ($env:AGENT_LOOP_MOCK_AUTH_OK -eq "1")
         )
         if ($requireAuth -and -not $hasChildKey) {
@@ -1393,17 +1403,20 @@ $wsInput
             }
             catch { }
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "Codex auth missing; need CODEX_ACCESS_TOKEN/CODEX_API_KEY env or auth.json to extract." `
+                -Summary "Codex auth missing; need auth.json (ChatGPT login) or CODEX_API_KEY/CODEX_ACCESS_TOKEN." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
                 -ReviewNotes @(
-                    "This gate uses CODEX_* only (never OPENAI_API_KEY in the child env).",
-                    "Expected env key or auth under prior CODEX_HOME / ~/.codex/auth.json"
+                    "Run 'codex login' so ~/.codex/auth.json exists, or set CODEX_API_KEY.",
+                    "Child env never receives OPENAI_API_KEY; auth.json is copied only into ephemeral CODEX_HOME."
                 )
             Write-Host "REVIEW_FAILED: missing Codex auth (env or auth.json)"
             exit $Script:ExitReviewFailed
         }
-        if ($authEnvApplied) {
-            # Non-secret marker for tests; never write tokens into CODEX_HOME.
+        if ($authJsonCopied) {
+            $markerPath = Join-Path $authHomeDir "auth-via-home-copy.ok"
+            [System.IO.File]::WriteAllText($markerPath, "1`n")
+        }
+        elseif ($authEnvApplied -or ($env:AGENT_LOOP_MOCK_AUTH_OK -eq "1")) {
             $markerPath = Join-Path $authHomeDir "auth-via-env.ok"
             [System.IO.File]::WriteAllText($markerPath, "1`n")
         }
@@ -1411,10 +1424,17 @@ $wsInput
         $childExtra = @{
             CODEX_HOME = $authHomeDir
         }
-        # Pass at most one auth key into the child (prefer ACCESS_TOKEN).
-        if ($childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -and
-            -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_ACCESS_TOKEN"])) {
-            $childExtra["CODEX_ACCESS_TOKEN"] = $childAuth["CODEX_ACCESS_TOKEN"]
+        # Prefer auth.json in CODEX_HOME (ChatGPT login). Only pass env keys when
+        # no auth.json copy exists - lone CODEX_ACCESS_TOKEN fails on Codex 0.144+.
+        if (-not $authJsonCopied) {
+            if ($childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -and
+                -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_ACCESS_TOKEN"])) {
+                $childExtra["CODEX_ACCESS_TOKEN"] = $childAuth["CODEX_ACCESS_TOKEN"]
+            }
+            elseif ($childAuth.ContainsKey("CODEX_API_KEY") -and
+                -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_API_KEY"])) {
+                $childExtra["CODEX_API_KEY"] = $childAuth["CODEX_API_KEY"]
+            }
         }
         elseif ($childAuth.ContainsKey("CODEX_API_KEY") -and
             -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_API_KEY"])) {
