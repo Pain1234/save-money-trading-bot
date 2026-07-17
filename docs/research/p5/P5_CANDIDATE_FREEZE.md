@@ -1,22 +1,54 @@
-# P5 Candidate Freeze Manifest (planning template)
+# P5 Candidate Freeze Manifest
 
-**Status:** PLANNING / UNSIGNED
+**Status:** PREPARED — awaiting human signature
 **Issue:** [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196) (P5-00)
 **Rule:** After human freeze, no parameter change may keep the name Strategy V1 without a new `strategy_version`, new freeze manifest, and new validation chain.
 
-## Identity (fill at freeze)
+## Identity
 
 | Field | Value | Notes |
 |-------|-------|-------|
-| `strategy_id` | `trend_v1` (planned) | Matches resolver key in P4 docs |
-| `strategy_version` | `1.0.0` (planned pin) | Must match code + spec |
-| Git commit | TBD | Exact SHA at freeze |
-| Strategy code hash | TBD | Hash of resolved strategy module tree |
-| Freeze timestamp (UTC) | TBD | |
-| Human approver | TBD | Required |
-| Private storage path | TBD | Per #181 — not public `artifacts/` |
+| `strategy_id` | `trend_v1` | Matches resolver key in P4 docs |
+| `strategy_version` | `1.0.0` | Must match code + spec |
+| Git commit (freeze pin) | **Set at human sign-off** to public `main` tip SHA | Do not freeze against a dirty worktree |
+| Regression evidence SHA | **STALE — refresh after merge** (was `8a9c7e0…` on diverged prep branch) | Re-run 76+3 on **final merged `main`** before `FREEZE APPROVED`; do not freeze against this prep SHA |
+| Strategy code hash (SHA-256 of `services/strategy_engine/**/*.py`) | `c1536efa3d179cf98ad595241b461bf7c0a9cbe34039654e5ec3118050b62b18` | 10 files; path+bytes |
+| Risk code hash (SHA-256 of `services/risk_engine/**/*.py`) | `90e9d833227c3f8dabdc34a767d8435089aac940eee9bbebb70df07f6efe4c68` | 8 files; coupled V1 |
+| Freeze timestamp (UTC) | **Set at human sign-off** | Starts forward holdout clock |
+| Human approver | **REQUIRED** | Comment on #196 with SHA + UTC |
+| Private Spec path | `Pain1234/save-money-trading-bot-private-research` → `specs/trend_v1_1.0.0/` | Per #181 |
 
-## Parameters (planned pin = Spec Freeze 1.0 / inventory)
+## Entry-gate evidence (#196)
+
+Commands (2026-07-17, evidence SHA above):
+
+```text
+python -m pytest tests/research tests/paper_trading/test_backtester_signal_parity.py tests/paper_trading/test_backtester_parity.py -q
+# 76 passed
+
+python -m pytest tests/research/test_double_run_repro.py -q
+# 3 passed
+```
+
+| Prerequisite | Status | Evidence |
+|--------------|--------|----------|
+| P4 complete on `main` | Met (docs) | ROADMAP / P4_ACCEPTANCE |
+| Material P4 regressions green | Met on evidence SHA | commands above |
+| ExperimentSpec versioned | Met | #141 |
+| RunManifest immutable | Met | #142 |
+| DatasetManifest binding | Met (contract) | #163 |
+| Strategy resolver injects engine | Met | #166 |
+| Cost/slippage/funding semantics | Met | FUNDING.md / #164 |
+| Registry trust anchor | Met | #165 |
+| Compare Spec+Run identity | Met | #167 |
+| Backtester/paper parity docs | Met | BACKTESTER_PAPER_PARITY.md |
+| Strategy V1 version unique | Met | `1.0.0` |
+| Candidate freeze signed | **Pending human** | this file |
+| No open critical P4-fix | No open P4-fix found at prep | re-check at sign-off |
+| Public/private storage | Met pending #181 merge | PR #222 / private repo |
+| Final OOS unopened | Met | no P5 OOS artifacts |
+
+## Parameters (Spec Freeze 1.0 / inventory)
 
 Source: `docs/strategy-v1-parameter-inventory.md`, `docs/strategy-specification.md`.
 
@@ -50,25 +82,20 @@ Source: `docs/strategy-v1-parameter-inventory.md`, `docs/strategy-specification.
 
 | Concern | Source of truth |
 |---------|-----------------|
-| Entry rules | `docs/strategy-specification.md` |
-| Exit rules | same |
-| Stop rules | same |
+| Entry / exit / stop rules | `docs/strategy-specification.md` |
 | Candle timeframes | Daily evaluation; weekly/monthly filters per spec |
 | Warmup minima | Daily ≥21, Weekly ≥50, Monthly ≥20 |
 
-## Model / contract versions (pin at freeze)
+## Model / contract versions
 
-| Contract | Planned version | Doc |
-|----------|-----------------|-----|
-| Cost model | `1.1` | `docs/research/FUNDING.md` / costs |
-| Fee assumption | Spec `fee_assumption.model_version` | ExperimentSpec |
-| Slippage model | Spec `slippage_assumption.model_version` | ExperimentSpec |
-| Funding model | Spec `funding_assumption.model_version` | ExperimentSpec |
-| Benchmark | versioned `benchmark_id@version` | METRICS / benchmark contract |
-| Metrics schema | `1.1` | `docs/research/METRICS_DEFINITIONS.md` |
-| Report schema | as emitted by research runner | ARTIFACT_FORMAT |
+| Contract | Version | Doc |
+|----------|---------|-----|
+| Cost model | `1.1` | `docs/research/FUNDING.md` (`COST_MODEL_VERSION`) |
+| Fee / slippage / funding Spec fields | as Spec `model_version` | ExperimentSpec |
+| Metrics schema | `1.2` | `docs/research/METRICS_DEFINITIONS.md` (net `benchmark_result` + `gross_return`; Spec cost parity) |
+| Report schema | research runner | ARTIFACT_FORMAT |
 | Dataset contracts | P3 DatasetManifest + P4 bind | market-data + dataset_binding |
-| Random seeds | TBD in protocol | Must be fixed before OOS |
+| Random seed (protocol default) | `42` until protocol freeze overrides | Must match protocol |
 
 ## Freeze discipline
 
@@ -78,9 +105,9 @@ Source: `docs/strategy-v1-parameter-inventory.md`, `docs/strategy-specification.
 
 ## Sign-off
 
-| Role | Name | Date | Signature / issue comment |
-|------|------|------|---------------------------|
-| Preparer | TBD | TBD | |
-| Human freeze approval | TBD | TBD | |
+| Role | Name | Date (UTC) | Signature / issue comment |
+|------|------|------------|---------------------------|
+| Preparer | Cursor agent (P5 execution) | 2026-07-17 | Prepared hashes + regression evidence |
+| Human freeze approval | **REQUIRED** | | Comment on #196: `FREEZE APPROVED` + final `main` SHA + UTC |
 
-**Final holdout status at freeze:** must remain **unopened**.
+**Final holdout status at freeze:** **unopened**. Forward holdout clock starts at human approval UTC (#197).
