@@ -29,7 +29,7 @@ Rules:
 1. **Public core never depends on private edge** (no cyclic git/package dependency).
 2. Public core contains **no private secrets** and no private result payloads.
 3. Private edge **pins** a public-core version (tag or commit SHA) and may only consume published public APIs / packages.
-4. Private artifacts stay in the private repo (or private object storage); they are never committed under public rtifacts/research/.
+4. Private artifacts stay in the private repo (or private object storage); they are never committed under public `artifacts/research/`.
 
 ## What stays public vs private
 
@@ -46,8 +46,8 @@ Rules:
 Public surfaces private code may call **without** forking core:
 
 - Spec + plugin registry (register private strategies by name in private config)
-- RunRequest / runner CLI against a pinned core version
-- Artifact layout contract (docs/research/ARTIFACT_LAYOUT.md) for private-side storage mirroring
+- `RunRequest` / runner CLI against a pinned core version
+- Artifact layout contract (`docs/research/ARTIFACT_LAYOUT.md`) for private-side storage mirroring
 
 Public surfaces that **must not** grow private hooks:
 
