@@ -185,7 +185,89 @@ function Resolve-CodexBin {
     if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_CODEX_BIN)) {
         return $env:AGENT_LOOP_CODEX_BIN.Trim()
     }
+    $cmd = Get-Command codex -ErrorAction SilentlyContinue
+    if ($null -eq $cmd) {
+        return "codex"
+    }
+    $src = [string]$cmd.Source
+    # Prefer the .cmd shim over .ps1 — Process.Start cannot launch .ps1 directly.
+    if ($src -match '\.ps1$') {
+        $cmdShim = [System.IO.Path]::ChangeExtension($src, ".cmd")
+        if (Test-Path -LiteralPath $cmdShim) {
+            return (Resolve-Path -LiteralPath $cmdShim).Path
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($src) -and (Test-Path -LiteralPath $src)) {
+        return $src
+    }
     return "codex"
+}
+
+function Resolve-CodexProcessStart {
+    <#
+      Map a Codex bin path to ProcessStartInfo FileName + leading args.
+      Handles Python mocks, Windows npm .cmd/.ps1 shims (via node + codex.js),
+      and native executables.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Bin,
+        [Parameter(Mandatory = $true)][System.Collections.Generic.List[string]]$ArgumentList
+    )
+    $fileName = $Bin
+    if ($Bin -match '\.py$') {
+        $py = Get-Command python -ErrorAction SilentlyContinue
+        if ($null -eq $py) {
+            throw "python not found on PATH (required to run Codex mock/bin '$Bin')."
+        }
+        $fileName = $py.Source
+        $ArgumentList.Insert(0, $Bin)
+        return $fileName
+    }
+
+    $shimPath = $null
+    if ($Bin -eq "codex") {
+        $cmd = Get-Command codex -ErrorAction SilentlyContinue
+        if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace([string]$cmd.Source)) {
+            $shimPath = [string]$cmd.Source
+        }
+    }
+    elseif ($Bin -match '\.(cmd|ps1|bat)$' -and (Test-Path -LiteralPath $Bin)) {
+        $shimPath = $Bin
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($shimPath)) {
+        $npmDir = Split-Path -Parent $shimPath
+        $jsCandidate = Join-Path $npmDir "node_modules\@openai\codex\bin\codex.js"
+        if (-not (Test-Path -LiteralPath $jsCandidate)) {
+            $jsCandidate = Join-Path $npmDir "node_modules/@openai/codex/bin/codex.js"
+        }
+        if (Test-Path -LiteralPath $jsCandidate) {
+            $node = Get-Command node -ErrorAction SilentlyContinue
+            if ($null -eq $node) {
+                throw "node not found on PATH (required to launch npm Codex shim)."
+            }
+            $ArgumentList.Insert(0, (Resolve-Path -LiteralPath $jsCandidate).Path)
+            return $node.Source
+        }
+        if ($shimPath -match '\.(cmd|bat)$') {
+            $comSpec = $env:ComSpec
+            if ([string]::IsNullOrWhiteSpace($comSpec)) {
+                $comSpec = "cmd.exe"
+            }
+            $ArgumentList.Insert(0, $shimPath)
+            $ArgumentList.Insert(0, "/c")
+            $ArgumentList.Insert(0, "/d")
+            return $comSpec
+        }
+        if ($shimPath -match '\.ps1$') {
+            throw ("Cannot Process.Start PowerShell shim '{0}'. Install Codex so node_modules/@openai/codex is present, or set AGENT_LOOP_CODEX_BIN to a native binary." -f $shimPath)
+        }
+        if (Test-Path -LiteralPath $shimPath) {
+            return (Resolve-Path -LiteralPath $shimPath).Path
+        }
+    }
+
+    return $fileName
 }
 
 function Test-CodexAvailable {
@@ -234,6 +316,7 @@ function Get-CodexChildEnvironment {
             "AGENT_LOOP_REQUIRE_AUTH",
             "AGENT_LOOP_MOCK_AUTH_OK",
             "AGENT_LOOP_AUTH_ENV_SEEN_FILE",
+            "AGENT_LOOP_AUTH_KEYS_FILE",
             "AGENT_LOOP_MOCK_STDERR_NOISE",
             "AGENT_LOOP_CODEX_STDERR_NOISE",
             "AGENT_LOOP_MOCK_FLOOD_STREAMS",
@@ -371,17 +454,10 @@ function Invoke-CodexCommand {
 
     $fileName = $Bin
     $argList = [System.Collections.Generic.List[string]]::new()
-    if ($Bin -match '\.py$') {
-        $py = Get-Command python -ErrorAction SilentlyContinue
-        if ($null -eq $py) {
-            throw "python not found on PATH (required to run Codex mock/bin '$Bin')."
-        }
-        $fileName = $py.Source
-        $argList.Add($Bin) | Out-Null
-    }
     foreach ($a in $ArgumentList) {
         $argList.Add([string]$a) | Out-Null
     }
+    $fileName = Resolve-CodexProcessStart -Bin $Bin -ArgumentList $argList
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $fileName
@@ -629,9 +705,10 @@ function New-CodexExecArgumentList {
         [hashtable]$Environment = $null
     )
     $helpText = Get-CodexExecHelpText -Bin $Bin -Environment $Environment
+    # --ask-for-approval was removed from newer Codex CLIs (e.g. 0.144+); exec is
+    # non-interactive by default. Still require sandbox + ignore-user-config.
     $required = @(
         @{ Flag = "--sandbox"; Label = "sandbox" },
-        @{ Flag = "--ask-for-approval"; Label = "ask-for-approval" },
         @{ Flag = "--ignore-user-config"; Label = "ignore-user-config" }
     )
     foreach ($req in $required) {
@@ -646,8 +723,10 @@ function New-CodexExecArgumentList {
     $argList.Add("--skip-git-repo-check") | Out-Null
     $argList.Add("--sandbox") | Out-Null
     $argList.Add("read-only") | Out-Null
-    $argList.Add("--ask-for-approval") | Out-Null
-    $argList.Add("never") | Out-Null
+    if ($helpText -match [regex]::Escape("--ask-for-approval")) {
+        $argList.Add("--ask-for-approval") | Out-Null
+        $argList.Add("never") | Out-Null
+    }
     $argList.Add("--ignore-user-config") | Out-Null
     if ($helpText -match "--ignore-rules") {
         $argList.Add("--ignore-rules") | Out-Null
@@ -1187,36 +1266,47 @@ $wsInput
             $isUnix = $true
         }
         else {
-            $prevUnameEap = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            $unameOut = & uname 2>$null
-            $ErrorActionPreference = $prevUnameEap
-            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$unameOut)) {
-                $isUnix = $true
+            # Probe uname only when the command exists (avoids terminating errors on Windows).
+            $unameCmd = Get-Command uname -ErrorAction SilentlyContinue
+            if ($null -ne $unameCmd) {
+                $prevUnameEap = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                $unameOut = & uname 2>$null
+                $unameCode = $LASTEXITCODE
+                $ErrorActionPreference = $prevUnameEap
+                if ($unameCode -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$unameOut)) {
+                    $isUnix = $true
+                }
             }
         }
 
         if (-not $skipOsIsolation -and -not $isUnix) {
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "OS isolation not available on this platform." `
+                -Summary "OS isolation not available on this platform (live Windows reviews are fail-closed)." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
                 -ReviewNotes @(
-                    "Set AGENT_LOOP_SKIP_OS_ISOLATION=1 and AGENT_LOOP_TEST_MODE=1 only for tests/mocks."
+                    "Live Codex reviews require Linux/macOS chmod isolation (e.g. WSL or CI).",
+                    "Windows cannot enforce the repo read lockdown used by this gate.",
+                    "Use WSL/Linux CI for live reviews, or -SkipCodex -MockResultPath for local tests.",
+                    "Set AGENT_LOOP_SKIP_OS_ISOLATION=1 and AGENT_LOOP_TEST_MODE=1 only for mocks."
                 )
             Write-Host "REVIEW_FAILED: OS isolation not available on this platform"
             exit $Script:ExitReviewFailed
         }
 
-        # Ephemeral CODEX_HOME WITHOUT auth.json — auth is env-only for the child.
-        # Sibling temp dir (outside workspace) so Codex cannot browse user ~/.codex.
+        # Ephemeral CODEX_HOME outside the review workspace so Codex cannot browse
+        # the real ~/.codex tree. Codex CLI 0.144+ ChatGPT login needs a minimized
+        # auth.json (id_token + access_token); env-only CODEX_ACCESS_TOKEN is insufficient.
+        # Write ONLY minimized tokens (never full auth / API keys), then delete after.
         $authHomeDir = Join-Path ([System.IO.Path]::GetTempPath()) (
             "codex-auth-" + $shortSha + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
         )
         New-Item -ItemType Directory -Force -Path $authHomeDir | Out-Null
 
-        # Resolve CODEX_* credentials for the scrubbed child env only (never OPENAI_API_KEY).
+        # Resolve credentials: scrubbed child env (CODEX_* only) and/or ephemeral auth.json.
         $childAuth = @{}
         $authEnvApplied = $false
+        $authJsonCopied = $false
         $authEnvFile = $null
 
         if (-not [string]::IsNullOrWhiteSpace($env:CODEX_ACCESS_TOKEN)) {
@@ -1228,30 +1318,45 @@ $wsInput
             $authEnvApplied = $true
         }
 
-        if (-not $authEnvApplied) {
-            $authCandidates = [System.Collections.Generic.List[string]]::new()
-            if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_AUTH_JSON_SOURCE)) {
-                $authCandidates.Add($env:AGENT_LOOP_AUTH_JSON_SOURCE.Trim()) | Out-Null
+        $authCandidates = [System.Collections.Generic.List[string]]::new()
+        if (-not [string]::IsNullOrWhiteSpace($env:AGENT_LOOP_AUTH_JSON_SOURCE)) {
+            $authCandidates.Add($env:AGENT_LOOP_AUTH_JSON_SOURCE.Trim()) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($prevCodexHome)) {
+            $authCandidates.Add((Join-Path $prevCodexHome "auth.json")) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+            $authCandidates.Add((Join-Path $env:HOME ".codex/auth.json")) | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+            $authCandidates.Add((Join-Path $env:USERPROFILE ".codex\auth.json")) | Out-Null
+        }
+
+        $authSrc = $null
+        foreach ($cand in $authCandidates) {
+            if (Test-Path -LiteralPath $cand) {
+                $authSrc = $cand
+                break
             }
-            if (-not [string]::IsNullOrWhiteSpace($prevCodexHome)) {
-                $authCandidates.Add((Join-Path $prevCodexHome "auth.json")) | Out-Null
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($authSrc)) {
+            # Minimized auth.json only (never full user auth / never OPENAI_API_KEY).
+            $minimizeScript = Join-Path $Script:AgentLoopDir "minimize_codex_auth.py"
+            $authDest = Join-Path $authHomeDir "auth.json"
+            $prevMinEap = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            & python $minimizeScript --auth-json $authSrc --out-file $authDest 2>$null | Out-Null
+            $minExit = $LASTEXITCODE
+            $ErrorActionPreference = $prevMinEap
+            if ($minExit -eq 0 -and (Test-Path -LiteralPath $authDest)) {
+                $authJsonCopied = $true
             }
-            if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
-                $authCandidates.Add((Join-Path $env:HOME ".codex/auth.json")) | Out-Null
-            }
-            if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-                $authCandidates.Add((Join-Path $env:USERPROFILE ".codex\auth.json")) | Out-Null
+            else {
+                $authJsonCopied = $false
             }
 
-            $authSrc = $null
-            foreach ($cand in $authCandidates) {
-                if (Test-Path -LiteralPath $cand) {
-                    $authSrc = $cand
-                    break
-                }
-            }
-
-            if (-not [string]::IsNullOrWhiteSpace($authSrc)) {
+            if (-not $authEnvApplied) {
                 $extractScript = Join-Path $Script:AgentLoopDir "extract_codex_auth_env.py"
                 $authEnvFile = Join-Path ([System.IO.Path]::GetTempPath()) (
                     "codex-auth-env-" + [guid]::NewGuid().ToString("N") + ".env"
@@ -1272,10 +1377,8 @@ $wsInput
                             $childAuth[$k] = $v
                             $authEnvApplied = $true
                         }
-                        # Ignore OPENAI_API_KEY if ever present in extract output.
                     }
                 }
-                # Always delete the temp env file (never KEEP).
                 try {
                     Remove-Item -LiteralPath $authEnvFile -Force -ErrorAction SilentlyContinue
                 }
@@ -1289,6 +1392,7 @@ $wsInput
         $hasChildKey = (
             $childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -or
             $childAuth.ContainsKey("CODEX_API_KEY") -or
+            $authJsonCopied -or
             ($env:AGENT_LOOP_MOCK_AUTH_OK -eq "1")
         )
         if ($requireAuth -and -not $hasChildKey) {
@@ -1297,17 +1401,20 @@ $wsInput
             }
             catch { }
             Write-ReviewFailedResult -ResultPath $resultPath `
-                -Summary "Codex auth missing; need CODEX_ACCESS_TOKEN/CODEX_API_KEY env or auth.json to extract." `
+                -Summary "Codex auth missing; need auth.json (ChatGPT login) or CODEX_API_KEY/CODEX_ACCESS_TOKEN." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
                 -ReviewNotes @(
-                    "This gate uses CODEX_* only (never OPENAI_API_KEY in the child env).",
-                    "Expected env key or auth under prior CODEX_HOME / ~/.codex/auth.json"
+                    "Run 'codex login' so ~/.codex/auth.json exists, or set CODEX_API_KEY.",
+                    "Child env never receives OPENAI_API_KEY; auth.json is copied only into ephemeral CODEX_HOME."
                 )
             Write-Host "REVIEW_FAILED: missing Codex auth (env or auth.json)"
             exit $Script:ExitReviewFailed
         }
-        if ($authEnvApplied) {
-            # Non-secret marker for tests; never write tokens into CODEX_HOME.
+        if ($authJsonCopied) {
+            $markerPath = Join-Path $authHomeDir "auth-via-home-copy.ok"
+            [System.IO.File]::WriteAllText($markerPath, "1`n")
+        }
+        elseif ($authEnvApplied -or ($env:AGENT_LOOP_MOCK_AUTH_OK -eq "1")) {
             $markerPath = Join-Path $authHomeDir "auth-via-env.ok"
             [System.IO.File]::WriteAllText($markerPath, "1`n")
         }
@@ -1315,10 +1422,17 @@ $wsInput
         $childExtra = @{
             CODEX_HOME = $authHomeDir
         }
-        # Pass at most one auth key into the child (prefer ACCESS_TOKEN).
-        if ($childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -and
-            -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_ACCESS_TOKEN"])) {
-            $childExtra["CODEX_ACCESS_TOKEN"] = $childAuth["CODEX_ACCESS_TOKEN"]
+        # Prefer auth.json in CODEX_HOME (ChatGPT login). Only pass env keys when
+        # no auth.json copy exists - lone CODEX_ACCESS_TOKEN fails on Codex 0.144+.
+        if (-not $authJsonCopied) {
+            if ($childAuth.ContainsKey("CODEX_ACCESS_TOKEN") -and
+                -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_ACCESS_TOKEN"])) {
+                $childExtra["CODEX_ACCESS_TOKEN"] = $childAuth["CODEX_ACCESS_TOKEN"]
+            }
+            elseif ($childAuth.ContainsKey("CODEX_API_KEY") -and
+                -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_API_KEY"])) {
+                $childExtra["CODEX_API_KEY"] = $childAuth["CODEX_API_KEY"]
+            }
         }
         elseif ($childAuth.ContainsKey("CODEX_API_KEY") -and
             -not [string]::IsNullOrEmpty([string]$childAuth["CODEX_API_KEY"])) {
@@ -1333,6 +1447,12 @@ $wsInput
                 -Environment $codexChildEnv
         }
         catch {
+            try {
+                if (-not [string]::IsNullOrWhiteSpace($authHomeDir) -and (Test-Path -LiteralPath $authHomeDir)) {
+                    Remove-Item -LiteralPath $authHomeDir -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            catch { }
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "Cannot apply required Codex read-only sandbox flags: $($_.Exception.Message)" `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `

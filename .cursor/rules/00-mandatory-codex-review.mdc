@@ -1,0 +1,88 @@
+---
+description: Mandatory implementation, testing, Codex review and human merge workflow
+alwaysApply: true
+---
+
+# Mandatory Cursor-Codex workflow
+
+This rule applies to every task that changes versioned files, tests,
+workflows, documentation or GitHub configuration.
+
+Read `AGENTS.md` before starting work.
+
+## Roles
+
+- Cursor implements code, tests, documentation and commits.
+- Codex acts only as an independent read-only reviewer.
+- Codex must not change files, create commits, push, merge or deploy.
+- Humans make the final merge and deployment decision.
+
+## Before starting
+
+1. Read `AGENTS.md`.
+2. Read the linked GitHub issue description and acceptance criteria.
+3. Check:
+   - current branch
+   - `git status`
+   - target branch
+   - existing uncommitted changes
+4. Do not work directly on `main`.
+5. Do not overwrite unrelated local changes.
+
+## Implementation flow
+
+1. Implement only the agreed issue scope.
+2. Add or update relevant tests.
+3. Run the relevant local tests.
+4. Run linting and `git diff --check`.
+5. Review the full diff against the target branch.
+6. Commit the changes on the feature branch.
+7. Run the Codex gate against the actual PR base:
+
+```powershell
+pwsh -ExecutionPolicy Bypass `
+  -File .agent-loop/run-codex-review.ps1 `
+  -BaseRef origin/main
+```
+
+Replace `origin/main` with the real PR base when it differs.
+
+On Windows, live reviews are fail-closed without OS isolation — use
+WSL/Linux CI for live `APPROVED`, or mock mode only for local prep.
+
+8. Fix only confirmed BLOCKER and MAJOR findings (do not apply Codex
+   suggestions unchecked), then re-test and commit.
+9. Repeat the Codex gate for at most three automatic review rounds.
+10. Require Codex `APPROVED` on the current HEAD before calling the change
+    merge-ready. Do not declare the work "fertig" / done without that
+    approval.
+11. Push the feature branch and open or update the pull request.
+12. Wait for required CI checks to pass.
+13. Do not merge or deploy automatically — humans merge.
+
+## Prohibited actions
+
+- No direct push to `main`
+- No merge without successful Codex `APPROVED` and green required checks
+- No overwriting unrelated uncommitted work
+- No scope creep beyond the issue
+- No disabling tests to obtain a passing result
+- No live trading, wallet signing, or deployment without explicit approval
+- No auto-merge
+- No auto-deploy
+- No accepting Codex findings without confirmation
+- No declaring the work "done" / merge-ready without Codex `APPROVED` on
+  the current HEAD
+- At most three automatic review rounds
+- A missing, failed or stale Codex review is not approval
+
+## Approval rule
+
+A missing, failed or stale Codex review is not approval.
+Do not mark a change complete without `APPROVED` on the current HEAD.
+
+## Relationship to other rules
+
+This rule governs the mandatory commit, Codex review, and merge/deploy
+workflow. `project-governance.mdc` remains in force for scope boundaries
+and quality bar, but defers to this rule on review/merge workflow.

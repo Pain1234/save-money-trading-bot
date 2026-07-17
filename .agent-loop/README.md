@@ -137,15 +137,16 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
 - Do not place secrets, `.env`, or status dumps (e.g. `.codex/railway-status-*.json`) into the review inputs.
 - **Allowlist review workspace (fail-closed):** live Codex runs in a **temp directory outside the repo** built by `build_review_workspace.py --git-rev <reviewed_head>`. Diff paths are materialized from **git blobs** (`git show <rev>:<path>`), never copied from the worktree. Symlinks (`120000`) are rejected. If any deny-listed path appears in the diff (`.env`, `.codex/**`, `auth.json`, `*secret*`, credentials, private keys / `id_ed25519` / `*.pem` / `*.keystore`, etc.), the builder exits `1` and the gate returns `REVIEW_FAILED` — no usable workspace. Prompt, schema, patch, and optional `AGENTS.md` are still copied as review artifacts. Manifest lists allowlisted / skipped_missing / git_rev / out_dir_name only (no absolute `repo_root`).
 - **OS isolation:** on Linux/Unix the gate `chmod 000`s the repo root during Codex (then restores). Skipping isolation requires **both** `AGENT_LOOP_SKIP_OS_ISOLATION=1` **and** `AGENT_LOOP_TEST_MODE=1` (test/mocks only). `SKIP_OS_ISOLATION` alone → `REVIEW_FAILED` exit `3`. Other platforms without that pair → `REVIEW_FAILED`.
-- **Auth isolation (CODEX_* only):** Codex never receives a readable `auth.json`. The gate extracts credentials via `extract_codex_auth_env.py` into the **scrubbed child env only**:
-  - ChatGPT `tokens.access_token` → `CODEX_ACCESS_TOKEN`
-  - API key (auth.json `OPENAI_API_KEY` / `CODEX_API_KEY`, or existing env) → `CODEX_API_KEY`
-  - Existing `CODEX_ACCESS_TOKEN` / `CODEX_API_KEY` in the parent env are preferred when set
-  - **Never** set `OPENAI_API_KEY` on the Codex child (this project’s review contract uses `CODEX_*` only; do not rely on legacy `OPENAI_API_KEY` passthrough)
-  Temp env extract files are deleted immediately and never logged. An ephemeral empty `CODEX_HOME` (sibling temp, no `auth.json`) is passed to the child. Real Codex without env auth → `REVIEW_FAILED`. `KEEP_WORKSPACE` never retains tokens; `AGENT_LOOP_KEEP_AUTH=1` may keep only the empty home / `auth-via-env.ok` marker (never `auth.json`).
+- **Auth isolation:** Live Codex gets an ephemeral `CODEX_HOME` **outside** the review workspace. For Codex CLI 0.144+ ChatGPT login, the gate copies `~/.codex/auth.json` into that temp home (required: `id_token` + `access_token`). Env-only `CODEX_ACCESS_TOKEN` is not sufficient on 0.144+. API-key mode may still use scrubbed `CODEX_API_KEY` in the child env. **Never** set `OPENAI_API_KEY` on the Codex child. Temp extract files are deleted immediately. After the run, `auth.json` is always deleted (`AGENT_LOOP_KEEP_AUTH=1` may keep only the home + marker, never `auth.json`). Missing auth → `REVIEW_FAILED`.
 - **Scrubbed child environment:** `Invoke-CodexCommand` launches Codex via `ProcessStartInfo` with an allowlisted env (PATH / temp / locale / `CODEX_HOME` / `CODEX_*` credentials / selected `AGENT_LOOP_*` mock side-channels). Parent secrets such as `DATABASE_URL`, `PASSWORD`, `OPENAI_API_KEY`, `RAILWAY_*`, `SESSION_SECRET`, and other `*SECRET*` / `*TOKEN*` values are **not** inherited.
 - **Stdout / stderr hygiene:** Codex stdout and stderr are captured separately. When the CLI advertises `--output-last-message`, the gate uses that file for the verdict JSON; otherwise JSON is parsed from **stdout only** (never stderr). Temp `codex-stdout-*` / `codex-stderr-*` / last-message files are deleted afterward unless `AGENT_LOOP_KEEP_CODEX_OUTPUT=1`.
-- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` / `--output-last-message` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
+- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`,
+  `--ignore-user-config` (plus `--ask-for-approval never` when the CLI still advertises it,
+  `--ignore-rules` / `--ephemeral` / `--output-last-message` when supported). Missing required
+  sandbox flags → `REVIEW_FAILED`.
+- **Windows:** Live reviews are **fail-closed**. `chmod` OS isolation is unavailable;
+  run under WSL/Linux CI for live Codex, or use `-SkipCodex -MockResultPath` locally.
+  The `uname` probe no longer crashes; missing isolation yields a clear `REVIEW_FAILED`.
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
 - Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_TEST_MODE=1` + `AGENT_LOOP_SKIP_OS_ISOLATION=1`, `AGENT_LOOP_ALLOW_DIFF_FILE=1` for `-DiffFile`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.
@@ -198,6 +199,7 @@ powershell -ExecutionPolicy Bypass -File .agent-loop/run-codex-review.ps1 `
 | `run-review-loop.ps1` | Alias wrapper |
 | `build_review_workspace.py` | Allowlisted Codex workspace (secret isolation) |
 | `extract_codex_auth_env.py` | Map auth.json → `CODEX_ACCESS_TOKEN` / `CODEX_API_KEY` (never `OPENAI_API_KEY`) |
+| `minimize_codex_auth.py` | Write minimized ChatGPT token auth.json for ephemeral `CODEX_HOME` |
 | `codex-review-prompt.md` | Codex instructions |
 | `codex-review-schema.json` | JSON Schema draft-07 |
 | `secret_scan.py` | Pre-Codex secret patterns |

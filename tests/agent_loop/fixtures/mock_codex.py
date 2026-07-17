@@ -15,7 +15,6 @@ Usage: codex exec [OPTIONS] <INSTRUCTION>
 Options:
   --skip-git-repo-check
   --sandbox <MODE>           e.g. read-only
-  --ask-for-approval <WHEN>  e.g. never
   --ignore-user-config
   --ignore-rules
   --ephemeral
@@ -49,6 +48,27 @@ def main(argv: list[str]) -> int:
     if home_file:
         Path(home_file).write_text(os.environ.get("CODEX_HOME", "") + "\n", encoding="utf-8")
 
+    # Record auth.json field names only (never values) for isolation tests.
+    auth_keys_file = os.environ.get("AGENT_LOOP_AUTH_KEYS_FILE", "").strip()
+    if auth_keys_file:
+        home = os.environ.get("CODEX_HOME", "").strip()
+        auth_path = Path(home) / "auth.json" if home else None
+        if auth_path and auth_path.is_file():
+            try:
+                data = json.loads(auth_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                data = {}
+            top = sorted(data.keys()) if isinstance(data, dict) else []
+            token_keys = []
+            if isinstance(data, dict) and isinstance(data.get("tokens"), dict):
+                token_keys = sorted(data["tokens"].keys())
+            Path(auth_keys_file).write_text(
+                "top=" + ",".join(top) + "\n" + "tokens=" + ",".join(token_keys) + "\n",
+                encoding="utf-8",
+            )
+        else:
+            Path(auth_keys_file).write_text("missing\n", encoding="utf-8")
+
     env_keys_file = os.environ.get("AGENT_LOOP_CODEX_ENV_KEYS_FILE", "").strip()
     if env_keys_file:
         Path(env_keys_file).write_text(
@@ -78,13 +98,16 @@ def main(argv: list[str]) -> int:
 
     if os.environ.get("AGENT_LOOP_REQUIRE_AUTH", "").strip() == "1":
         mock_ok = os.environ.get("AGENT_LOOP_MOCK_AUTH_OK", "").strip() == "1"
+        home = os.environ.get("CODEX_HOME", "").strip()
+        has_auth_file = bool(home) and (Path(home) / "auth.json").is_file()
         has_key = bool(
             os.environ.get("CODEX_ACCESS_TOKEN", "").strip()
             or os.environ.get("CODEX_API_KEY", "").strip()
+            or has_auth_file
         )
         if not mock_ok and not has_key:
             print(
-                "mock_codex: CODEX_ACCESS_TOKEN/CODEX_API_KEY missing "
+                "mock_codex: CODEX_ACCESS_TOKEN/CODEX_API_KEY/auth.json missing "
                 "(or set AGENT_LOOP_MOCK_AUTH_OK=1)",
                 file=sys.stderr,
             )

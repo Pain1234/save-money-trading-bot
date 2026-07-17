@@ -19,7 +19,6 @@ Usage: codex exec [OPTIONS] <INSTRUCTION>
 Options:
   --skip-git-repo-check
   --sandbox <MODE>           e.g. read-only
-  --ask-for-approval <WHEN>  e.g. never
   --ignore-user-config
   --ignore-rules
   --ephemeral
