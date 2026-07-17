@@ -11,7 +11,7 @@ Repository visibility alone is not this checklist. Complete and record approval 
 - [ ] License and contribution policy decided (#178)
 - [ ] Public disclaimer present in README (#179)
 - [ ] Private-edge extension direction documented (#180)
-- [ ] Security audit recorded (#177) — findings fixed or accepted in writing
+- [ ] Security audit recorded (#177) — see [SECURITY_AUDIT_PUBLIC_RELEASE.md](SECURITY_AUDIT_PUBLIC_RELEASE.md) — findings fixed or accepted in writing
 
 ## Content scan
 
