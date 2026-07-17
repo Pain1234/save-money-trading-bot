@@ -16,7 +16,10 @@ from services.research.walk_forward import (
 def test_completed_monthly_candles_skip_partial_edge_months() -> None:
     assert count_completed_monthly_candles(date(2020, 1, 2), date(2021, 9, 12)) == 19
     assert count_completed_monthly_candles(date(2020, 1, 2), date(2021, 9, 30)) == 20
-    assert earliest_eval_start_for_monthly_warmup(date(2020, 1, 2), monthly_bars=20) == date(2021, 10, 1)
+    first_eval = earliest_eval_start_for_monthly_warmup(
+        date(2020, 1, 2), monthly_bars=20
+    )
+    assert first_eval == date(2021, 10, 1)
 
 
 def test_walk_forward_folds_are_chronological_and_cover_range() -> None:
@@ -46,7 +49,10 @@ def test_walk_forward_rejects_620_day_proxy_that_yields_only_19_months() -> None
         feature_warmup_monthly_bars=20,
     )
     assert folds[0].eval_start == date(2021, 10, 1)
-    assert count_completed_monthly_candles(folds[0].feature_context_start, folds[0].feature_context_end) >= 20
+    completed = count_completed_monthly_candles(
+        folds[0].feature_context_start, folds[0].feature_context_end
+    )
+    assert completed >= 20
 
 
 def test_walk_forward_separates_feature_warmup_from_label_embargo() -> None:
