@@ -280,7 +280,15 @@ def api_positions(
     repo: Annotated[PaperTradingRepository, Depends(get_repository)],
     limit: Annotated[int, Query(ge=1)] = 50,
     cursor: str | None = None,
+    status: Annotated[str | None, Query(pattern="^(OPEN|CLOSING|CLOSED)$")] = None,
+    open_only: Annotated[bool, Query()] = False,
 ) -> PaginatedResponse:
+    """List positions. Use open_only=true for OPEN+CLOSING (dashboard open table)."""
+    if open_only and status is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="open_only and status are mutually exclusive",
+        )
     page_limit = parse_page_limit(limit)
     after_opened_at: datetime | None = None
     after_position_id: UUID | None = None
@@ -295,6 +303,8 @@ def api_positions(
         limit=page_limit + 1,
         after_opened_at=after_opened_at,
         after_position_id=after_position_id,
+        status=status,
+        open_only=open_only,
     )
     items = [_position_response(p).model_dump() for p in rows[:page_limit]]
     next_cursor = None

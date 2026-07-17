@@ -221,7 +221,7 @@ All routes are GET-only. Non-GET requests return `405`.
 | `/api/v1/dashboard-summary` | Overview aggregate (status + wallet + open positions) |
 | `/api/v1/market-data` | Worker/market-data status |
 | `/api/v1/wallet` | Paper wallet |
-| `/api/v1/positions` | Paginated positions |
+| `/api/v1/positions` | Paginated positions (`open_only=true` or `status=OPEN\|CLOSING\|CLOSED`) |
 | `/api/v1/orders` | Paginated orders |
 | `/api/v1/fills` | Paginated fills |
 | `/api/v1/stops` | Paginated stop history |
@@ -329,6 +329,26 @@ Worker and API are stateless; recovery depends on PostgreSQL restore plus a sing
 | Two workers accidentally deployed | Railway replicas | scale worker back to 1 |
 | Build fails: `Detected Python` / `No start command` | builder + config file | link `deploy/railway/*.toml` or set `RAILPACK_CONFIG_FILE` |
 
+## Design dashboard data mapping (#238)
+
+`/dashboard` uses the existing Save-Money-Bot design (Navbar, Sidebar, KPIs,
+chart, tables, footer). It is **read-only**.
+
+| UI area | Data source | Notes |
+|---------|-------------|--------|
+| KPI Bot Status / Cash / Realized PnL / open count | `GET /api/v1/dashboard-summary` only (core path) | Preserves Issue #98 summary-first latency |
+| Equity chart | `GET /api/v1/equity` (Suspense) | Chronological; empty/error states |
+| Open positions table | `GET /api/v1/positions?open_only=true` (Suspense) | Side = LONG (V1); mark/TP/risk = unavailable |
+| Letzte Fills | `GET /api/v1/fills` (Suspense) | No R-multiple |
+| Status cards | Summary + scheduler/events (Suspense) | Readiness, scheduler, incidents |
+| Win Rate / Profit Factor KPIs | — | Shown as “Nicht verfügbar” |
+| Bot start/pause/stop, risk/filter controls | — | Disabled + read-only banner |
+
+Empty, error, and stale-heartbeat states are section-local where possible; a
+summary failure shows the overview error panel without blanking auth chrome.
+
+Detail routes under `/dashboard/*` remain for diagnosis (same design shell).
+
 ## Known limitations
 
 - Dashboard shows DB-backed monitoring only; no direct Hyperliquid websocket in
@@ -336,6 +356,8 @@ Worker and API are stateless; recovery depends on PostgreSQL restore plus a sing
 - Read-only API infers market-data readiness from worker heartbeat freshness.
 - Single-user dashboard auth; no RBAC.
 - No real order execution, wallet signing, or funding in V1 scope.
+- No mark price, take-profit, win rate, profit factor, or R-multiple from the API.
+- V1 positions are LONG-only; the UI does not claim Short support.
 
 ## Real execution excluded
 

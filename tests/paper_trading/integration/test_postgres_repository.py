@@ -315,3 +315,93 @@ def test_transaction_rollback(db_session) -> None:
     assert wallet_after is not None
     assert wallet_after.cash == wallet_before.cash
     assert wallet_after.version == wallet_before.version
+
+
+def _position_row(
+    *,
+    symbol: str,
+    status: PaperPositionStatus,
+    intent_id: UUID,
+    opened_at: datetime,
+    quantity: str = "0.1",
+) -> PaperPositionRow:
+    return PaperPositionRow(
+        position_id=uuid4(),
+        symbol=symbol,
+        status=status.value,
+        quantity=Decimal(quantity),
+        average_entry_price=Decimal("50000"),
+        initial_stop=Decimal("48000"),
+        current_stop=Decimal("48000"),
+        highest_close_since_entry=Decimal("50000"),
+        entry_atr14=Decimal("1000"),
+        margin_reserved=Decimal("2500"),
+        entry_intent_id=intent_id,
+        opened_at=opened_at,
+        closed_at=opened_at if status == PaperPositionStatus.CLOSED else None,
+    )
+
+
+@requires_postgres
+def test_list_positions_open_only_and_cursor(db_session) -> None:
+    """open_only includes OPEN+CLOSING, excludes CLOSED; cursor pagination works."""
+    repo = PaperTradingRepository(db_session)
+    open_intent = _insert_intent(repo, symbol="BTC", daily=_utc(2024, 3, 1))
+    closing_intent = _insert_intent(repo, symbol="ETH", daily=_utc(2024, 3, 2))
+    closed_intent = _insert_intent(repo, symbol="SOL", daily=_utc(2024, 3, 3))
+
+    open_row = _position_row(
+        symbol="BTC",
+        status=PaperPositionStatus.OPEN,
+        intent_id=open_intent,
+        opened_at=_utc(2024, 3, 10),
+    )
+    closing_row = _position_row(
+        symbol="ETH",
+        status=PaperPositionStatus.CLOSING,
+        intent_id=closing_intent,
+        opened_at=_utc(2024, 3, 11),
+    )
+    closed_row = _position_row(
+        symbol="SOL",
+        status=PaperPositionStatus.CLOSED,
+        intent_id=closed_intent,
+        opened_at=_utc(2024, 3, 12),
+    )
+    repo.create_position(open_row)
+    repo.create_position(closing_row)
+    repo.create_position(closed_row)
+    db_session.flush()
+
+    open_only = repo.list_positions(limit=50, open_only=True)
+    statuses = {p.status for p in open_only}
+    symbols = {p.symbol for p in open_only}
+    assert PaperPositionStatus.OPEN in statuses
+    assert PaperPositionStatus.CLOSING in statuses
+    assert PaperPositionStatus.CLOSED not in statuses
+    assert symbols == {"BTC", "ETH"}
+    assert all(p.position_id != closed_row.position_id for p in open_only)
+
+    closed_only = repo.list_positions(limit=50, status=PaperPositionStatus.CLOSED.value)
+    assert len(closed_only) == 1
+    assert closed_only[0].position_id == closed_row.position_id
+
+    # Cursor: newest open_only first (opened_at desc) → ETH then BTC
+    page1 = repo.list_positions(limit=1, open_only=True)
+    assert len(page1) == 1
+    assert page1[0].symbol == "ETH"
+    page2 = repo.list_positions(
+        limit=1,
+        open_only=True,
+        after_opened_at=page1[0].opened_at,
+        after_position_id=page1[0].position_id,
+    )
+    assert len(page2) == 1
+    assert page2[0].symbol == "BTC"
+    page3 = repo.list_positions(
+        limit=1,
+        open_only=True,
+        after_opened_at=page2[0].opened_at,
+        after_position_id=page2[0].position_id,
+    )
+    assert page3 == ()

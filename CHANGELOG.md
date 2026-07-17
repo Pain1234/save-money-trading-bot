@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (Dashboard design ↔ paper API — #238 re-review)
+
+- Kill Switch / Paused show „Nicht verfügbar“ when `runtime` is null (no false AUS/Nein).
+- Scheduler / Incidents cards distinguish endpoint errors from empty success
+  („Nicht verfügbar“ vs „0 in letzten 50 Events“).
+- Realized PnL KPI accent follows decimal sign (negative → danger).
+- Playwright scenarios: stale heartbeat, summary 503, section endpoint failures
+  (incl. equity/positions), and empty equity/positions/fills.
+- Postgres repository test: `open_only` includes OPEN+CLOSING, excludes CLOSED, cursor works.
+- Docs: `ARCHITECTURE.md` / `design-system.md` no longer claim mock dashboard data
+  (design-system scope: Dashboard UI / paper monitoring, not Mock-Dashboard).
+
+### Added (Dashboard design ↔ paper API — #238)
+
+- Reconnected the existing Save-Money-Bot design shell on `/dashboard` to the
+  read-only paper monitoring API (summary-first KPIs; equity, open positions,
+  fills, and status cards stream via Suspense).
+- View-model layer under `src/lib/dashboard/` (formatters, mapping, constants,
+  navigation). Production routes no longer use financial mock fixtures.
+- `GET /api/v1/positions?open_only=true` (and optional `status=`) so the open
+  positions table does not client-filter a mixed page of open/closed rows.
+- Vitest unit tests for view-models; Playwright visual suite uses a deterministic
+  Paper API stub + login; control panels are disabled with a read-only banner.
+
+### Changed (Dashboard design ↔ paper API — #238)
+
+- Position side displayed as LONG per V1 `PaperSide` contract (no quantity-sign
+  inference). Fills table titled “Letzte Fills” (no invented R-multiples).
+- Footer/Sidebar copy updated for read-only paper monitoring; navbar shows the
+  real session user and Logout (fake theme/notification/profile actions removed).
+
 ### Changed (P5 execution — gate status)
 
 - P5_EXECUTION_STATUS: snapshot recording #204/#205 blocked pending human freezes, Partition B data, and holdout sufficiency.

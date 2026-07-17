@@ -75,7 +75,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 
 | Role | Command |
 |------|---------|
-| Dashboard UI | `npm run dev` (mock data) |
+| Dashboard UI | `npm run dev` with `PRIVATE_PAPER_API_URL` (read-only paper API; no mock finance on `/dashboard`) |
 | Full test suite | `python -m pytest tests/ -v` |
 | Postgres integration | `python -m pytest tests/paper_trading -m postgres -v` |
 
