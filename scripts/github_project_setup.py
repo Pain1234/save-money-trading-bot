@@ -133,7 +133,6 @@ LABELS: list[tuple[str, str, str]] = [
     ("status:needs-evidence", "1d76db", "Needs evidence"),
     ("status:invalidated", "666666", "Invalidated result"),
     ("agent:cursor", "cfd3d7", "Work by Cursor agent"),
-    ("agent:codex-review", "cfd3d7", "Codex review"),
     ("human-approval-required", "b60205", "Requires explicit human approval"),
 ]
 

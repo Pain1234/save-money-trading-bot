@@ -47,7 +47,6 @@ jobs:
       risk: ${{ steps.classify.outputs.risk }}
       deploy: ${{ steps.classify.outputs.deploy }}
       database: ${{ steps.classify.outputs.database }}
-      agent_loop: ${{ steps.classify.outputs.agent_loop }}
       performance: ${{ steps.classify.outputs.performance }}
       workflows: ${{ steps.classify.outputs.workflows }}
       run_all_fast: ${{ steps.classify.outputs.run_all_fast }}
@@ -213,7 +212,6 @@ jobs:
           STRATEGY: ${{ needs.plan.outputs.strategy }}
           RISK: ${{ needs.plan.outputs.risk }}
           DEPLOY: ${{ needs.plan.outputs.deploy }}
-          AGENT_LOOP: ${{ needs.plan.outputs.agent_loop }}
         run: |
           set -euo pipefail
           MARKERS="not postgres and not live and not soak and not reporting"
@@ -267,16 +265,6 @@ jobs:
             echo "== deploy slice =="
             python -m pytest tests/deploy -q --tb=short
             ran_any=true
-          fi
-
-          if [ "$AGENT_LOOP" = "true" ]; then
-            if [ -d tests/agent_loop ]; then
-              echo "== agent_loop slice =="
-              python -m pytest tests/agent_loop -m "$MARKERS" -q --tb=short
-              ran_any=true
-            else
-              echo "agent_loop flagged but tests/agent_loop does not exist yet; nothing to run"
-            fi
           fi
 
           if [ "$ran_any" = "false" ]; then
