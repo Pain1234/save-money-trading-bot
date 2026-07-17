@@ -1,67 +1,54 @@
-import { StatusBadge } from "@/components/monitor/StatusBadge";
+import { Suspense } from "react";
+
+import { DashboardMain } from "@/components/dashboard/DashboardMain";
+import { SectionFallback } from "@/components/dashboard/SectionFallback";
+import { EquityChartServer } from "@/components/dashboard/sections/EquityChartServer";
+import { FillsTableServer } from "@/components/dashboard/sections/FillsTableServer";
+import { PositionsTableServer } from "@/components/dashboard/sections/PositionsTableServer";
+import { StatusCardsServer } from "@/components/dashboard/sections/StatusCardsServer";
 import {
   fetchDashboardSummary,
   getMonitoringErrorMessage,
 } from "@/lib/paper-api/client";
+import { buildSummaryViewModel } from "@/lib/dashboard/view-model";
 
-function formatAge(seconds: number | null): string {
-  if (seconds == null) return "unknown";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  return `${Math.round(seconds / 60)}m`;
-}
-
+/**
+ * Overview core: only dashboard-summary (Issue #98 latency).
+ * Equity, positions, fills, and diagnostic cards stream via Suspense.
+ */
 export default async function DashboardOverviewPage() {
   try {
     const summary = await fetchDashboardSummary();
-    const status = summary.status;
-    const wallet = summary.wallet;
-    const stale =
-      status.heartbeat_age_seconds != null &&
-      status.heartbeat_age_seconds > status.stale_heartbeat_threshold_seconds;
+    const vm = buildSummaryViewModel(summary);
 
     return (
-      <div data-testid="dashboard-page-ready" className="space-y-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Overview</h1>
-          <StatusBadge status={summary.display_status} />
-        </div>
-        {!wallet ? (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-            <p className="font-medium">Wallet data unavailable</p>
-            <p className="mt-1 text-text-muted">
-              Status and readiness are shown below; wallet metrics will appear when available.
-            </p>
-          </div>
-        ) : null}
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
-            <p className="text-sm text-text-muted">Cash</p>
-            <p className="text-xl font-semibold">{wallet?.cash ?? "—"}</p>
-          </div>
-          <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
-            <p className="text-sm text-text-muted">Realized PnL</p>
-            <p className="text-xl font-semibold">{wallet?.total_realized_pnl ?? "—"}</p>
-          </div>
-          <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
-            <p className="text-sm text-text-muted">Last heartbeat age</p>
-            <p className={`text-xl font-semibold ${stale ? "text-amber-400" : ""}`}>
-              {formatAge(status.heartbeat_age_seconds)}
-            </p>
-            {stale ? (
-              <p className="mt-1 text-xs text-amber-400">Heartbeat is stale</p>
-            ) : null}
-          </div>
-        </div>
-        {summary.warnings.length > 0 ? (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-            <p className="font-medium">Readiness notes</p>
-            <ul className="mt-2 list-disc pl-5">
-              {summary.warnings.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+      <div data-testid="dashboard-page-ready">
+        <DashboardMain
+          kpis={vm.kpis}
+          quickStats={vm.quickStats}
+          warnings={vm.warnings}
+          staleHeartbeat={vm.staleHeartbeat}
+          equitySlot={
+            <Suspense fallback={<SectionFallback label="Equity" />}>
+              <EquityChartServer />
+            </Suspense>
+          }
+          statusSlot={
+            <Suspense fallback={<SectionFallback label="Status" />}>
+              <StatusCardsServer summary={summary} />
+            </Suspense>
+          }
+          positionsSlot={
+            <Suspense fallback={<SectionFallback label="Positionen" />}>
+              <PositionsTableServer />
+            </Suspense>
+          }
+          fillsSlot={
+            <Suspense fallback={<SectionFallback label="Fills" />}>
+              <FillsTableServer />
+            </Suspense>
+          }
+        />
       </div>
     );
   } catch (error) {

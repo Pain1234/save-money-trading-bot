@@ -8,6 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLIENT_PATH = REPO_ROOT / "src/lib/paper-api/client.ts"
 DASHBOARD_ROOT = REPO_ROOT / "src/app/dashboard"
+COMPONENTS_DASHBOARD = REPO_ROOT / "src/components/dashboard"
 MIDDLEWARE_PATH = REPO_ROOT / "src/middleware.ts"
 
 LOADING_ROUTES = (
@@ -21,6 +22,13 @@ LOADING_ROUTES = (
     "scheduler/loading.tsx",
     "equity/loading.tsx",
     "incidents/loading.tsx",
+)
+
+FORBIDDEN_MOCK_IMPORTS = (
+    "mock-data",
+    "@/lib/mock-data",
+    "financial-fixtures",
+    "@/lib/demo/financial-fixtures",
 )
 
 
@@ -46,9 +54,21 @@ def test_dashboard_client_cache_policy() -> None:
 
 
 def test_dashboard_overview_uses_summary_fetch() -> None:
+    """Core overview must use summary only — no fan-out Promise.all on the page."""
     source = (DASHBOARD_ROOT / "page.tsx").read_text(encoding="utf-8")
     assert "fetchDashboardSummary" in source
     assert "Promise.all" not in source
+    assert "Promise.allSettled" not in source
+    assert "Suspense" in source
+    assert "fetchEquity" not in source
+    assert "fetchOpenPositions" not in source
+    assert "fetchFills" not in source
+
+
+def test_dashboard_client_has_open_positions_helper() -> None:
+    source = _client_source()
+    assert "fetchOpenPositions" in source
+    assert "open_only" in source
 
 
 def test_dashboard_client_has_api_timeout() -> None:
@@ -75,8 +95,26 @@ def test_dashboard_loading_states_exist() -> None:
 def test_dashboard_pages_do_not_use_mock_data() -> None:
     for page in DASHBOARD_ROOT.rglob("page.tsx"):
         source = page.read_text(encoding="utf-8")
-        assert "mock-data" not in source
-        assert "@/lib/mock-data" not in source
+        for forbidden in FORBIDDEN_MOCK_IMPORTS:
+            assert forbidden not in source, f"{page}: {forbidden}"
+
+
+def test_dashboard_components_do_not_use_financial_mocks() -> None:
+    """Production design components must not pull demo financial fixtures."""
+    for path in COMPONENTS_DASHBOARD.rglob("*.tsx"):
+        source = path.read_text(encoding="utf-8")
+        assert "financial-fixtures" not in source, path
+        assert "@/lib/demo/" not in source, path
+        # Live tables/charts/controls must not import legacy mock-data
+        if path.name in {
+            "DashboardMain.tsx",
+            "Tables.tsx",
+            "PerformanceChart.tsx",
+            "PerformanceChartSection.tsx",
+            "MarketCards.tsx",
+            "ControlPanels.tsx",
+        }:
+            assert "mock-data" not in source, path
 
 
 def test_dashboard_pages_use_monitoring_error_helper() -> None:
@@ -90,6 +128,13 @@ def test_dashboard_auth_middleware_protects_routes() -> None:
     source = MIDDLEWARE_PATH.read_text(encoding="utf-8")
     assert 'matcher: ["/dashboard/:path*"]' in source
     assert "session.isLoggedIn" in source
+
+
+def test_dashboard_controls_are_disabled_in_source() -> None:
+    controls = (COMPONENTS_DASHBOARD / "ControlPanels.tsx").read_text(encoding="utf-8")
+    assert 'data-testid="bot-start-button"' in controls
+    assert "disabled" in controls
+    assert "nicht verfügbar" in controls.lower() or "nicht verfügbar" in controls
 
 
 def test_dashboard_build_succeeds() -> None:

@@ -6,6 +6,7 @@ interface CardProps {
   className?: string;
   padding?: "none" | "xs" | "sm" | "md" | "lg";
   id?: string;
+  "data-testid"?: string;
 }
 
 const paddingMap = {
@@ -16,10 +17,17 @@ const paddingMap = {
   lg: "p-4",
 };
 
-export function Card({ children, className, padding = "md", id }: CardProps) {
+export function Card({
+  children,
+  className,
+  padding = "md",
+  id,
+  "data-testid": dataTestId,
+}: CardProps) {
   return (
     <div
       {...(id ? { id } : {})}
+      {...(dataTestId ? { "data-testid": dataTestId } : {})}
       className={cn("card-surface", paddingMap[padding], className)}
     >
       {children}
@@ -93,20 +101,33 @@ interface ToggleProps {
   onChange?: (enabled: boolean) => void;
   label?: string;
   small?: boolean;
+  disabled?: boolean;
 }
 
-export function Toggle({ enabled, onChange, label, small }: ToggleProps) {
+export function Toggle({
+  enabled,
+  onChange,
+  label,
+  small,
+  disabled = false,
+}: ToggleProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={enabled}
       aria-label={label}
-      onClick={() => onChange?.(!enabled)}
+      aria-disabled={disabled}
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        onChange?.(!enabled);
+      }}
       className={cn(
         "relative shrink-0 rounded-full transition-colors",
         small ? "h-5 w-9" : "h-5 w-9",
         enabled ? "bg-mint/35" : "bg-white/10",
+        disabled && "cursor-not-allowed opacity-50",
       )}
     >
       <span
@@ -124,16 +145,27 @@ interface NumberInputProps {
   value: string;
   suffix?: string;
   className?: string;
+  disabled?: boolean;
 }
 
-export function NumberInput({ value, suffix, className }: NumberInputProps) {
+export function NumberInput({
+  value,
+  suffix,
+  className,
+  disabled = false,
+}: NumberInputProps) {
   return (
     <div className={cn("flex items-center gap-0.5", className)}>
       <input
         type="text"
         readOnly
+        disabled={disabled}
+        aria-disabled={disabled}
         value={value}
-        className="w-12 rounded-[4px] border border-border bg-bg-card-alt px-1.5 py-0.5 text-right font-mono text-[12px] text-text-primary"
+        className={cn(
+          "w-12 rounded-[4px] border border-border bg-bg-card-alt px-1.5 py-0.5 text-right font-mono text-[12px] text-text-primary",
+          disabled && "cursor-not-allowed opacity-50",
+        )}
       />
       {suffix && <span className="text-[11px] text-text-muted">{suffix}</span>}
     </div>
@@ -144,14 +176,23 @@ interface SelectProps {
   value: string;
   options: string[];
   className?: string;
+  disabled?: boolean;
 }
 
-export function Select({ value, options, className }: SelectProps) {
+export function Select({
+  value,
+  options,
+  className,
+  disabled = false,
+}: SelectProps) {
   return (
     <select
       defaultValue={value}
+      disabled={disabled}
+      aria-disabled={disabled}
       className={cn(
         "w-full rounded-[6px] border border-border bg-bg-card-alt px-2 py-1 text-[12px] text-text-primary",
+        disabled && "cursor-not-allowed opacity-50",
         className,
       )}
     >

@@ -104,6 +104,25 @@ def test_readonly_dashboard_summary_schema(readonly_client: TestClient) -> None:
     assert body["status"]["display_status"] == body["display_status"]
 
 
+def test_readonly_positions_open_only_filter(readonly_client: TestClient) -> None:
+    repo = readonly_client._repo  # type: ignore[attr-defined]
+    response = readonly_client.get("/api/v1/positions?open_only=true&limit=10")
+    assert response.status_code == 200
+    repo.list_positions.assert_called()
+    kwargs = repo.list_positions.call_args.kwargs
+    assert kwargs.get("open_only") is True
+    assert kwargs.get("status") is None
+
+
+def test_readonly_positions_status_and_open_only_conflict(
+    readonly_client: TestClient,
+) -> None:
+    response = readonly_client.get(
+        "/api/v1/positions?open_only=true&status=OPEN&limit=10"
+    )
+    assert response.status_code == 400
+
+
 def test_readonly_perf_and_cache_headers(readonly_client: TestClient) -> None:
     response = readonly_client.get("/api/v1/status")
     assert response.headers.get("X-Correlation-Id")

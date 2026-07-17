@@ -17,7 +17,7 @@ for (const key of requiredEnv) {
 }
 
 const routes: ReadonlyArray<{ path: string; heading: RegExp }> = [
-  { path: "/dashboard", heading: /^Overview$/i },
+  { path: "/dashboard", heading: /Paper Trading Monitor/i },
   { path: "/dashboard/positions", heading: /^Positions$/i },
   { path: "/dashboard/fills", heading: /^Fills$/i },
   { path: "/dashboard/equity", heading: /^Equity History$/i },
@@ -41,6 +41,11 @@ test("login and navigate core dashboard routes", async ({ page }) => {
     expect(response, `${path} should return a response`).not.toBeNull();
     expect(response!.ok(), `${path} HTTP ${response!.status()}`).toBeTruthy();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    if (path === "/dashboard") {
+      await expect(page.getByTestId("dashboard-page-ready")).toBeVisible();
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    } else {
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
   }
 });

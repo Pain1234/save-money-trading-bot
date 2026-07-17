@@ -1,5 +1,5 @@
-import { OPEN_POSITIONS, RECENT_TRADES } from "@/lib/mock-data";
-import { formatCurrency } from "@/lib/utils";
+import Link from "next/link";
+
 import {
   Badge,
   Card,
@@ -8,6 +8,8 @@ import {
   PnlPill,
 } from "@/components/ui/Card";
 import { ArrowRight } from "lucide-react";
+import type { FillRowVm, PositionRowVm } from "@/lib/dashboard/types";
+import { UNAVAILABLE } from "@/lib/dashboard/formatters";
 
 function SideBadge({ side }: { side: "long" | "short" }) {
   return (
@@ -17,13 +19,47 @@ function SideBadge({ side }: { side: "long" | "short" }) {
   );
 }
 
-function formatPrice(value: number): string {
-  return formatCurrency(value).replace("US$", "$");
+function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
+  return (
+    <tr>
+      <td
+        colSpan={colSpan}
+        className="py-4 text-center text-[12px] text-text-muted"
+        data-testid="table-empty"
+      >
+        {message}
+      </td>
+    </tr>
+  );
 }
 
-export function PositionsTable() {
+function ErrorRow({ colSpan, message }: { colSpan: number; message: string }) {
   return (
-    <Card padding="sm" className="min-w-0" id="positionen">
+    <tr>
+      <td
+        colSpan={colSpan}
+        className="py-4 text-center text-[12px] text-negative"
+        data-testid="table-error"
+      >
+        {message}
+      </td>
+    </tr>
+  );
+}
+
+interface PositionsTableProps {
+  rows: PositionRowVm[];
+  emptyMessage?: string;
+  errorMessage?: string | null;
+}
+
+export function PositionsTable({
+  rows,
+  emptyMessage = "Keine offenen Positionen",
+  errorMessage = null,
+}: PositionsTableProps) {
+  return (
+    <Card padding="sm" className="min-w-0" id="positionen" data-testid="positions-table">
       <PanelHeader title="Offene Positionen" compact />
 
       <div className="min-w-0 overflow-x-auto">
@@ -42,115 +78,147 @@ export function PositionsTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle/80">
-            {OPEN_POSITIONS.map((pos) => (
-              <tr key={pos.id} className="text-[12px] leading-tight hover:bg-white/[0.015]">
-                <td className="py-1 pr-0.5">
-                  <CoinBadge coin={pos.coin} color={pos.coinColor} symbol={pos.symbol} />
-                </td>
-                <td className="py-1 pr-0.5">
-                  <SideBadge side={pos.side} />
-                </td>
-                <td className="py-1 pr-0.5 font-mono text-text-secondary">
-                  {pos.size}
-                </td>
-                <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
-                  {formatPrice(pos.entryPrice)}
-                </td>
-                <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
-                  {formatPrice(pos.markPrice)}
-                </td>
-                <td className="py-1 pr-0.5">
-                  <PnlPill
-                    value={pos.pnl}
-                    formatted={`${pos.pnl >= 0 ? "+" : ""}${formatPrice(pos.pnl)}`}
-                  />
-                </td>
-                <td className="py-1 pr-0.5 font-mono text-[11px] text-text-muted">
-                  {pos.risk}
-                </td>
-                <td className="py-1 pr-0.5 font-mono text-[11px] text-text-muted">
-                  {formatPrice(pos.stopLoss)}
-                </td>
-                <td className="py-1 font-mono text-[11px] text-text-muted">
-                  {formatPrice(pos.takeProfit)}
-                </td>
-              </tr>
-            ))}
+            {errorMessage ? (
+              <ErrorRow colSpan={9} message={errorMessage} />
+            ) : rows.length === 0 ? (
+              <EmptyRow colSpan={9} message={emptyMessage} />
+            ) : (
+              rows.map((pos) => (
+                <tr
+                  key={pos.id}
+                  className="text-[12px] leading-tight hover:bg-white/[0.015]"
+                >
+                  <td className="py-1 pr-0.5">
+                    <CoinBadge
+                      coin={pos.coin}
+                      color={pos.coinColor}
+                      symbol={pos.symbol}
+                    />
+                  </td>
+                  <td className="py-1 pr-0.5">
+                    <SideBadge side={pos.side} />
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-text-secondary">
+                    {pos.sizeDisplay}
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
+                    {pos.entryPriceDisplay}
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
+                    {pos.markPriceDisplay}
+                  </td>
+                  <td className="py-1 pr-0.5">
+                    {pos.pnlDisplay === UNAVAILABLE ? (
+                      <span className="font-mono text-[11px] text-text-muted">
+                        {UNAVAILABLE}
+                      </span>
+                    ) : (
+                      <PnlPill
+                        value={pos.pnlNumericHint ?? 0}
+                        formatted={pos.pnlDisplay}
+                      />
+                    )}
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-muted">
+                    {pos.riskDisplay}
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-muted">
+                    {pos.stopLossDisplay}
+                  </td>
+                  <td className="py-1 font-mono text-[11px] text-text-muted">
+                    {pos.takeProfitDisplay}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
-      <a
-        href="#positionen"
+      <Link
+        href="/dashboard/positions"
         className="mt-2 inline-flex items-center gap-1 text-[11px] text-mint-dim hover:text-mint"
       >
         Alle Positionen anzeigen
         <ArrowRight className="h-3 w-3" />
-      </a>
+      </Link>
     </Card>
   );
 }
 
-export function TradesTable() {
+interface FillsTableProps {
+  rows: FillRowVm[];
+  emptyMessage?: string;
+  errorMessage?: string | null;
+}
+
+export function FillsTable({
+  rows,
+  emptyMessage = "Keine Fills",
+  errorMessage = null,
+}: FillsTableProps) {
   return (
-    <Card padding="sm" className="min-w-0" id="trades">
-      <PanelHeader title="Letzte Trades" compact />
+    <Card padding="sm" className="min-w-0" id="trades" data-testid="fills-table">
+      <PanelHeader title="Letzte Fills" compact />
 
       <div className="min-w-0 overflow-x-auto">
         <table className="w-full min-w-0 table-fixed text-left">
           <thead>
             <tr className="border-b border-border-subtle text-[11px] uppercase tracking-[0.04em] text-text-muted">
-              <th className="w-[24%] pb-1 font-normal">Symbol</th>
-              <th className="w-[18%] pb-1 font-normal">Richtung</th>
-              <th className="w-[22%] pb-1 font-normal">PnL</th>
-              <th className="w-[16%] pb-1 font-normal">R-Multiple</th>
-              <th className="w-[20%] pb-1 font-normal">Datum</th>
+              <th className="w-[22%] pb-1 font-normal">Symbol</th>
+              <th className="w-[18%] pb-1 font-normal">Art</th>
+              <th className="w-[18%] pb-1 font-normal">Menge</th>
+              <th className="w-[20%] pb-1 font-normal">Preis</th>
+              <th className="w-[22%] pb-1 font-normal">Zeit</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle/80">
-            {RECENT_TRADES.map((trade) => (
-              <tr key={trade.id} className="text-[12px] leading-tight hover:bg-white/[0.015]">
-                <td className="py-1 pr-0.5">
-                  <CoinBadge
-                    coin={trade.coin}
-                    color={trade.coinColor}
-                    symbol={trade.symbol}
-                  />
-                </td>
-                <td className="py-1 pr-0.5">
-                  <SideBadge side={trade.side} />
-                </td>
-                <td className="py-1 pr-0.5">
-                  <PnlPill
-                    value={trade.pnl}
-                    formatted={`${trade.pnl >= 0 ? "+" : ""}${formatPrice(trade.pnl)}`}
-                  />
-                </td>
-                <td
-                  className={`py-1 pr-0.5 font-mono text-[11px] ${
-                    trade.rMultiple.startsWith("+")
-                      ? "text-mint-dim"
-                      : "text-negative"
-                  }`}
+            {errorMessage ? (
+              <ErrorRow colSpan={5} message={errorMessage} />
+            ) : rows.length === 0 ? (
+              <EmptyRow colSpan={5} message={emptyMessage} />
+            ) : (
+              rows.map((fill) => (
+                <tr
+                  key={fill.id}
+                  className="text-[12px] leading-tight hover:bg-white/[0.015]"
                 >
-                  {trade.rMultiple}
-                </td>
-                <td className="py-1 font-mono text-[11px] text-text-muted">
-                  {trade.date}
-                </td>
-              </tr>
-            ))}
+                  <td className="py-1 pr-0.5">
+                    <CoinBadge
+                      coin={fill.coin}
+                      color={fill.coinColor}
+                      symbol={fill.symbol}
+                    />
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
+                    {fill.fillKind}
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
+                    {fill.quantityDisplay}
+                  </td>
+                  <td className="py-1 pr-0.5 font-mono text-[11px] text-text-secondary">
+                    {fill.priceDisplay}
+                  </td>
+                  <td className="py-1 font-mono text-[11px] text-text-muted">
+                    {fill.timeDisplay}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
 
-      <a
-        href="#trades"
+      <Link
+        href="/dashboard/fills"
         className="mt-2 inline-flex items-center gap-1 text-[11px] text-mint-dim hover:text-mint"
       >
-        Alle Trades anzeigen
+        Alle Fills anzeigen
         <ArrowRight className="h-3 w-3" />
-      </a>
+      </Link>
     </Card>
   );
 }
+
+/** @deprecated Use FillsTable — kept name alias for older imports */
+export const TradesTable = FillsTable;

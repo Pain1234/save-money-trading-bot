@@ -202,10 +202,23 @@ export async function fetchWallet(): Promise<WalletResponse> {
   });
 }
 
-export async function fetchPositions(): Promise<Paginated<PositionItem>> {
-  return fetchPaperApi<Paginated<PositionItem>>("/api/v1/positions?limit=50", {
+export async function fetchPositions(
+  options: { openOnly?: boolean; status?: "OPEN" | "CLOSING" | "CLOSED" } = {},
+): Promise<Paginated<PositionItem>> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (options.openOnly) {
+    params.set("open_only", "true");
+  } else if (options.status) {
+    params.set("status", options.status);
+  }
+  return fetchPaperApi<Paginated<PositionItem>>(`/api/v1/positions?${params}`, {
     revalidate: REVALIDATE.MONITORING,
   });
+}
+
+/** Open + CLOSING positions for the dashboard table (Issue #238). */
+export async function fetchOpenPositions(): Promise<Paginated<PositionItem>> {
+  return fetchPositions({ openOnly: true });
 }
 
 export async function fetchOrders(): Promise<Paginated<OrderItem>> {

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CHART_PERIODS } from "@/lib/mock-data";
+import { CHART_PERIODS } from "@/lib/dashboard/constants";
+import { filterEquityByPeriod } from "@/lib/dashboard/view-model";
+import type { EquityChartPointVm } from "@/lib/dashboard/types";
 import { formatCurrency } from "@/lib/utils";
 import { Card } from "@/components/ui/Card";
-import { ChevronDown } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -14,53 +15,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
-/** Display-only equity series — organic uptrend with drawdowns & sideways phases */
-const CHART_DISPLAY_DATA = [
-  { label: "Jan", equity: 2140 },
-  { label: "", equity: 2325 },
-  { label: "", equity: 2260 },
-  { label: "Feb", equity: 2680 },
-  { label: "", equity: 2810 },
-  { label: "", equity: 2745 },
-  { label: "Mär", equity: 3180 },
-  { label: "", equity: 3285 },
-  { label: "", equity: 3220 },
-  { label: "Apr", equity: 3680 },
-  { label: "", equity: 3795 },
-  { label: "", equity: 3725 },
-  { label: "Mai", equity: 4180 },
-  { label: "", equity: 4010 },
-  { label: "", equity: 4095 },
-  { label: "Jun", equity: 4580 },
-  { label: "", equity: 4720 },
-  { label: "", equity: 4645 },
-  { label: "Jul", equity: 5280 },
-  { label: "", equity: 5445 },
-  { label: "", equity: 5355 },
-  { label: "Aug", equity: 5980 },
-  { label: "", equity: 6180 },
-  { label: "", equity: 6065 },
-  { label: "Sep", equity: 6680 },
-  { label: "", equity: 6560 },
-  { label: "", equity: 6625 },
-  { label: "Okt", equity: 7280 },
-  { label: "", equity: 7440 },
-  { label: "", equity: 7355 },
-  { label: "Nov", equity: 8120 },
-  { label: "", equity: 7880 },
-  { label: "", equity: 8015 },
-  { label: "Dez", equity: 8720 },
-  { label: "", equity: 9240 },
-  { label: "", equity: 8980 },
-  { label: "", equity: 9680 },
-  { label: "", equity: 10180 },
-  { label: "", equity: 10640 },
-  { label: "", equity: 11120 },
-  { label: "", equity: 11680 },
-  { label: "", equity: 12090 },
-  { label: "", equity: 12456 },
-];
 
 function CustomTooltip({
   active,
@@ -86,7 +40,17 @@ function CustomTooltip({
   );
 }
 
-export function PerformanceChart() {
+interface PerformanceChartProps {
+  points: EquityChartPointVm[];
+  emptyMessage?: string;
+  errorMessage?: string | null;
+}
+
+export function PerformanceChart({
+  points,
+  emptyMessage = "Keine Equity-Historie verfügbar",
+  errorMessage = null,
+}: PerformanceChartProps) {
   const [activePeriod, setActivePeriod] = useState("30D");
   const [chartReady, setChartReady] = useState(false);
 
@@ -94,26 +58,32 @@ export function PerformanceChart() {
     setChartReady(true);
   }, []);
 
+  const filtered = useMemo(
+    () => filterEquityByPeriod(points, activePeriod),
+    [points, activePeriod],
+  );
+
   const yDomain = useMemo(() => {
-    const values = CHART_DISPLAY_DATA.map((d) => d.equity);
+    if (filtered.length === 0) return [0, 1] as [number, number];
+    const values = filtered.map((d) => d.equity);
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const pad = (max - min) * 0.06;
+    const pad = (max - min) * 0.06 || 1;
     return [Math.floor(min - pad), Math.ceil(max + pad)] as [number, number];
-  }, []);
+  }, [filtered]);
 
   return (
-    <Card padding="sm" className="chart-panel flex min-w-0 flex-col">
+    <Card
+      padding="sm"
+      className="chart-panel flex min-w-0 flex-col"
+      data-testid="performance-chart"
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-[13px] font-medium text-text-primary">Performance</h3>
-          <button
-            type="button"
-            className="mt-0.5 flex items-center gap-0.5 text-[11px] text-text-muted hover:text-text-secondary"
-          >
-            Eigenkapital
-            <ChevronDown className="h-3 w-3" />
-          </button>
+          <h3 className="text-[13px] font-medium text-text-primary">
+            Performance
+          </h3>
+          <p className="mt-0.5 text-[11px] text-text-muted">Eigenkapital</p>
         </div>
         <div className="flex gap-0.5">
           {CHART_PERIODS.map((period) => (
@@ -134,18 +104,32 @@ export function PerformanceChart() {
       </div>
 
       <div className="min-h-0 flex-1">
-        {chartReady ? (
+        {errorMessage ? (
+          <div
+            className="flex h-full items-center justify-center text-[12px] text-negative"
+            data-testid="equity-error"
+          >
+            {errorMessage}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div
+            className="flex h-full items-center justify-center text-[12px] text-text-muted"
+            data-testid="equity-empty"
+          >
+            {emptyMessage}
+          </div>
+        ) : chartReady ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
-              data={CHART_DISPLAY_DATA}
+              data={filtered}
               margin={{ top: 2, right: 2, left: -12, bottom: 0 }}
             >
               <defs>
-              <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#42d98b" stopOpacity={0.22} />
-                <stop offset="55%" stopColor="#42d98b" stopOpacity={0.08} />
-                <stop offset="100%" stopColor="#42d98b" stopOpacity={0} />
-              </linearGradient>
+                <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#42d98b" stopOpacity={0.22} />
+                  <stop offset="55%" stopColor="#42d98b" stopOpacity={0.08} />
+                  <stop offset="100%" stopColor="#42d98b" stopOpacity={0} />
+                </linearGradient>
               </defs>
               <CartesianGrid
                 strokeDasharray="2 5"
@@ -158,7 +142,7 @@ export function PerformanceChart() {
                 tickLine={false}
                 tick={{ fill: "#6d7a84", fontSize: 11 }}
                 dy={4}
-                interval={0}
+                interval="preserveStartEnd"
                 tickFormatter={(v) => v || ""}
               />
               <YAxis

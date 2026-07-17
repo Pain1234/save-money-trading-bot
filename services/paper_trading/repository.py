@@ -825,11 +825,24 @@ class PaperTradingRepository:
         limit: int,
         after_opened_at: datetime | None = None,
         after_position_id: UUID | None = None,
+        status: str | None = None,
+        open_only: bool = False,
     ) -> tuple[PaperPosition, ...]:
         stmt = select(PaperPositionRow).order_by(
             PaperPositionRow.opened_at.desc(),
             PaperPositionRow.position_id.desc(),
         )
+        if open_only:
+            stmt = stmt.where(
+                PaperPositionRow.status.in_(
+                    [
+                        PaperPositionStatus.OPEN.value,
+                        PaperPositionStatus.CLOSING.value,
+                    ]
+                )
+            )
+        elif status is not None:
+            stmt = stmt.where(PaperPositionRow.status == status)
         if after_opened_at is not None and after_position_id is not None:
             stmt = stmt.where(
                 (PaperPositionRow.opened_at < after_opened_at)

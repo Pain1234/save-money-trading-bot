@@ -2,6 +2,7 @@
 
 import { Card } from "@/components/ui/Card";
 import dynamic from "next/dynamic";
+import type { EquityChartPointVm } from "@/lib/dashboard/types";
 
 function PerformanceChartSkeleton() {
   return (
@@ -20,6 +21,22 @@ const PerformanceChart = dynamic(
   { ssr: false, loading: PerformanceChartSkeleton },
 );
 
-export function PerformanceChartSection() {
-  return <PerformanceChart />;
+interface PerformanceChartSectionProps {
+  points: EquityChartPointVm[];
+  emptyMessage?: string;
+  errorMessage?: string | null;
+}
+
+export function PerformanceChartSection({
+  points,
+  emptyMessage,
+  errorMessage,
+}: PerformanceChartSectionProps) {
+  return (
+    <PerformanceChart
+      points={points}
+      emptyMessage={emptyMessage}
+      errorMessage={errorMessage}
+    />
+  );
 }
