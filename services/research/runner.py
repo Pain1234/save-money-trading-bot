@@ -79,7 +79,62 @@ def resolve_git_commit(repo_root: Path, *, allow_dirty: bool = False) -> str:
     return head
 
 
+def _porcelain_paths(porcelain: str) -> list[str]:
+    """Return paths from ``git status --porcelain`` output."""
+    paths: list[str] = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        # formats: XY PATH | XY ORIG -> PATH | ?? PATH
+        body = line[3:] if len(line) > 3 else line.strip()
+        if " -> " in body:
+            body = body.split(" -> ", 1)[1]
+        paths.append(body.strip().strip('"'))
+    return paths
+
+
+def assert_git_commit_stable(
+    repo_root: Path,
+    expected_commit: str,
+    *,
+    allow_dirty: bool = False,
+    ignore_prefixes: tuple[str, ...] = (),
+) -> None:
+    """Re-verify HEAD and cleanliness before sealing a complete run (TOCTOU)."""
+    current = resolve_git_commit(repo_root, allow_dirty=True)
+    if current != expected_commit:
+        raise ValueError(
+            "git provenance changed during run: "
+            f"HEAD is {current}, expected {expected_commit}"
+        )
+    if allow_dirty:
+        return
+    porcelain = subprocess.check_output(
+        ["git", "status", "--porcelain"],
+        cwd=repo_root,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    ignored = tuple(
+        pref.replace(chr(92), "/").rstrip("/") + "/"
+        for pref in ignore_prefixes
+        if pref
+    )
+    dirty: list[str] = []
+    for path in _porcelain_paths(porcelain):
+        norm = path.replace(chr(92), "/")
+        if any(norm == pref.rstrip("/") or norm.startswith(pref) for pref in ignored):
+            continue
+        dirty.append(path)
+    if dirty:
+        raise ValueError(
+            "git working tree became dirty during run "
+            f"(paths: {', '.join(dirty[:5])})"
+        )
+
+
 def _environment_fingerprint() -> str:
+
     import platform
     import sys
 
@@ -94,6 +149,8 @@ class RunRequest:
     repo_root: Path
     dry_run: bool = False
     allow_dirty_git: bool = False
+    # Tests only: mutate tree/HEAD between resolve and finalize.
+    mid_run_hook: object | None = None
 
 
 @dataclass(frozen=True)
@@ -256,6 +313,35 @@ def run_experiment(request: RunRequest) -> RunOutcome:
             config = _config_from_spec(spec, resolved.parameters)
             result = BacktestEngine(strategy=resolved.engine).run(filtered_bundle, config)
             metrics = _metrics_from_result(spec, result, filtered_bundle)
+            if request.mid_run_hook is not None:
+                cast_hook = request.mid_run_hook
+                cast_hook()  # type: ignore[operator]
+            try:
+                ignore: list[str] = []
+                try:
+                    ignore.append(
+                        str(final_dir.resolve().relative_to(request.repo_root.resolve()))
+                    )
+                except ValueError:
+                    pass
+                try:
+                    ignore.append(
+                        str(
+                            request.artifacts_root.resolve().relative_to(
+                                request.repo_root.resolve()
+                            )
+                        )
+                    )
+                except ValueError:
+                    pass
+                assert_git_commit_stable(
+                    request.repo_root,
+                    git_commit,
+                    allow_dirty=request.allow_dirty_git,
+                    ignore_prefixes=tuple(ignore),
+                )
+            except ValueError as provenance_exc:
+                raise RuntimeError(str(provenance_exc)) from provenance_exc
             complete = build_run_manifest(
                 spec,
                 inputs=inputs,
