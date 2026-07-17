@@ -17,6 +17,7 @@ COPY pyproject.toml alembic.ini ./
 COPY migrations ./migrations
 COPY services ./services
 COPY scripts ./scripts
+COPY examples ./examples
 COPY deploy/scripts ./deploy/scripts
 
 RUN pip install --upgrade pip \
