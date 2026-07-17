@@ -1,36 +1,68 @@
-# P4 Research Workspace — follow-up issues (Issue #240 / #242)
+# P4 Research Workspace — follow-up issues
 
-## Recommended issue split
+Governance sync: [#244](https://github.com/Pain1234/save-money-trading-bot/issues/244).
+Milestone: **P4 – Research Engine und Research Workspace V1**.
 
-### 1–2. P4.6 Strategy Lab + Async Runs — done in #242
+## Dependency chain (actual)
 
-Combined vertical slice: Strategy Lab UI, write API, filesystem job store,
-in-process worker wrapping `run_experiment`, status polling.
+```text
+#240 read-only (done)
+  → #242 Strategy Lab + start (PR #243 merged; UI-Abnahme noch offen)
+    → #245 P4.6b Durable Job Execution / Restart Recovery
+      → #246 P4.7a Compare
+      → #247 P4.7b Robustness orchestration
+        → #248 P4.7c Gate Evaluator + persistence
+          → #249 P4.7d Validation Studies API + UI
+            → #250 P4.8 E2E / Repro / UI-Abnahme
+              → P4 exit (honest) → P5 usable enough
+```
 
-**V1 job limit:** in-process threads do not resume after API process restart;
-stale `running` jobs are failed closed on the next status read.
+Cancel / Retry / Re-run remain **bewusst zurückgestellt** (kein Issue in diesem Sync).
 
-### 3. P4.7 Experiment- und Strategie-Vergleich
+P5 Strategy-V1 execution uses P4.7b/d infrastructure but stays on P5 issues (#251–#255, #204, #205).
 
-Compare View over existing registry entries / metrics artifacts (reuse
-`ExperimentRegistry.compare` semantics where possible).
+---
 
-### 4. P4.7 Robustness-Orchestrierung
+## Delivered / in acceptance
 
-Wire existing P5 helpers (walk-forward, cost stress, parameter stability,
-bootstrap) into orchestrated runs + UI surfaces — no new backtester.
+| Item | Issue | Status |
+|------|-------|--------|
+| Read-only Overview / list / detail | [#240](https://github.com/Pain1234/save-money-trading-bot/issues/240) | **abgeschlossen** |
+| Strategy Lab + start (in-process jobs) | [#242](https://github.com/Pain1234/save-money-trading-bot/issues/242) / PR [#243](https://github.com/Pain1234/save-money-trading-bot/pull/243) | **technisch umgesetzt, aber noch nicht abgenommen** (manuelle UI-Abnahme mit Dataset-Katalog ausstehend) |
 
-### 5. P4.7 Versionierter Gate Evaluator und Gate-Persistenz
+**V1 job limit (until #245):** in-process threads do not resume after API process restart; stale `queued`/`running` fail-closed on the next status read.
 
-Gate evaluation versioning, persistence of accept/reject reasons, no silent
-promotion into paper trading.
+---
 
-### 6. P4.8 End-to-End-, Reproduzierbarkeits- und UI-Abnahmetests
+## Open follow-ups (real issues)
 
-Playwright + API acceptance covering Lab → run → detail → compare; double-run
-repro checks; no mock production data.
+### [#245](https://github.com/Pain1234/save-money-trading-bot/issues/245) — P4.6b Durable Research Job Execution und Restart Recovery
+
+Persistenter Jobstatus, Restart-/Orphan-Verhalten, Status-API. Keine neue Backtest Engine; keine Live-Orders.
+
+### [#246](https://github.com/Pain1234/save-money-trading-bot/issues/246) — P4.7a Experiment- und Strategie-Vergleich
+
+Compare View; `ExperimentRegistry.compare`-Semantik; keine irreführenden Inkompatibilitätsvergleiche; kein P7-Ranking.
+
+### [#247](https://github.com/Pain1234/save-money-trading-bot/issues/247) — P4.7b Robustness-Orchestrierung
+
+Walk-Forward, Cost Stress, Parameter Stability, Bootstrap/MC orchestrieren + UI. Keine zweite Engine; keine privaten P5-Ergebniswerte im Public Repo.
+
+### [#248](https://github.com/Pain1234/save-money-trading-bot/issues/248) — P4.7c Versionierter Gate Evaluator und Gate-Persistenz
+
+Policy-Version, Gate-Name, Grenzwert, Messwert, Pass/Fail, Reason, Persistenz. Keine Auto-Promotion.
+
+### [#249](https://github.com/Pain1234/save-money-trading-bot/issues/249) — P4.7d Validation Studies API und UI
+
+Routen `/dashboard/research/validation` und `/dashboard/research/validation/[studyId]`. Public Core nur generisch/synthetisch; echte P5-Ergebnisse privat (#181). P5 registriert die Strategy-V1-Studie separat als [#255](https://github.com/Pain1234/save-money-trading-bot/issues/255).
+
+### [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) — P4.8 Research E2E, Reproduzierbarkeit und UI-Abnahme
+
+Lab→Run→Detail, Compare, Robustness, Validation Study, Fehler/Restart/Doppelstart, CLI-Kompatibilität, manuelle UI-Abnahme, Playwright/API-E2E. Schließt auch die offene Abnahme von #242.
+
+---
 
 ## Milestone note
 
-Milestone remains **P4 – Research Engine und Research Workspace V1**.
-P5 stays blocked until Engine + Read-API + Workspace are jointly usable enough.
+P4 is **not** complete while #242 acceptance, #245–#250 (or explicit deferrals), and exit criteria remain open.
+P5 planning may proceed; **actual** P5 economic validation remains gated on usable Engine + Workspace and the P5 execution chain.
