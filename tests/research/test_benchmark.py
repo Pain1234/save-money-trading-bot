@@ -57,8 +57,27 @@ def test_buy_and_hold_return() -> None:
 def test_compute_benchmark_from_example_spec() -> None:
     ref, result = compute_benchmark_result(_btc_spec(), _bundle("100", "125"))
     assert "buy_and_hold" in ref.benchmark_id.lower()
-    assert result == Decimal("0.25")
+    assert ref.gross_return == Decimal("0.25")
     assert ref.cost_parity is True
+    assert ref.cost_model_version
+    assert result < ref.gross_return
+    assert result != Decimal("0.25")
+
+
+def test_benchmark_net_reflects_higher_fees() -> None:
+    low = _btc_spec()
+    raw = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    raw["symbols"] = ["BTC"]
+    raw["fee_assumption"] = {
+        "entry_fee_rate": "0.05",
+        "exit_fee_rate": "0.05",
+        "model_version": "1.0",
+    }
+    high = parse_experiment_spec(raw)
+    bundle = _bundle("100", "125")
+    _, net_low = compute_benchmark_result(low, bundle)
+    _, net_high = compute_benchmark_result(high, bundle)
+    assert net_high < net_low
 
 
 def test_unsupported_benchmark_fails() -> None:

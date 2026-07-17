@@ -40,6 +40,10 @@ class BenchmarkRef(BaseModel):
     period_parity: bool = True
     dataset_parity: bool = True
     cost_parity: bool = True
+    # Versioned cost pin + gross/net (#208). gross_return is price-only;
+    # net is carried as ResearchMetrics.benchmark_result.
+    cost_model_version: str = Field(default="", description="Cost model applied for net")
+    gross_return: Decimal | None = None
 
 
 class ResearchMetrics(BaseModel):
@@ -194,9 +198,10 @@ def render_report_md(metrics: ResearchMetrics) -> str:
         (
             f"- benchmark: `{b.benchmark_id}@{b.benchmark_version}` "
             f"(period_parity={b.period_parity}, dataset_parity={b.dataset_parity}, "
-            f"cost_parity={b.cost_parity})"
+            f"cost_parity={b.cost_parity}, cost_model_version={b.cost_model_version})"
         ),
-        f"- benchmark_result: `{metrics.benchmark_result}`",
+        f"- benchmark_gross_return: `{b.gross_return}`",
+        f"- benchmark_result (net): `{metrics.benchmark_result}`",
         f"- calculation: {b.calculation}",
         "",
     ]
