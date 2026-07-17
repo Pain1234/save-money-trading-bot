@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #204 pre-OOS)
+
+- Execution status checklist: hard stops before opening forward holdout (prep only).
+
 ### Added (P5 execution — #203 bootstrap)
 
 - bootstrap.py: path net-PnL/drawdown quantiles; small-n samples fail closed (N/A).
