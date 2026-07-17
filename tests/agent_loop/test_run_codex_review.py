@@ -908,7 +908,12 @@ def test_allow_diff_file_alone_insufficient(repo_root, fixtures_dir, gate_ps1):
 def test_productive_diff_uses_binary_two_dot_range(repo_root, gate_ps1, fixtures_dir, tmp_path):
     """5. Productive path (no DiffFile) runs git diff --binary merge-base..head via mock Codex."""
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"auth_mode":"chatgpt","tokens":{"access_token":"tok-bin","id_token":"id-bin","refresh_token":"r-bin","account_id":"a-bin"},"OPENa-binI_a-binPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8")
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"tok-bin","id_token":"id-bin",'
+        '"refresh_token":"r-bin","account_id":"a-bin"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
+    )
     live_repo = _init_clean_live_repo(tmp_path / "binary")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
@@ -954,7 +959,12 @@ def test_live_codex_scrubbed_env_omits_secrets(repo_root, fixtures_dir, gate_ps1
     env_keys = tmp_path / "env-keys.txt"
     temp_vals = tmp_path / "temp-vals.txt"
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"auth_mode":"chatgpt","tokens":{"access_token":"tok-scrub","id_token":"id-scrub","refresh_token":"r-scrub","account_id":"a-scrub"},"OPENa-scrubI_a-scrubPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8")
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"tok-scrub","id_token":"id-scrub",'
+        '"refresh_token":"r-scrub","account_id":"a-scrub"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
+    )
     mock_codex = fixtures_dir / "mock_codex.py"
     live_repo = _init_clean_live_repo(tmp_path / "scrub")
     env = _gate_env(
@@ -1043,7 +1053,12 @@ def test_live_codex_only_one_auth_key(repo_root, fixtures_dir, gate_ps1, tmp_pat
 def test_env_clear_failure_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_path):
     """Simulated Environment.Clear failure → REVIEW_FAILED exit 3 (no blocklist fallback)."""
     auth_src = tmp_path / "auth.json"
-    auth_src.write_text('{"auth_mode":"chatgpt","tokens":{"access_token":"tok","id_token":"id","refresh_token":"r","account_id":"a"},"OPENaI_aPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8")
+    auth_src.write_text(
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"tok","id_token":"id",'
+        '"refresh_token":"r","account_id":"a"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
+    )
     live_repo = _init_clean_live_repo(tmp_path / "clearfail")
     env = _gate_env(
         AGENT_LOOP_CODEX_BIN=str(fixtures_dir / "mock_codex.py"),
@@ -1207,7 +1222,10 @@ def test_auth_json_in_diff_fail_closed(repo_root, fixtures_dir, gate_ps1, tmp_pa
         capture_output=True,
     )
     (repo / "auth.json").write_text(
-        '{"auth_mode":"chatgpt","tokens":{"access_token":"leak","id_token":"id-leak","refresh_token":"r-leak","account_id":"a-leak"},"OPENa-leakI_a-leakPI_KEY":"sk-should-not-copy"}\n', encoding="utf-8"
+        '{"auth_mode":"chatgpt","tokens":{"access_token":"leak","id_token":"id-leak",'
+        '"refresh_token":"r-leak","account_id":"a-leak"},'
+        '"OPENAI_API_KEY":"sk-should-not-copy"}\n',
+        encoding="utf-8",
     )
     subprocess.run(["git", "add", "auth.json"], cwd=repo, check=True, capture_output=True)
     subprocess.run(
