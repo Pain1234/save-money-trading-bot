@@ -2,8 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   isActiveJobStatus,
+  labDayEndUtc,
+  labDayStartUtc,
   validateLabDraft,
 } from "../../src/lib/research/lab-validation";
+
+describe("labDayStartUtc / labDayEndUtc", () => {
+  it("uses whole-second end bounds (not .999999) for manifest-safe windows", () => {
+    expect(labDayStartUtc("2024-01-31")).toBe("2024-01-31T00:00:00.000000Z");
+    expect(labDayEndUtc("2024-01-31")).toBe("2024-01-31T23:59:59.000000Z");
+    expect(labDayEndUtc("2024-01-31")).not.toContain(".999999");
+  });
+});
 
 describe("validateLabDraft (shared with StrategyLabForm)", () => {
   it("accepts a complete draft", () => {

@@ -12,6 +12,16 @@ export interface LabDraftInput {
   slippageBps: string;
 }
 
+/** Inclusive UTC day bounds for Lab payloads (must not exceed DatasetManifest end). */
+export function labDayStartUtc(dateYmd: string): string {
+  return `${dateYmd}T00:00:00.000000Z`;
+}
+
+export function labDayEndUtc(dateYmd: string): string {
+  // Whole seconds (.000000), not .999999 — manifests often end at 23:59:59Z.
+  return `${dateYmd}T23:59:59.000000Z`;
+}
+
 export function validateLabDraft(input: LabDraftInput): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!input.name.trim()) errors.name = "Experimentname ist erforderlich";

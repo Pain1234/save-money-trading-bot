@@ -263,11 +263,13 @@ def build_manifest_dict_for_bundle(
     code_commit: str = "testhash",
     quality_status: str = "VALID",
     allow_quality_warnings: bool = False,
+    created_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Helper for tests: build a DatasetManifest JSON matching a dataset window.
 
     ``time_range`` is the **manifest** window (published dataset bounds).
     ``content_hash`` is computed over candles in that window (funding excluded).
+    Pass ``created_at`` for deterministic fixtures (local lab catalog).
     """
     filtered = filter_bundle_to_time_range(bundle, time_range, symbols)
     content_hash = hash_research_bundle(filtered, symbols)
@@ -279,6 +281,7 @@ def build_manifest_dict_for_bundle(
     )
     schema_version = "1.0"
     dataset_id = derive_dataset_id(content_hash, schema_version, source)
+    created = created_at or datetime.now(UTC)
     return {
         "schema_version": schema_version,
         "source": source,
@@ -293,7 +296,7 @@ def build_manifest_dict_for_bundle(
         "raw_content_hash": content_hash,
         "import_configuration": {"purpose": "research-test"},
         "code_commit": code_commit,
-        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "+00:00"),
+        "created_at": created.isoformat().replace("+00:00", "+00:00"),
         "parent_dataset_id": None,
         "quality_status": quality_status,
         "allow_quality_warnings": allow_quality_warnings,

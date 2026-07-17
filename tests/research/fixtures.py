@@ -89,6 +89,7 @@ def align_spec_to_bundle(
     price_note: str = "",
     quality_status: str = "VALID",
     allow_quality_warnings: bool = False,
+    created_at: datetime | None = None,
 ) -> ExperimentSpec:
     """Write a matching DatasetManifest and return Spec bound to it.
 
@@ -106,6 +107,7 @@ def align_spec_to_bundle(
         time_range=manifest_tr,
         quality_status=quality_status,
         allow_quality_warnings=allow_quality_warnings,
+        created_at=created_at,
     )
     manifest_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",

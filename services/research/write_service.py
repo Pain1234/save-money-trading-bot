@@ -59,8 +59,21 @@ def repo_root_from_env() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def default_local_catalog_path(*, repo_root: Path | None = None) -> Path:
+    """Dev checkout fallback: committed local-lab catalog (Issue #264)."""
+    root = (repo_root or repo_root_from_env()).resolve()
+    return root / "examples" / "research" / "local_lab" / "catalog.json"
+
+
 def load_dataset_catalog() -> list[DatasetCatalogEntry]:
-    """Load allowed datasets (no free-form client paths)."""
+    """Load allowed datasets (no free-form client paths).
+
+    Resolution order:
+    1. ``RESEARCH_DATASET_CATALOG_PATH``
+    2. ``RESEARCH_DATASET_CATALOG_JSON``
+    3. ``examples/research/local_lab/catalog.json`` under ``RESEARCH_REPO_ROOT``
+       (local/dev convenience; empty if the file is missing)
+    """
     path_raw = os.environ.get("RESEARCH_DATASET_CATALOG_PATH", "").strip()
     json_raw = os.environ.get("RESEARCH_DATASET_CATALOG_JSON", "").strip()
     payload: list[Any]
@@ -71,7 +84,11 @@ def load_dataset_catalog() -> list[DatasetCatalogEntry]:
         data = json.loads(json_raw)
         payload = data if isinstance(data, list) else data.get("datasets", [])
     else:
-        return []
+        fallback = default_local_catalog_path()
+        if not fallback.is_file():
+            return []
+        data = json.loads(fallback.read_text(encoding="utf-8"))
+        payload = data if isinstance(data, list) else data.get("datasets", [])
 
     entries: list[DatasetCatalogEntry] = []
     for row in payload:

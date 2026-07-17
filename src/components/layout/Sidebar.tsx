@@ -23,7 +23,7 @@ export function Sidebar() {
         </h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-text-secondary">
           {research
-            ? "Read-only Ansicht über ExperimentRegistry und Run-Artefakte. Keine Start-, Cancel- oder Promotion-Aktionen."
+            ? "ExperimentRegistry und Run-Artefakte. Strategy Lab startet Runs über die bestehende Research-Engine — ohne Cancel, Promotion oder Live-Orders."
             : "Read-only Dashboard für Paper-Trading auf Hyperliquid. Status, Positionen und Equity — ohne Order- oder Bot-Steuerung."}
         </p>
       </div>
