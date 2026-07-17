@@ -55,7 +55,7 @@ Current state (evidence-based):
 |-------|--------|
 | Spec | Frozen in `docs/strategy-specification.md` |
 | Paper implementation | Internal orchestrator phases 1–9 complete |
-| Formal P5 validation | **Not started** (roadmap) |
+| Formal P5 validation | **Planning** (`docs/research/p5/`; no OOS opened) |
 | Paper soak 90d | **Not started** |
 
 ---

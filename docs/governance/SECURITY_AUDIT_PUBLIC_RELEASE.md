@@ -30,7 +30,7 @@ Heuristic assignment matches (docs/tests/scripts) were inspected and classified 
 
 ## History
 
-Pickaxe hits for ghp_, AKIA, PEM headers, xoxb- resolve to **secret-scanner fixtures / pattern definitions** (e.g. 	ests/agent_loop/secret_fragments.py, .agent-loop/secret_scan.py, related tooling commits), not production credentials.
+Pickaxe hits for ghp_, AKIA, PEM headers, xoxb- resolve to **historical secret-scanner fixtures / pattern definitions** from retired tooling commits (formerly under tests/agent_loop and .agent-loop), not production credentials.
 
 No tracked commit added a live .env (only .env.example).
 

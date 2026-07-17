@@ -7,8 +7,8 @@ alwaysApply: true
 
 Before any task, read `AGENTS.md` and `ROADMAP.md`. Use the linked GitHub issue as the **scope boundary**.
 
-> Commit, Codex review, and merge/deploy decisions are governed by
-> `.cursor/rules/00-mandatory-codex-review.mdc`. Where this file's content
+> Commit and merge/deploy decisions are governed by
+> `.cursor/rules/00-mandatory-quality-gate.mdc`. Where this file's content
 > touches that workflow, that rule takes precedence.
 ## Hard rules
 
