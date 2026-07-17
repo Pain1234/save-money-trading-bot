@@ -12,8 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Scheduler / Incidents cards distinguish endpoint errors from empty success
   („Nicht verfügbar“ vs „0 in letzten 50 Events“).
 - Realized PnL KPI accent follows decimal sign (negative → danger).
-- Playwright scenarios: stale heartbeat, summary 503, section endpoint failures.
+- Playwright scenarios: stale heartbeat, summary 503, section endpoint failures
+  (incl. equity/positions), and empty equity/positions/fills.
 - Postgres repository test: `open_only` includes OPEN+CLOSING, excludes CLOSED, cursor works.
+- Docs: `ARCHITECTURE.md` / `design-system.md` no longer claim mock dashboard data.
 
 ### Added (Dashboard design ↔ paper API — #238)
 

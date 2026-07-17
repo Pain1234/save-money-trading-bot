@@ -5,15 +5,16 @@
  *
  * Scenarios (POST /__test/scenario {"scenario":"..."}):
  * - default
+ * - empty          — equity/positions/fills empty; summary open_position_count=0
  * - stale          — heartbeat older than threshold
  * - summary_error  — dashboard-summary returns 503
- * - section_error  — fills + events + scheduler return 503
+ * - section_error  — equity, positions, fills, events, scheduler return 503
  */
 import http from "node:http";
 
 const PORT = Number(process.env.PAPER_API_STUB_PORT || 18080);
 
-/** @type {"default"|"stale"|"summary_error"|"section_error"} */
+/** @type {"default"|"empty"|"stale"|"summary_error"|"section_error"} */
 let scenario = "default";
 
 const baseSummary = {
@@ -64,6 +65,13 @@ function currentSummary() {
         heartbeat_age_seconds: 120,
         stale_heartbeat_threshold_seconds: 30,
       },
+    };
+  }
+  if (scenario === "empty") {
+    return {
+      ...baseSummary,
+      open_position_count: 0,
+      position_summary: [],
     };
   }
   return baseSummary;
@@ -145,6 +153,10 @@ function readBody(req) {
   });
 }
 
+function sectionUnavailable(res, label) {
+  return json(res, { detail: `${label} unavailable` }, 503);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = req.url || "/";
   const method = req.method || "GET";
@@ -155,6 +167,7 @@ const server = http.createServer(async (req, res) => {
       const next = body.scenario || "default";
       const allowed = new Set([
         "default",
+        "empty",
         "stale",
         "summary_error",
         "section_error",
@@ -188,29 +201,46 @@ const server = http.createServer(async (req, res) => {
   if (url.startsWith("/api/v1/wallet")) {
     return json(res, currentSummary().wallet);
   }
-  if (url.startsWith("/api/v1/positions")) return json(res, positions);
+
+  if (url.startsWith("/api/v1/positions")) {
+    if (scenario === "section_error") {
+      return sectionUnavailable(res, "positions");
+    }
+    if (scenario === "empty") return json(res, emptyPage);
+    return json(res, positions);
+  }
 
   if (url.startsWith("/api/v1/fills")) {
     if (scenario === "section_error") {
-      return json(res, { detail: "fills unavailable" }, 503);
+      return sectionUnavailable(res, "fills");
     }
+    if (scenario === "empty") return json(res, emptyPage);
     return json(res, fills);
   }
 
-  if (url.startsWith("/api/v1/equity")) return json(res, equity);
+  if (url.startsWith("/api/v1/equity")) {
+    if (scenario === "section_error") {
+      return sectionUnavailable(res, "equity");
+    }
+    if (scenario === "empty") {
+      return json(res, { items: [], next_cursor: null, limit: 100 });
+    }
+    return json(res, equity);
+  }
+
   if (url.startsWith("/api/v1/orders")) return json(res, emptyPage);
   if (url.startsWith("/api/v1/stops")) return json(res, emptyPage);
 
   if (url.startsWith("/api/v1/scheduler-runs")) {
     if (scenario === "section_error") {
-      return json(res, { detail: "scheduler unavailable" }, 503);
+      return sectionUnavailable(res, "scheduler");
     }
     return json(res, emptyPage);
   }
 
   if (url.startsWith("/api/v1/events")) {
     if (scenario === "section_error") {
-      return json(res, { detail: "events unavailable" }, 503);
+      return sectionUnavailable(res, "events");
     }
     return json(res, emptyPage);
   }

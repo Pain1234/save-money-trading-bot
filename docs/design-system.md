@@ -246,11 +246,13 @@ Referenz-Screenshots: `docs/visual-regression/dashboard-{viewport}.png`
 
 ## Chart (Performance)
 
-- Display-only Mockdaten in `PerformanceChart.tsx` (`CHART_DISPLAY_DATA`)
+- Daten: echte Equity-Historie aus `GET /api/v1/equity` (View-Model → `PerformanceChart`)
+- Empty-/Error-States: `equity-empty` / `equity-error` (keine Mock-Serie)
 - Linie: `#42d98b`, 1.75px, `monotone`
 - Fläche: Gradient 22% → 0% Opacity
 - Achsen: 11px, `#6d7a84`
 - SSR: Chart via `dynamic(..., { ssr: false })` — Hydration-sicher
+- Demo-Fixtures (nicht produktiv): `src/lib/demo/financial-fixtures.ts`
 
 ---
 

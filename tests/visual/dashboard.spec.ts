@@ -7,7 +7,7 @@ const STUB_URL = process.env.PAPER_API_STUB_URL ?? "http://127.0.0.1:18080";
 
 async function setStubScenario(
   request: APIRequestContext,
-  scenario: "default" | "stale" | "summary_error" | "section_error",
+  scenario: "default" | "empty" | "stale" | "summary_error" | "section_error",
 ) {
   const response = await request.post(`${STUB_URL}/__test/scenario`, {
     data: { scenario },
@@ -130,11 +130,31 @@ test("section endpoint failures keep core KPIs and mark sections unavailable", a
   await expect(page.getByTestId("dashboard-page-ready")).toBeVisible();
   await expect(page.getByTestId("kpi-grid")).toBeVisible();
   await expect(page.getByTestId("fills-table").getByTestId("table-error")).toBeVisible();
+  await expect(
+    page.getByTestId("positions-table").getByTestId("table-error"),
+  ).toBeVisible();
+  await expect(page.getByTestId("equity-error")).toBeVisible();
   await expect(page.getByTestId("status-card-scheduler")).toContainText(
     /Nicht verfügbar/i,
   );
   await expect(page.getByTestId("status-card-incidents")).toContainText(
     /Nicht verfügbar/i,
   );
-  await expect(page.getByTestId("positions-table")).toBeVisible();
+});
+
+test("empty equity positions and fills show empty states without blanking core", async ({
+  page,
+  request,
+}) => {
+  await setStubScenario(request, "empty");
+  await login(page);
+  await expect(page.getByTestId("dashboard-page-ready")).toBeVisible();
+  await expect(page.getByTestId("kpi-grid")).toBeVisible();
+  await expect(page.getByTestId("equity-empty")).toBeVisible();
+  await expect(
+    page.getByTestId("positions-table").getByTestId("table-empty"),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("fills-table").getByTestId("table-empty"),
+  ).toBeVisible();
 });
