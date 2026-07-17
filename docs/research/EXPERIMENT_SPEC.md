@@ -56,4 +56,4 @@ spec = load_experiment_spec("examples/research/btc_eth_sol_experiment.example.js
 payload = dumps_canonical(spec)  # stable bytes
 ```
 
-Report write-ups still use [`docs/EXPERIMENT_TEMPLATE.md`](../EXPERIMENT_TEMPLATE.md). Fuller research docs land in a later issue (#147).
+Report write-ups still use [`docs/EXPERIMENT_TEMPLATE.md`](../EXPERIMENT_TEMPLATE.md). Workflow and CLI: [`docs/research/README.md`](README.md).

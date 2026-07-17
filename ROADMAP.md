@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Not started | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine | Partial (backtester exists; not standardized pipeline) | No |
+| P4 | Research Engine | Research pipeline enforced (#141–#147, #163–#167); public-release gates #176–#180 open | No |
 | P5 | Honest Validation of Trend Strategy V1 | Not started | No |
 | P6 | Paper Trading Soak | Not started (Railway paper deploy in progress) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Not started (planning only) | No |
@@ -391,10 +391,10 @@ Docs preparation may run in parallel from #142.
 
 ### Exit criteria
 
-- [ ] Every experiment traceable to commit + dataset version + config
-- [ ] Acceptance/rejection criteria applied consistently
-- [ ] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
-- [ ] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
+- [x] Every experiment traceable to commit + dataset version + config
+- [ ] Acceptance/rejection criteria applied consistently (process/DoD; not a missing module)
+- [x] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
+- [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
 
 ### Stop criteria
 
@@ -404,7 +404,7 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism
 
-**Current gap:** Backtester and specs exist; unified experiment registry and pipeline not enforced. Planning corrections applied to #48/#49/#141–#148 and P7 instrument issues.
+**Current gap:** Research engine pipeline is enforced (Spec → bind → run → registry → CI repro → docs). Remaining on the P4 milestone: public-release gates #176–#180 (boundary, license, disclaimer, security audit). Soft exit criterion: acceptance/rejection applied consistently via issue/PR DoD.
 
 ---
 
