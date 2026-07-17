@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from research.__main__ import _cost_model_version_from_run
 from research.costs import COST_MODEL_VERSION
 
