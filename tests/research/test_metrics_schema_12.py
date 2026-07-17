@@ -135,3 +135,42 @@ def test_complete_1_2_rejects_unknown_cost_model_version() -> None:
     )
     with pytest.raises(ValidationError, match="not supported"):
         ResearchMetrics(**_base_kwargs(benchmark=bench))
+
+
+def test_complete_1_2_rejects_cost_parity_false() -> None:
+    bench = BenchmarkRef(
+        benchmark_id="buy_and_hold_BTC",
+        benchmark_version="1.0",
+        calculation="test",
+        cost_model_version="1.1",
+        gross_return=Decimal("0.25"),
+        cost_parity=False,
+    )
+    with pytest.raises(ValidationError, match="cost_parity"):
+        ResearchMetrics(**_base_kwargs(benchmark=bench))
+
+
+def test_complete_1_2_rejects_period_parity_false() -> None:
+    bench = BenchmarkRef(
+        benchmark_id="buy_and_hold_BTC",
+        benchmark_version="1.0",
+        calculation="test",
+        cost_model_version="1.1",
+        gross_return=Decimal("0.25"),
+        period_parity=False,
+    )
+    with pytest.raises(ValidationError, match="period_parity"):
+        ResearchMetrics(**_base_kwargs(benchmark=bench))
+
+
+def test_complete_1_2_rejects_dataset_parity_false() -> None:
+    bench = BenchmarkRef(
+        benchmark_id="buy_and_hold_BTC",
+        benchmark_version="1.0",
+        calculation="test",
+        cost_model_version="1.1",
+        gross_return=Decimal("0.25"),
+        dataset_parity=False,
+    )
+    with pytest.raises(ValidationError, match="dataset_parity"):
+        ResearchMetrics(**_base_kwargs(benchmark=bench))

@@ -25,9 +25,10 @@ Missing or incompatible benchmark/cost data fails validation; report status is `
 - Computation (`services/research/benchmark.py`):
   - Supported id pattern: `buy_and_hold_<SYMBOL>`
   - Gross return = `(last_close - first_close) / first_close` over closed daily candles in the same dataset/period as the run
-  - Net return applies Spec fee/slippage/funding (same cost model as the strategy; version recorded on `BenchmarkRef.cost_model_version`)
+  - Net return applies Spec fee/slippage/funding via backtester execution primitives (`cost_models_from_spec` + fill/fee/funding helpers)
+  - Capital/notional convention (futures-style): entry notional = `starting_capital` at slipped entry fill; entry fee does **not** shrink share count; funding notional = entry-fill notional (`shares * entry_fill`); holding days = `n_closed_candles - 1`
   - `benchmark_result` is **net**; `BenchmarkRef.gross_return` holds the pre-cost price return
-  - `cost_parity=true` means benchmark and strategy share Spec cost assumptions (not that costs are zero)
+  - `cost_parity=true` means benchmark and strategy share Spec cost assumptions (not that costs are zero); complete schema `1.2` artifacts must keep `cost_parity` / `period_parity` / `dataset_parity` true
   - Symbol must be in experiment symbols and present in the bundle (fail-closed otherwise)
 - Output lands in `metrics.json` and `report.md`
 

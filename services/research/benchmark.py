@@ -5,9 +5,15 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-from backtester.models import HistoricalDataBundle
+from backtester.execution import (
+    apply_entry_slippage,
+    apply_exit_slippage,
+    compute_fee,
+    compute_funding_payment,
+)
+from backtester.models import FeeModel, FundingModel, HistoricalDataBundle, SlippageModel
 
-from research.costs import COST_MODEL_VERSION, require_cost_fields
+from research.costs import COST_MODEL_VERSION, cost_models_from_spec, require_cost_fields
 from research.experiment_spec import ExperimentSpec
 from research.metrics_contract import BenchmarkRef, parse_benchmark_ref
 
@@ -50,36 +56,61 @@ def _buy_and_hold_net_return(
     first_close: Decimal,
     last_close: Decimal,
     n_holding_days: int,
-    entry_fee_rate: Decimal,
-    exit_fee_rate: Decimal,
-    slippage_bps: Decimal,
-    funding_enabled: bool,
-    funding_assumed_rate: Decimal | None,
+    fee: FeeModel,
+    slip: SlippageModel,
+    funding: FundingModel,
 ) -> Decimal:
-    """Apply Spec cost assumptions to a single buy-and-hold round trip."""
+    """Apply Spec cost models to a single buy-and-hold round trip.
+
+    Capital / notional convention (futures-style, matches backtester):
+
+    - Entry fill = ``apply_entry_slippage(first_close)``
+    - Size ``shares`` so entry notional ``shares * entry_fill == starting_capital``
+    - Entry fee = ``compute_fee(entry_notional, entry_fee_rate)`` charged separately
+      (does **not** shrink share count)
+    - Funding notional = ``shares * entry_fill`` (entry-fill notional), once per
+      holding day (``n_holding_days = n_closed_candles - 1``)
+    - Exit fill = ``apply_exit_slippage(last_close)``
+    - Exit fee = ``compute_fee(shares * exit_fill, exit_fee_rate)``
+    - ``net_return = (end_equity - starting_capital) / starting_capital``
+    """
     if starting_capital <= 0 or first_close <= 0:
         msg = "benchmark net calculation requires positive capital and first close"
         raise ValueError(msg)
-    slip = slippage_bps / Decimal("10000")
-    entry_px = first_close * (Decimal("1") + slip)
-    entry_fee = starting_capital * entry_fee_rate
-    investable = starting_capital - entry_fee
-    if investable <= 0:
-        msg = "benchmark net calculation failed: entry fee consumes capital"
+    if n_holding_days < 1:
+        msg = "benchmark net calculation requires at least one holding day"
         raise ValueError(msg)
-    shares = investable / entry_px
-    exit_px = last_close * (Decimal("1") - slip)
-    proceeds = shares * exit_px
-    exit_fee = proceeds * exit_fee_rate
-    funding = Decimal("0")
-    if funding_enabled:
-        if funding_assumed_rate is None:
+
+    entry_fill = apply_entry_slippage(first_close, slip)
+    if entry_fill <= 0:
+        msg = "benchmark net calculation failed: non-positive entry fill"
+        raise ValueError(msg)
+
+    entry_notional = starting_capital
+    shares = entry_notional / entry_fill
+    entry_fee = compute_fee(entry_notional, fee.entry_fee_rate)
+
+    exit_fill = apply_exit_slippage(last_close, slip)
+    exit_notional = shares * exit_fill
+    exit_fee = compute_fee(exit_notional, fee.exit_fee_rate)
+
+    funding_cost = Decimal("0")
+    if funding.enabled:
+        if funding.assumed_rate is None:
             msg = "funding assumed_rate required when funding enabled for benchmark"
             raise ValueError(msg)
-        # One funding application per held daily candle after entry.
-        funding = shares * first_close * funding_assumed_rate * Decimal(n_holding_days)
-    net_end = proceeds - exit_fee - funding
-    return (net_end - starting_capital) / starting_capital
+        per_day = compute_funding_payment(entry_notional, funding.assumed_rate)
+        funding_cost = per_day * Decimal(n_holding_days)
+
+    # Mark-to-market on fills minus fees/funding (cash not reduced by notional).
+    end_equity = (
+        starting_capital
+        - entry_fee
+        - exit_fee
+        - funding_cost
+        + shares * (exit_fill - entry_fill)
+    )
+    return (end_equity - starting_capital) / starting_capital
 
 
 def compute_benchmark_result(
@@ -98,6 +129,7 @@ def compute_benchmark_result(
     is the **net** return after those costs.
     """
     require_cost_fields(spec)
+    fee_model, slip_model, funding_model = cost_models_from_spec(spec)
     resolved = ref or resolve_benchmark_ref(spec)
     match = _BUY_HOLD.match(resolved.benchmark_id)
     if match is None:
@@ -137,21 +169,14 @@ def compute_benchmark_result(
     last_close = closed[-1].close
     gross = (last_close - first_close) / first_close
     holding_days = len(closed) - 1
-    fee = spec.fee_assumption
-    slip = spec.slippage_assumption
-    funding = spec.funding_assumption
-    assert fee.entry_fee_rate is not None and fee.exit_fee_rate is not None
-    assert slip.slippage_bps is not None
     net = _buy_and_hold_net_return(
         starting_capital=spec.starting_capital,
         first_close=first_close,
         last_close=last_close,
         n_holding_days=holding_days,
-        entry_fee_rate=fee.entry_fee_rate,
-        exit_fee_rate=fee.exit_fee_rate,
-        slippage_bps=slip.slippage_bps,
-        funding_enabled=funding.enabled,
-        funding_assumed_rate=funding.assumed_rate,
+        fee=fee_model,
+        slip=slip_model,
+        funding=funding_model,
     )
     enriched = BenchmarkRef(
         benchmark_id=resolved.benchmark_id
@@ -160,7 +185,8 @@ def compute_benchmark_result(
         benchmark_version=resolved.benchmark_version,
         calculation=(
             f"buy_and_hold {symbol}: gross=(last-first)/first; "
-            f"net applies Spec fees/slippage/funding (cost_model={COST_MODEL_VERSION})"
+            f"net applies Spec fees/slippage/funding via execution primitives "
+            f"(cost_model={COST_MODEL_VERSION}; entry notional=starting_capital)"
         ),
         period_parity=True,
         dataset_parity=True,

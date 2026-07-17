@@ -117,6 +117,25 @@ class ResearchMetrics(BaseModel):
                         "metrics schema 1.2+ (benchmark_result is net)"
                     )
                     raise ValueError(msg)
+                # Loaded complete 1.2 artifacts must keep parity claims honest.
+                if not self.benchmark.cost_parity:
+                    msg = (
+                        "benchmark.cost_parity must be true for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if not self.benchmark.period_parity:
+                    msg = (
+                        "benchmark.period_parity must be true for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if not self.benchmark.dataset_parity:
+                    msg = (
+                        "benchmark.dataset_parity must be true for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
             if self.schema_version in {"1.1", "1.2"}:
                 # Gross must restore fees + slippage + funding (identity contract).
                 expected = compute_gross_pnl(
@@ -128,7 +147,7 @@ class ResearchMetrics(BaseModel):
                 if self.gross_pnl != expected:
                     msg = (
                         "gross_pnl must equal net_pnl + fees + slippage_costs "
-                        "+ funding_costs for schema 1.1"
+                        "+ funding_costs for schema 1.1+"
                     )
                     raise ValueError(msg)
         return self
