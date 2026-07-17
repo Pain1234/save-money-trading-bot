@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #205 decision process)
+
+- ADR-017: forward holdout + private research store process (prep; no final decision).
+
 ### Added (P5 execution — #204 pre-OOS)
 
 - Execution status checklist: hard stops before opening forward holdout (prep only).
