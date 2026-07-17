@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accentFromSignedDecimal,
   formatDecimalDisplay,
   formatHeartbeatAge,
   formatMoneyDisplay,
@@ -10,6 +11,7 @@ import {
   buildEquityChartPoints,
   buildFillRows,
   buildPositionRows,
+  buildStatusCards,
   buildSummaryViewModel,
   isHeartbeatStale,
 } from "../../src/lib/dashboard/view-model";
@@ -62,6 +64,13 @@ describe("formatters", () => {
     expect(formatHeartbeatAge(12)).toBe("12s");
     expect(formatHeartbeatAge(null)).toBe("unbekannt");
   });
+
+  it("derives accent from decimal sign", () => {
+    expect(accentFromSignedDecimal("12.5")).toBe("mint");
+    expect(accentFromSignedDecimal("-3.25")).toBe("danger");
+    expect(accentFromSignedDecimal(null)).toBe("default");
+    expect(accentFromSignedDecimal("-0.00")).toBe("mint");
+  });
 });
 
 describe("buildSummaryViewModel", () => {
@@ -70,6 +79,7 @@ describe("buildSummaryViewModel", () => {
     expect(vm.kpis.find((k) => k.id === "balance")?.label).toBe("Cash");
     expect(vm.kpis.find((k) => k.id === "balance")?.value).toContain("100.000");
     expect(vm.kpis.find((k) => k.id === "pnl")?.label).toBe("Realized PnL");
+    expect(vm.kpis.find((k) => k.id === "pnl")?.accent).toBe("mint");
     expect(vm.kpis.find((k) => k.id === "positions")?.value).toBe("2");
     expect(vm.kpis.find((k) => k.id === "winrate")?.value).toBe(
       "Nicht verfügbar",
@@ -80,6 +90,21 @@ describe("buildSummaryViewModel", () => {
     const vm = buildSummaryViewModel(baseSummary({ wallet: null }));
     expect(vm.kpis.find((k) => k.id === "balance")?.value).toBe("—");
     expect(vm.kpis.find((k) => k.id === "pnl")?.value).toBe("—");
+    expect(vm.kpis.find((k) => k.id === "pnl")?.accent).toBe("default");
+  });
+
+  it("marks negative realized pnl with danger accent", () => {
+    const vm = buildSummaryViewModel(
+      baseSummary({
+        wallet: {
+          cash: "90000.00",
+          total_realized_pnl: "-42.50",
+          updated_at: "2026-07-17T12:00:00Z",
+        },
+      }),
+    );
+    expect(vm.kpis.find((k) => k.id === "pnl")?.accent).toBe("danger");
+    expect(vm.kpis.find((k) => k.id === "pnl")?.value).toMatch(/-/);
   });
 
   it("marks stale heartbeat", () => {
@@ -94,6 +119,59 @@ describe("buildSummaryViewModel", () => {
     const vm = buildSummaryViewModel(summary);
     expect(vm.staleHeartbeat).toBe(true);
     expect(vm.kpis.find((k) => k.id === "status")?.subValue).toMatch(/veraltet/i);
+  });
+
+  it("shows unavailable for kill switch and paused when runtime is null", () => {
+    const vm = buildSummaryViewModel(
+      baseSummary({
+        display_status: "STOPPED",
+        status: {
+          ...baseSummary().status,
+          display_status: "STOPPED",
+          runtime: null,
+        },
+      }),
+    );
+    expect(vm.quickStats.find((s) => s.label === "Kill Switch")?.value).toBe(
+      "Nicht verfügbar",
+    );
+    expect(vm.quickStats.find((s) => s.label === "Paused")?.value).toBe(
+      "Nicht verfügbar",
+    );
+  });
+});
+
+describe("buildStatusCards", () => {
+  it("distinguishes empty success from endpoint errors", () => {
+    const okEmpty = buildStatusCards({
+      displayStatus: "READY",
+      readinessOk: true,
+      readinessReasons: [],
+      stale: false,
+      heartbeatAge: "4s",
+      scheduler: { status: "ok", items: [] },
+      events: { status: "ok", items: [] },
+    });
+    expect(okEmpty.find((c) => c.id === "scheduler")?.value).toBe("Keine Läufe");
+    expect(okEmpty.find((c) => c.id === "incidents")?.value).toBe(
+      "0 in letzten 50 Events",
+    );
+
+    const errored = buildStatusCards({
+      displayStatus: "READY",
+      readinessOk: true,
+      readinessReasons: [],
+      stale: false,
+      heartbeatAge: "4s",
+      scheduler: { status: "error" },
+      events: { status: "error" },
+    });
+    expect(errored.find((c) => c.id === "scheduler")?.value).toBe(
+      "Nicht verfügbar",
+    );
+    expect(errored.find((c) => c.id === "incidents")?.value).toBe(
+      "Nicht verfügbar",
+    );
   });
 });
 

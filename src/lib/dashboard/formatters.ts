@@ -51,6 +51,19 @@ export function parseDecimalForChart(
   return Number.isFinite(n) ? n : null;
 }
 
+/** Display accent from decimal string sign only (no float accounting). */
+export function accentFromSignedDecimal(
+  value: string | null | undefined,
+): "mint" | "danger" | "default" {
+  if (value == null || value === "") return "default";
+  const trimmed = value.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return "default";
+  if (trimmed.startsWith("-") && !/^[-]?0+(\.0+)?$/.test(trimmed)) {
+    return "danger";
+  }
+  return "mint";
+}
+
 export function coinInitial(symbol: string): string {
   const s = symbol.trim();
   return s ? s[0]!.toUpperCase() : "?";

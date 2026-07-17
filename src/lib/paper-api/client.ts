@@ -161,10 +161,12 @@ export async function fetchPaperApi<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const forceNoStore =
+    options.noStore === true || process.env.PAPER_API_NO_STORE === "1";
 
   try {
     const response = await fetch(`${apiBaseUrl()}${path}`, {
-      ...(options.noStore
+      ...(forceNoStore
         ? { cache: "no-store" as const }
         : { next: { revalidate: options.revalidate ?? REVALIDATE.MONITORING } }),
       headers: { Accept: "application/json" },

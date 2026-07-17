@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (Dashboard design ↔ paper API — #238 re-review)
+
+- Kill Switch / Paused show „Nicht verfügbar“ when `runtime` is null (no false AUS/Nein).
+- Scheduler / Incidents cards distinguish endpoint errors from empty success
+  („Nicht verfügbar“ vs „0 in letzten 50 Events“).
+- Realized PnL KPI accent follows decimal sign (negative → danger).
+- Playwright scenarios: stale heartbeat, summary 503, section endpoint failures.
+- Postgres repository test: `open_only` includes OPEN+CLOSING, excludes CLOSED, cursor works.
+
 ### Added (Dashboard design ↔ paper API — #238)
 
 - Reconnected the existing Save-Money-Bot design shell on `/dashboard` to the

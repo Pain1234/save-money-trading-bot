@@ -39,6 +39,7 @@ export function MarketCards({ cards, errorMessage = null }: MarketCardsProps) {
           key={card.id}
           padding="sm"
           className="flex min-w-0 flex-1 flex-col justify-center"
+          data-testid={`status-card-${card.id}`}
         >
           <p className="text-[11px] uppercase tracking-[0.05em] text-text-muted">
             {card.label}

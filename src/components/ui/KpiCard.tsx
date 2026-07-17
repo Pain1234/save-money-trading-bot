@@ -34,8 +34,13 @@ export function KpiCard({ metric }: KpiCardProps) {
             <p
               className={cn(
                 "font-mono text-[24px] leading-none tracking-tight",
-                metric.accent === "mint" ? "text-mint" : "text-text-primary",
+                metric.accent === "mint"
+                  ? "text-mint"
+                  : metric.accent === "danger"
+                    ? "text-negative"
+                    : "text-text-primary",
               )}
+              data-testid={metric.id === "pnl" ? "kpi-pnl" : undefined}
             >
               {metric.value}
             </p>

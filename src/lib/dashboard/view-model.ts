@@ -8,6 +8,7 @@ import type {
 } from "@/lib/paper-api/client";
 import {
   UNAVAILABLE,
+  accentFromSignedDecimal,
   coinColor,
   coinInitial,
   formatDecimalDisplay,
@@ -31,6 +32,16 @@ export function isHeartbeatStale(summary: DashboardSummaryResponse): boolean {
   return age != null && age > threshold;
 }
 
+function runtimeFlagLabel(
+  runtime: DashboardSummaryResponse["status"]["runtime"],
+  flag: "kill_switch" | "paused",
+  whenTrue: string,
+  whenFalse: string,
+): string {
+  if (runtime == null) return "Nicht verfügbar";
+  return runtime[flag] ? whenTrue : whenFalse;
+}
+
 export function buildSummaryViewModel(
   summary: DashboardSummaryResponse,
 ): SummaryViewModel {
@@ -38,11 +49,12 @@ export function buildSummaryViewModel(
   const wallet = summary.wallet;
   const statusValue = summary.display_status;
   const ageLabel = formatHeartbeatAge(summary.status.heartbeat_age_seconds);
+  const runtime = summary.status.runtime;
 
   const kpis = [
     {
       id: "balance",
-      label: wallet ? "Cash" : "Cash",
+      label: "Cash",
       value: wallet ? formatMoneyDisplay(wallet.cash) : UNAVAILABLE,
       subValue: wallet
         ? `Stand ${formatIsoDateTime(wallet.updated_at)}`
@@ -70,7 +82,9 @@ export function buildSummaryViewModel(
         ? formatMoneyDisplay(wallet.total_realized_pnl)
         : UNAVAILABLE,
       subValue: "Gesamt (Wallet)",
-      accent: "mint" as const,
+      accent: wallet
+        ? accentFromSignedDecimal(wallet.total_realized_pnl)
+        : ("default" as const),
     },
     {
       id: "positions",
@@ -116,11 +130,11 @@ export function buildSummaryViewModel(
     },
     {
       label: "Kill Switch",
-      value: summary.status.runtime?.kill_switch ? "AN" : "AUS",
+      value: runtimeFlagLabel(runtime, "kill_switch", "AN", "AUS"),
     },
     {
       label: "Paused",
-      value: summary.status.runtime?.paused ? "Ja" : "Nein",
+      value: runtimeFlagLabel(runtime, "paused", "Ja", "Nein"),
     },
   ];
 
@@ -218,18 +232,70 @@ export function filterEquityByPeriod(
 
 const INCIDENT_RE = /FAIL|ERROR|KILL|REJECT|ORPHAN/i;
 
+export type SectionFetchState<T> =
+  | { status: "ok"; items: T[] }
+  | { status: "error" };
+
 export function buildStatusCards(input: {
   displayStatus: string;
   readinessOk: boolean;
   readinessReasons: string[];
   stale: boolean;
   heartbeatAge: string;
-  schedulerRuns: SchedulerRunItem[];
-  events: EventItem[];
+  scheduler: SectionFetchState<SchedulerRunItem>;
+  events: SectionFetchState<EventItem>;
 }): StatusCardVm[] {
-  const latestRun = input.schedulerRuns[0];
-  const incidents = input.events.filter((e) => INCIDENT_RE.test(e.event_type));
-  const incidentSample = incidents[0] ?? input.events[0];
+  const schedulerCard: StatusCardVm =
+    input.scheduler.status === "error"
+      ? {
+          id: "scheduler",
+          label: "Scheduler",
+          value: "Nicht verfügbar",
+          detail: "Scheduler-Endpoint nicht erreichbar",
+          tone: "warn",
+        }
+      : (() => {
+          const latestRun = input.scheduler.items[0];
+          return {
+            id: "scheduler",
+            label: "Scheduler",
+            value: latestRun?.status ?? "Keine Läufe",
+            detail: latestRun
+              ? `${latestRun.job_name} · ${formatIsoDateTime(latestRun.scheduled_for)}${
+                  latestRun.error ? ` · ${latestRun.error}` : ""
+                }`
+              : "Keine Scheduler-Daten in den letzten 50 Läufen",
+            tone: latestRun?.error ? "danger" : "neutral",
+          };
+        })();
+
+  const incidentsCard: StatusCardVm =
+    input.events.status === "error"
+      ? {
+          id: "incidents",
+          label: "Incidents",
+          value: "Nicht verfügbar",
+          detail: "Events-Endpoint nicht erreichbar",
+          tone: "warn",
+        }
+      : (() => {
+          const incidents = input.events.items.filter((e) =>
+            INCIDENT_RE.test(e.event_type),
+          );
+          const incidentSample = incidents[0] ?? input.events.items[0];
+          return {
+            id: "incidents",
+            label: "Incidents",
+            value:
+              incidents.length > 0
+                ? String(incidents.length)
+                : "0 in letzten 50 Events",
+            detail: incidentSample
+              ? `${incidentSample.event_type} · ${formatIsoDateTime(incidentSample.created_at)}`
+              : "Keine Treffer in den letzten 50 Events",
+            tone: incidents.length > 0 ? "danger" : "ok",
+          };
+        })();
 
   return [
     {
@@ -251,30 +317,7 @@ export function buildStatusCards(input: {
           : "Keine Gründe",
       tone: input.readinessOk ? "ok" : "warn",
     },
-    {
-      id: "scheduler",
-      label: "Scheduler",
-      value: latestRun?.status ?? "Keine Läufe",
-      detail: latestRun
-        ? `${latestRun.job_name} · ${formatIsoDateTime(latestRun.scheduled_for)}${
-            latestRun.error ? ` · ${latestRun.error}` : ""
-          }`
-        : "Keine Scheduler-Daten",
-      tone: latestRun?.error ? "danger" : latestRun ? "neutral" : "neutral",
-    },
-    {
-      id: "incidents",
-      label: "Incidents",
-      value:
-        incidents.length > 0
-          ? String(incidents.length)
-          : incidentSample
-            ? "0 (Events)"
-            : "0",
-      detail: incidentSample
-        ? `${incidentSample.event_type} · ${formatIsoDateTime(incidentSample.created_at)}`
-        : "Keine Ereignisse",
-      tone: incidents.length > 0 ? "danger" : "ok",
-    },
+    schedulerCard,
+    incidentsCard,
   ];
 }

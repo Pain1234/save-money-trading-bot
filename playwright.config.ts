@@ -50,6 +50,7 @@ export default defineConfig({
         AUTH_USERNAME,
         AUTH_PASSWORD_HASH,
         PRIVATE_PAPER_API_URL: `http://127.0.0.1:${STUB_PORT}`,
+        PAPER_API_NO_STORE: "1",
         NODE_ENV: "production",
       },
     },
