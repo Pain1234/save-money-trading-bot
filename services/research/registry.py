@@ -14,6 +14,9 @@ from research.artifacts import (
     verify_checksums,
     verify_checksums_against,
 )
+from research.experiment_spec import load_experiment_spec
+from research.identity import semantic_spec_dict
+from research.run_manifest import load_run_manifest, semantic_manifest_payload
 
 Status = Literal["complete", "failed", "invalidated"]
 
@@ -186,25 +189,52 @@ class ExperimentRegistry:
     def compare(self, run_a: str, run_b: str) -> dict[str, Any]:
         a = self.show(run_a, verify=True)
         b = self.show(run_b, verify=True)
+        diffs: dict[str, list[Any]] = {}
+
+        def note(key: str, left: Any, right: Any) -> None:
+            if left != right:
+                diffs[key] = [left, right]
+
+        note("status", a.status, b.status)
+        note("strategy_version", a.strategy_version, b.strategy_version)
+        note("dataset_version", a.dataset_version, b.dataset_version)
+        note("cost_model_version", a.cost_model_version, b.cost_model_version)
+        note("benchmark_ref", a.benchmark_ref, b.benchmark_ref)
+
+        # Full semantic Spec + validated RunManifest identity (not a field subset).
+        try:
+            spec_a = load_experiment_spec(Path(a.artifact_path) / "experiment.json")
+            spec_b = load_experiment_spec(Path(b.artifact_path) / "experiment.json")
+            man_a = load_run_manifest(Path(a.artifact_path) / "run_manifest.json")
+            man_b = load_run_manifest(Path(b.artifact_path) / "run_manifest.json")
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            return {
+                "compatible": False,
+                "a": a,
+                "b": b,
+                "diffs": {"artifact_load_error": [str(exc), None]},
+            }
+
+        sem_a = semantic_spec_dict(spec_a)
+        sem_b = semantic_spec_dict(spec_b)
+        for key in sorted(set(sem_a) | set(sem_b)):
+            note(f"spec.{key}", sem_a.get(key), sem_b.get(key))
+
+        man_sem_a = semantic_manifest_payload(man_a)
+        man_sem_b = semantic_manifest_payload(man_b)
+        for key in sorted(set(man_sem_a) | set(man_sem_b)):
+            note(f"manifest.{key}", man_sem_a.get(key), man_sem_b.get(key))
+
         compatible = (
-            a.strategy_version == b.strategy_version
-            and a.dataset_version == b.dataset_version
-            and a.cost_model_version == b.cost_model_version
-            and a.benchmark_ref == b.benchmark_ref
-            and a.status == "complete"
+            a.status == "complete"
             and b.status == "complete"
+            and not diffs
         )
         return {
             "compatible": compatible,
             "a": a,
             "b": b,
-            "diffs": {
-                "strategy_version": [a.strategy_version, b.strategy_version],
-                "dataset_version": [a.dataset_version, b.dataset_version],
-                "cost_model_version": [a.cost_model_version, b.cost_model_version],
-                "benchmark_ref": [a.benchmark_ref, b.benchmark_ref],
-                "status": [a.status, b.status],
-            },
+            "diffs": diffs,
         }
 
     def reconstruct_from_artifacts(self) -> list[RegistryEntry]:
