@@ -187,3 +187,109 @@ def test_research_post_allowed_paper_post_blocked(
     client, payload = write_client
     assert client.post("/api/v1/status").status_code == 405
     assert client.post("/api/v1/research/experiments", json=payload).status_code == 200
+
+
+def test_parallel_start_is_atomic(
+    write_client: tuple[TestClient, dict[str, object]],
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    client, payload = write_client
+    experiment_id = client.post(
+        "/api/v1/research/experiments", json=payload
+    ).json()["experiment_id"]
+
+    def _start() -> int:
+        return client.post(
+            f"/api/v1/research/experiments/{experiment_id}/start"
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = list(pool.map(lambda _: _start(), range(2)))
+
+    assert sorted(codes) == [200, 409]
+
+    # Wait for the single winner to finish so the process stays clean.
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        status = client.get(
+            f"/api/v1/research/experiments/{experiment_id}/status"
+        ).json()["status"]
+        if status in {"completed", "failed"}:
+            break
+        time.sleep(0.2)
+
+
+def test_create_terminal_is_idempotent_no_rerun(
+    write_client: tuple[TestClient, dict[str, object]],
+) -> None:
+    client, payload = write_client
+    first = client.post("/api/v1/research/experiments", json=payload).json()
+    experiment_id = first["experiment_id"]
+    assert first.get("already_exists") is False
+
+    client.post(f"/api/v1/research/experiments/{experiment_id}/start")
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        status = client.get(
+            f"/api/v1/research/experiments/{experiment_id}/status"
+        ).json()["status"]
+        if status in {"completed", "failed"}:
+            break
+        time.sleep(0.2)
+
+    second = client.post("/api/v1/research/experiments", json=payload)
+    assert second.status_code == 200
+    body = second.json()
+    assert body["experiment_id"] == experiment_id
+    assert body.get("already_exists") is True
+    assert body["status"] in {"completed", "failed"}
+    # Must not reset to created (would enable implicit Re-run).
+    assert body["status"] != "created"
+
+
+def test_stale_queued_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from research.jobs import ResearchJob, ResearchJobStore
+
+    monkeypatch.setenv("RESEARCH_JOB_QUEUED_STALE_SECONDS", "1")
+    store = ResearchJobStore(tmp_path)
+    old = (datetime.now(UTC) - timedelta(seconds=30)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+    job = ResearchJob(
+        experiment_id="exp_stale_queued",
+        status="queued",
+        created_at=old,
+        updated_at=old,
+    )
+    store.save(job)
+    time.sleep(1.1)
+    marked = store.mark_stale_if_needed(store.get("exp_stale_queued"))  # type: ignore[arg-type]
+    assert marked is not None
+    assert marked.status == "failed"
+    assert marked.error is not None
+    assert "queued" in marked.error.lower()
+
+
+def test_job_save_is_atomic_readable(
+    tmp_path: Path,
+) -> None:
+    from research.jobs import ResearchJob, ResearchJobStore
+
+    store = ResearchJobStore(tmp_path)
+    job = ResearchJob(
+        experiment_id="exp_atomic",
+        status="created",
+        created_at="2024-01-01T00:00:00.000000Z",
+        updated_at="2024-01-01T00:00:00.000000Z",
+    )
+    store.save(job)
+    path = tmp_path / "artifacts" / "research" / "jobs" / "exp_atomic.json"
+    assert path.is_file()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["status"] == "created"
+    assert not list(path.parent.glob(".*.tmp"))

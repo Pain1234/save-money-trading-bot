@@ -37,7 +37,7 @@ Central project goal:
 - **P1 complete** (2026-07-14): tag `baseline-paper-v1.0.0` at `daacb627` (PR #62 merge). Post-tag doc/lock/CI improvements tracked in PR #63 (optional `baseline-paper-v1.0.1` after merge).
 - **P3 complete** (2026-07-14): versioned historical market data pipeline implemented (`services/market_data/`, migration `010_market_data_datasets`, issues #76–#84); reproducibility audit in `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md`.
 - Dashboard UI locally usable with real paper data (login, wallet, PnL, positions, fills, equity); **not** yet classified as production-accepted performant monitoring (`docs/railway-paper-trading-dashboard-v1.md` maturity levels).
-- **P4** engine complete; Research Workspace read-only slice tracked in [#240](https://github.com/Pain1234/save-money-trading-bot/issues/240) (API + overview/list/detail). Lab/async/compare/robustness/gates remain open — see `docs/project-management/p4-research-workspace-follow-ups.md`. **P5 blocked** until Engine + API + Workspace are jointly usable enough.
+- **P4** engine complete; Research Workspace read-only browse (#240) and Strategy Lab + start (#242) on `main` / in flight. Compare/robustness/gates remain open — see `docs/project-management/p4-research-workspace-follow-ups.md`. **P5 blocked** until Engine + API + Workspace are jointly usable enough.
 - **P2.5** milestone and seed issues defined for dashboard/API performance baseline, instrumentation, and production acceptance (governance only — no runtime optimization yet).
 - **P7** renamed to Multi-Asset and Independent Strategy Candidates; HIP-3 equity/index/commodity perpetuals and asset profiles documented in ADR-014 (`docs/DECISION_LOG.md`); planning issues only.
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
@@ -371,8 +371,8 @@ Workspace that reads those artifacts without introducing a second research syste
 
 ### Non-scope (this milestone still open)
 
-- Strategy Lab / experiment configuration UI (follow-up)
-- Async job queue / start-cancel-retry from UI (follow-up)
+- Cancel / Retry / Re-run lifecycle (explicitly deferred)
+- Durable multi-process job queue (Celery/Redis) — V1 uses in-process threads
 - Compare View, Robustness Lab orchestration UI (follow-up)
 - Gate Evaluator persistence / promotion controls (follow-up)
 - New Experiment Postgres tables; second registry; live/paper order actions from Research
@@ -405,7 +405,7 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] Strategy Lab route `/dashboard/research/experiments/new`
 - [x] Write API: strategies/schema/datasets, create, start, status (POST allow-listed on private dashboard API)
 - [x] Filesystem `ResearchJobStore` + in-process worker wrapping `run_experiment` (no Celery/Redis)
-- [x] Same Spec/Runner/Registry/artifacts as CLI; double-start prevented; stale running after restart documented
+- [x] Same Spec/Runner/Registry/artifacts as CLI; atomic created→queued CAS; terminal create idempotent (no implicit Re-run); stale queued/running after restart fail-closed
 - [x] Detail job panel with polling; Overview CTA „Neues Experiment“
 
 #### Still open (separate issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)

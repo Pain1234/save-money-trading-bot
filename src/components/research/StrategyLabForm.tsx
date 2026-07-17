@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Card } from "@/components/ui/Card";
+import { validateLabDraft } from "@/lib/research/lab-validation";
 
 export interface StrategyOption {
   strategy_id: string;
@@ -106,22 +107,17 @@ export function StrategyLabForm({
   }
 
   function validateLocal(): Record<string, string> {
-    const errors: Record<string, string> = {};
-    if (!name.trim()) errors.name = "Experimentname ist erforderlich";
-    if (!datasetId) errors.dataset_catalog_id = "Dataset ist erforderlich";
-    if (!symbols.length) errors.symbols = "Mindestens ein Symbol wählen";
-    if (!startDate || !endDate) errors.time_range = "Zeitraum erforderlich";
-    if (startDate && endDate && startDate >= endDate) {
-      errors.time_range = "Startdatum muss vor Enddatum liegen";
-    }
-    if (!(Number(capital) > 0)) errors.starting_capital = "Startkapital muss positiv sein";
-    if (Number(entryFee) < 0 || Number(exitFee) < 0) {
-      errors.fee_assumption = "Gebühren dürfen nicht negativ sein";
-    }
-    if (Number(slippageBps) < 0) {
-      errors.slippage_assumption = "Slippage darf nicht negativ sein";
-    }
-    return errors;
+    return validateLabDraft({
+      name,
+      datasetId,
+      symbols,
+      startDate,
+      endDate,
+      capital,
+      entryFee,
+      exitFee,
+      slippageBps,
+    });
   }
 
   function buildPayload() {

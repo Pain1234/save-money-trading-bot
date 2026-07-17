@@ -318,55 +318,63 @@ class ResearchWriteService:
         self.allow_dirty_git = bool(allow_dirty_git)
 
     def create_experiment(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from research.jobs import TerminalStatus
+
         spec = build_spec_from_payload(payload)
         experiment_id = compute_experiment_id(spec)
-        existing = self.store.get(experiment_id)
-        if existing and existing.status in {"queued", "running"}:
-            raise ResearchWriteError(
-                "Experiment läuft bereits",
-                field_errors={"experiment_id": "Doppelstart verhindert"},
-            )
-
         pending = self.store.pending_spec_path(experiment_id)
-        pending.parent.mkdir(parents=True, exist_ok=True)
-        save_experiment_spec(spec, pending)
 
-        now = _utc_now()
-        job = ResearchJob(
-            experiment_id=experiment_id,
-            status="created",
-            created_at=existing.created_at if existing else now,
-            updated_at=now,
-            dataset_catalog_id=str(payload.get("dataset_catalog_id") or ""),
-            name=spec.hypothesis,
-        )
-        self.store.save(job)
-        return {
-            "experiment_id": experiment_id,
-            "status": job.status,
-            "job": job.to_dict(),
-            "spec_path": str(pending),
-        }
+        with self.store.lock_for(experiment_id):
+            existing = self.store.get(experiment_id)
+            if existing is not None:
+                existing = self.store.mark_stale_if_needed(existing)
+                if existing.status in {"queued", "running"}:
+                    raise ResearchWriteError(
+                        "Experiment läuft bereits",
+                        field_errors={"experiment_id": "Doppelstart verhindert"},
+                    )
+                if existing.status in TerminalStatus:
+                    # Idempotent: do not reset terminal jobs (no implicit Re-run).
+                    return {
+                        "experiment_id": experiment_id,
+                        "status": existing.status,
+                        "job": existing.to_dict(),
+                        "spec_path": str(pending),
+                        "already_exists": True,
+                    }
+
+            pending.parent.mkdir(parents=True, exist_ok=True)
+            save_experiment_spec(spec, pending)
+
+            now = _utc_now()
+            job = ResearchJob(
+                experiment_id=experiment_id,
+                status="created",
+                created_at=existing.created_at if existing else now,
+                updated_at=now,
+                dataset_catalog_id=str(payload.get("dataset_catalog_id") or ""),
+                name=spec.hypothesis,
+            )
+            self.store.save(job)
+            return {
+                "experiment_id": experiment_id,
+                "status": job.status,
+                "job": job.to_dict(),
+                "spec_path": str(pending),
+                "already_exists": False,
+            }
 
     def start_experiment(self, experiment_id: str) -> dict[str, Any]:
+        from research.jobs import JobTransitionError
         from research.service import assert_safe_id
 
         experiment_id = assert_safe_id(experiment_id, field="experiment_id")
-        job = self.store.get(experiment_id)
-        if job is None:
-            raise KeyError(experiment_id)
-        job = self.store.mark_stale_if_needed(job)
 
-        if job.status in {"queued", "running"}:
-            raise ResearchWriteError(
-                "Experiment läuft bereits oder ist in der Warteschlange",
-                field_errors={"status": "Doppelstart verhindert"},
-            )
-        if job.status != "created":
-            raise ResearchWriteError(
-                "Nur Experimente im Status created können gestartet werden (kein Re-run in V1)",
-                field_errors={"status": f"Aktueller Status: {job.status}"},
-            )
+        # Resolve catalog outside the transition lock (I/O), then CAS created→queued.
+        job_probe = self.store.get(experiment_id)
+        if job_probe is None:
+            raise KeyError(experiment_id)
+        job_probe = self.store.mark_stale_if_needed(job_probe)
 
         pending = self.store.pending_spec_path(experiment_id)
         if not pending.is_file():
@@ -375,7 +383,7 @@ class ResearchWriteService:
                 field_errors={"spec": "pending experiment.json nicht gefunden"},
             )
 
-        catalog_id = job.dataset_catalog_id or ""
+        catalog_id = job_probe.dataset_catalog_id or ""
         catalog = {e.id: e for e in load_dataset_catalog()}
         if catalog_id not in catalog:
             raise ResearchWriteError(
@@ -384,12 +392,32 @@ class ResearchWriteService:
             )
         entry = catalog[catalog_id]
 
-        job.status = "queued"
-        job.updated_at = _utc_now()
-        job.error = None
-        job.error_detail = None
-        job.finished_at = None
-        self.store.save(job)
+        def _to_queued(job: ResearchJob) -> None:
+            job.status = "queued"
+            job.updated_at = _utc_now()
+            job.error = None
+            job.error_detail = None
+            job.finished_at = None
+            job.started_at = None
+
+        try:
+            job = self.store.compare_and_set(
+                experiment_id,
+                expected_status="created",
+                mutate=_to_queued,
+            )
+        except JobTransitionError as exc:
+            current = exc.current_status
+            if current in {"queued", "running"}:
+                raise ResearchWriteError(
+                    "Experiment läuft bereits oder ist in der Warteschlange",
+                    field_errors={"status": "Doppelstart verhindert"},
+                ) from exc
+            raise ResearchWriteError(
+                "Nur Experimente im Status created können gestartet werden "
+                "(kein Re-run in V1)",
+                field_errors={"status": f"Aktueller Status: {current}"},
+            ) from exc
 
         thread = threading.Thread(
             target=self._run_job,
@@ -443,14 +471,22 @@ class ResearchWriteService:
         }
 
     def _run_job(self, experiment_id: str, entry: DatasetCatalogEntry) -> None:
-        job = self.store.get(experiment_id)
-        if job is None:
-            return
+        from research.jobs import JobTransitionError
+
         try:
-            job.status = "running"
-            job.started_at = _utc_now()
-            job.updated_at = job.started_at
-            self.store.save(job)
+            def _to_running(job: ResearchJob) -> None:
+                job.status = "running"
+                job.started_at = _utc_now()
+                job.updated_at = job.started_at
+
+            try:
+                self.store.compare_and_set(
+                    experiment_id,
+                    expected_status="queued",
+                    mutate=_to_running,
+                )
+            except JobTransitionError:
+                return
 
             spec = parse_experiment_spec(
                 json.loads(
@@ -482,44 +518,52 @@ class ResearchWriteService:
                     allow_dirty_git=self.allow_dirty_git,
                 )
             )
-            job = self.store.get(experiment_id) or job
-            job.run_id = outcome.run_id
-            job.attempt_id = outcome.attempt_id
-            job.updated_at = _utc_now()
-            job.finished_at = job.updated_at
 
-            if outcome.status == "complete" and outcome.artifact_path is not None:
-                costs_path = outcome.artifact_path / "costs.json"
-                cost_ver = "1.0"
-                if costs_path.is_file():
-                    costs = json.loads(costs_path.read_text(encoding="utf-8"))
-                    cost_ver = str(costs.get("cost_model_version", "1.0"))
-                self.registry.register_complete(
-                    experiment_id=outcome.experiment_id,
-                    run_id=outcome.run_id,
-                    attempt_id=outcome.attempt_id,
-                    strategy_version=spec.strategy_version,
-                    dataset_version=spec.dataset_manifest_ref.dataset_id,
-                    cost_model_version=cost_ver,
-                    benchmark_ref=spec.benchmark,
-                    artifact_path=outcome.artifact_path,
-                    checksums=load_checksums(outcome.artifact_path),
-                )
-                job.status = "completed"
-                job.error = None
-                job.error_detail = None
-            else:
-                job.status = "failed"
-                job.error = outcome.error or f"Run status: {outcome.status}"
-                job.error_detail = outcome.error
-            self.store.save(job)
+            def _finish(job: ResearchJob) -> None:
+                job.run_id = outcome.run_id
+                job.attempt_id = outcome.attempt_id
+                job.updated_at = _utc_now()
+                job.finished_at = job.updated_at
+                if outcome.status == "complete" and outcome.artifact_path is not None:
+                    costs_path = outcome.artifact_path / "costs.json"
+                    cost_ver = "1.0"
+                    if costs_path.is_file():
+                        costs = json.loads(costs_path.read_text(encoding="utf-8"))
+                        cost_ver = str(costs.get("cost_model_version", "1.0"))
+                    self.registry.register_complete(
+                        experiment_id=outcome.experiment_id,
+                        run_id=outcome.run_id,
+                        attempt_id=outcome.attempt_id,
+                        strategy_version=spec.strategy_version,
+                        dataset_version=spec.dataset_manifest_ref.dataset_id,
+                        cost_model_version=cost_ver,
+                        benchmark_ref=spec.benchmark,
+                        artifact_path=outcome.artifact_path,
+                        checksums=load_checksums(outcome.artifact_path),
+                    )
+                    job.status = "completed"
+                    job.error = None
+                    job.error_detail = None
+                else:
+                    job.status = "failed"
+                    job.error = outcome.error or f"Run status: {outcome.status}"
+                    job.error_detail = outcome.error
+
+            self.store.update(experiment_id, _finish)
         except Exception as exc:  # noqa: BLE001 — persist structured failure
-            job = self.store.get(experiment_id) or job
-            job.status = "failed"
-            job.finished_at = _utc_now()
-            job.updated_at = job.finished_at
-            job.error = str(exc)
-            job.error_detail = repr(exc)
-            self.store.save(job)
+            err_msg = str(exc)
+            err_detail = repr(exc)
+
+            def _fail(job: ResearchJob) -> None:
+                job.status = "failed"
+                job.finished_at = _utc_now()
+                job.updated_at = job.finished_at
+                job.error = err_msg
+                job.error_detail = err_detail
+
+            try:
+                self.store.update(experiment_id, _fail)
+            except KeyError:
+                pass
         finally:
             self.store.clear_thread(experiment_id)

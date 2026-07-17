@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Card } from "@/components/ui/Card";
 import { displayValue } from "@/lib/research-api/client";
+import { isActiveJobStatus } from "@/lib/research/lab-validation";
 
 interface JobStatusPayload {
   status: string;
@@ -31,7 +32,7 @@ export function ExperimentJobPanel({
   const [job, setJob] = useState<JobStatusPayload | null>(initialJob);
 
   useEffect(() => {
-    if (!job || !ACTIVE.has(job.status)) return;
+    if (!job || !isActiveJobStatus(job.status)) return;
     const id = window.setInterval(async () => {
       try {
         const resp = await fetch(
@@ -92,7 +93,7 @@ export function ExperimentJobPanel({
         </div>
       </dl>
 
-      {ACTIVE.has(job.status) && (
+      {isActiveJobStatus(job.status) && (
         <p className="mt-3 text-sm text-text-secondary">
           Lauf wird aktualisiert… Metriken erscheinen nach Abschluss.
         </p>
