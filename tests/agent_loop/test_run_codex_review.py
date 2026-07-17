@@ -494,8 +494,9 @@ def test_14b_live_codex_path_readonly_flags(repo_root, fixtures_dir, gate_ps1, t
     argv_lines = [ln for ln in argv_text.splitlines() if ln.strip()]
     assert "--sandbox" in argv_text
     assert "read-only" in argv_text
-    assert "--ask-for-approval" in argv_text
-    assert "never" in argv_text
+    # Legacy CLIs advertise --ask-for-approval; Codex 0.144+ may omit it.
+    if "--ask-for-approval" in argv_text:
+        assert "never" in argv_text
     assert "--ignore-user-config" in argv_text
     assert argv_lines[-1] == "-", "prompt must be stdin via trailing '-'"
     assert stdin_file.is_file(), "mock should record stdin prompt"

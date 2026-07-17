@@ -145,7 +145,12 @@ An `APPROVED` verdict is a **gate signal only**. It does not merge, push, deploy
   Temp env extract files are deleted immediately and never logged. An ephemeral empty `CODEX_HOME` (sibling temp, no `auth.json`) is passed to the child. Real Codex without env auth → `REVIEW_FAILED`. `KEEP_WORKSPACE` never retains tokens; `AGENT_LOOP_KEEP_AUTH=1` may keep only the empty home / `auth-via-env.ok` marker (never `auth.json`).
 - **Scrubbed child environment:** `Invoke-CodexCommand` launches Codex via `ProcessStartInfo` with an allowlisted env (PATH / temp / locale / `CODEX_HOME` / `CODEX_*` credentials / selected `AGENT_LOOP_*` mock side-channels). Parent secrets such as `DATABASE_URL`, `PASSWORD`, `OPENAI_API_KEY`, `RAILWAY_*`, `SESSION_SECRET`, and other `*SECRET*` / `*TOKEN*` values are **not** inherited.
 - **Stdout / stderr hygiene:** Codex stdout and stderr are captured separately. When the CLI advertises `--output-last-message`, the gate uses that file for the verdict JSON; otherwise JSON is parsed from **stdout only** (never stderr). Temp `codex-stdout-*` / `codex-stderr-*` / last-message files are deleted afterward unless `AGENT_LOOP_KEEP_CODEX_OUTPUT=1`.
-- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`, `--ask-for-approval never`, `--ignore-user-config` (plus `--ignore-rules` / `--ephemeral` / `--output-last-message` when the CLI supports them). Missing sandbox flags → `REVIEW_FAILED`.
+- Live Codex is invoked with explicit read-only automation flags: `--sandbox read-only`,
+  `--ignore-user-config` (plus `--ask-for-approval never` when the CLI still advertises it,
+  `--ignore-rules` / `--ephemeral` / `--output-last-message` when supported). Missing required
+  sandbox flags → `REVIEW_FAILED`.
+- **Windows:** `chmod` OS isolation is unavailable. Live reviews still run using the allowlisted
+  temp workspace + Codex `--sandbox read-only` + scrubbed child env (no `uname` probe crash).
 - After Codex returns, the gate **rechecks HEAD** (and diff hash) before accepting `APPROVED`; drift → exit `4`.
 - Override for tests: `AGENT_LOOP_CODEX_BIN` / `-CodexBin`, `AGENT_LOOP_TEST_MODE=1` + `AGENT_LOOP_SKIP_OS_ISOLATION=1`, `AGENT_LOOP_ALLOW_DIFF_FILE=1` for `-DiffFile`, and `AGENT_LOOP_POST_CODEX_HEAD` to force a post-Codex stale HEAD.
 - Diff and ephemeral inputs under `.agent-loop/tmp/` and `current-review-input.txt` should stay gitignored.

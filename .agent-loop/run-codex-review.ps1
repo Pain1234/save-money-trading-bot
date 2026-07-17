@@ -629,9 +629,10 @@ function New-CodexExecArgumentList {
         [hashtable]$Environment = $null
     )
     $helpText = Get-CodexExecHelpText -Bin $Bin -Environment $Environment
+    # --ask-for-approval was removed from newer Codex CLIs (e.g. 0.144+); exec is
+    # non-interactive by default. Still require sandbox + ignore-user-config.
     $required = @(
         @{ Flag = "--sandbox"; Label = "sandbox" },
-        @{ Flag = "--ask-for-approval"; Label = "ask-for-approval" },
         @{ Flag = "--ignore-user-config"; Label = "ignore-user-config" }
     )
     foreach ($req in $required) {
@@ -646,8 +647,10 @@ function New-CodexExecArgumentList {
     $argList.Add("--skip-git-repo-check") | Out-Null
     $argList.Add("--sandbox") | Out-Null
     $argList.Add("read-only") | Out-Null
-    $argList.Add("--ask-for-approval") | Out-Null
-    $argList.Add("never") | Out-Null
+    if ($helpText -match [regex]::Escape("--ask-for-approval")) {
+        $argList.Add("--ask-for-approval") | Out-Null
+        $argList.Add("never") | Out-Null
+    }
     $argList.Add("--ignore-user-config") | Out-Null
     if ($helpText -match "--ignore-rules") {
         $argList.Add("--ignore-rules") | Out-Null
@@ -1168,6 +1171,7 @@ $wsInput
         $testMode = ($env:AGENT_LOOP_TEST_MODE -eq "1")
         $skipOsIsolation = $false
         $isUnix = $false
+        $windowsLiveMode = $false
 
         if ($wantSkipOs -and -not $testMode) {
             Write-ReviewFailedResult -ResultPath $resultPath `
@@ -1186,21 +1190,38 @@ $wsInput
         elseif ($PSVersionTable.PSVersion.Major -ge 6 -and ($IsLinux -or $IsMacOS)) {
             $isUnix = $true
         }
+        elseif (
+            ($PSVersionTable.PSVersion.Major -ge 6 -and $IsWindows) -or
+            ($env:OS -match 'Windows')
+        ) {
+            # Windows cannot chmod 000 the repo. Live reviews still use the
+            # allowlisted temp workspace + Codex --sandbox read-only + scrubbed env.
+            $windowsLiveMode = $true
+            Write-Warning ("Windows live review: chmod OS isolation unavailable; " +
+                "relying on allowlisted workspace + Codex read-only sandbox.")
+        }
         else {
-            $prevUnameEap = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            $unameOut = & uname 2>$null
-            $ErrorActionPreference = $prevUnameEap
-            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$unameOut)) {
-                $isUnix = $true
+            # Probe uname only when the command exists (avoids terminating errors on Windows).
+            $unameCmd = Get-Command uname -ErrorAction SilentlyContinue
+            if ($null -ne $unameCmd) {
+                $prevUnameEap = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                $unameOut = & uname 2>$null
+                $unameCode = $LASTEXITCODE
+                $ErrorActionPreference = $prevUnameEap
+                if ($unameCode -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$unameOut)) {
+                    $isUnix = $true
+                }
             }
         }
 
-        if (-not $skipOsIsolation -and -not $isUnix) {
+        if (-not $skipOsIsolation -and -not $isUnix -and -not $windowsLiveMode) {
             Write-ReviewFailedResult -ResultPath $resultPath `
                 -Summary "OS isolation not available on this platform." `
                 -ReviewedBase $reviewedBase -ReviewedHead $reviewedHead -ReviewedDiffHash $diffHash `
                 -ReviewNotes @(
+                    "Live Codex reviews require Linux/macOS (chmod isolation) or Windows",
+                    "(allowlisted workspace + Codex --sandbox read-only).",
                     "Set AGENT_LOOP_SKIP_OS_ISOLATION=1 and AGENT_LOOP_TEST_MODE=1 only for tests/mocks."
                 )
             Write-Host "REVIEW_FAILED: OS isolation not available on this platform"
