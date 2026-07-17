@@ -1,8 +1,8 @@
 # Metrics definitions
 
-Schema version: `1.1` (`ResearchMetrics` / `METRICS_SCHEMA_VERSION`).
+Schema version: `1.2` (`ResearchMetrics` / `METRICS_SCHEMA_VERSION`).
 
-Supported read versions: `1.0` (legacy, no required funding identity), `1.1` (current).
+Supported read versions: `1.0` (legacy, no required funding identity), `1.1` (funding identity; `benchmark_result` was **gross**), `1.2` (current; `benchmark_result` is **net** with required `benchmark.gross_return` + `benchmark.cost_model_version`).
 
 ## Comparable fields
 

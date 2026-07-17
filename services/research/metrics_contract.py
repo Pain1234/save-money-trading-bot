@@ -9,9 +9,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-METRICS_SCHEMA_VERSION = "1.1"
-# 1.0 = pre-funding_costs field; 1.1 = funding_costs + gross identity includes funding
-SUPPORTED_METRICS_SCHEMA_VERSIONS: frozenset[str] = frozenset({"1.0", "1.1"})
+METRICS_SCHEMA_VERSION = "1.2"
+# 1.0 = pre-funding_costs; 1.1 = funding identity (benchmark_result was gross);
+# 1.2 = benchmark_result is net + required BenchmarkRef.gross_return/cost_model_version
+SUPPORTED_METRICS_SCHEMA_VERSIONS: frozenset[str] = frozenset({"1.0", "1.1", "1.2"})
 ReportStatus = Literal["complete", "incomplete", "invalid"]
 
 
@@ -90,7 +91,23 @@ class ResearchMetrics(BaseModel):
             if self.funding_assumption.strip() == "":
                 msg = "funding_assumption must be non-empty for complete metrics"
                 raise ValueError(msg)
-            if self.schema_version == "1.1":
+            if self.benchmark_result is None:
+                msg = "benchmark_result required for complete metrics"
+                raise ValueError(msg)
+            if self.schema_version in {"1.2"}:
+                if not self.benchmark.cost_model_version.strip():
+                    msg = (
+                        "benchmark.cost_model_version required for complete "
+                        "metrics schema 1.2+"
+                    )
+                    raise ValueError(msg)
+                if self.benchmark.gross_return is None:
+                    msg = (
+                        "benchmark.gross_return required for complete "
+                        "metrics schema 1.2+ (benchmark_result is net)"
+                    )
+                    raise ValueError(msg)
+            if self.schema_version in {"1.1", "1.2"}:
                 # Gross must restore fees + slippage + funding (identity contract).
                 expected = compute_gross_pnl(
                     self.net_pnl,
