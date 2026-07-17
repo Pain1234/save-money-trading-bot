@@ -412,6 +412,8 @@ class ResearchReadService:
                     "has_metrics": False,
                     "has_equity": False,
                     "has_costs": False,
+                    "has_trades": False,
+                    "has_chart_data": False,
                 },
                 "integrity": {
                     "ok": False,
@@ -495,7 +497,143 @@ class ResearchReadService:
                 "has_metrics": isinstance(metrics, dict),
                 "has_equity": isinstance(equity, list),
                 "has_costs": isinstance(costs, dict),
+                "has_trades": (run_dir / "trades.json").is_file(),
+                "has_chart_data": (run_dir / "chart_data.json").is_file(),
             },
+            "integrity": {"ok": True, "error": None},
+        }
+
+    def _require_verified_run_dir(self, experiment_id: str) -> tuple[RegistryEntry, Path]:
+        entry = self.get_entry(experiment_id)
+        run_dir = self._artifact_dir(entry)
+        self._verify_complete(entry, run_dir)
+        return entry, run_dir
+
+    def experiment_trades(
+        self,
+        experiment_id: str,
+        *,
+        symbol: str | None = None,
+    ) -> dict[str, Any]:
+        """Return trades.json after integrity verification (fail-closed)."""
+        entry, run_dir = self._require_verified_run_dir(experiment_id)
+        spec = self._load_json(run_dir, "experiment.json")
+        if not isinstance(spec, dict):
+            msg = "experiment.json missing or invalid"
+            raise ValueError(msg)
+        allowed = {
+            str(s)
+            for s in (spec.get("symbols") or [])
+            if s is not None
+        }
+        if symbol is not None:
+            if symbol not in allowed:
+                msg = f"symbol {symbol!r} is not part of this experiment"
+                raise ValueError(msg)
+
+        trades_raw = self._load_json(run_dir, "trades.json")
+        if not isinstance(trades_raw, list):
+            msg = "trades.json missing or invalid"
+            raise FileNotFoundError(msg)
+
+        trades: list[dict[str, Any]] = []
+        for row in trades_raw:
+            if not isinstance(row, dict):
+                continue
+            trade_symbol = str(row.get("symbol") or "")
+            if trade_symbol not in allowed:
+                msg = (
+                    f"trade symbol {trade_symbol!r} not in experiment symbols "
+                    f"{sorted(allowed)}"
+                )
+                raise ValueError(msg)
+            if symbol is not None and trade_symbol != symbol:
+                continue
+            trades.append(row)
+
+        return {
+            "experiment_id": entry.experiment_id,
+            "run_id": entry.run_id,
+            "dataset_version": entry.dataset_version,
+            "symbols": sorted(allowed),
+            "trades": trades,
+            "count": len(trades),
+            "integrity": {"ok": True, "error": None},
+        }
+
+    def experiment_chart_data(
+        self,
+        experiment_id: str,
+        *,
+        symbol: str,
+    ) -> dict[str, Any]:
+        """Return run-bound candles + trade markers for one symbol."""
+        from research.chart_data import CHART_DATA_SCHEMA_VERSION
+
+        entry, run_dir = self._require_verified_run_dir(experiment_id)
+        spec = self._load_json(run_dir, "experiment.json")
+        if not isinstance(spec, dict):
+            msg = "experiment.json missing or invalid"
+            raise ValueError(msg)
+        allowed = {
+            str(s)
+            for s in (spec.get("symbols") or [])
+            if s is not None
+        }
+        if symbol not in allowed:
+            msg = f"symbol {symbol!r} is not part of this experiment"
+            raise ValueError(msg)
+
+        chart_raw = self._load_json(run_dir, "chart_data.json")
+        if not isinstance(chart_raw, dict):
+            msg = (
+                "chart_data.json missing — re-run experiment to generate "
+                "bound candle artifact"
+            )
+            raise FileNotFoundError(msg)
+
+        schema_version = str(chart_raw.get("schema_version") or "")
+        if schema_version != CHART_DATA_SCHEMA_VERSION:
+            msg = (
+                f"unsupported chart_data schema_version {schema_version!r}; "
+                f"expected {CHART_DATA_SCHEMA_VERSION!r}"
+            )
+            raise ValueError(msg)
+
+        manifest = self._load_json(run_dir, "run_manifest.json")
+        if isinstance(manifest, dict):
+            expected_hash = str(manifest.get("dataset_content_hash") or "")
+            chart_hash = str(chart_raw.get("dataset_content_hash") or "")
+            if expected_hash and chart_hash and expected_hash != chart_hash:
+                msg = "chart_data dataset_content_hash does not match RunManifest"
+                raise ValueError(msg)
+            expected_ds = str(manifest.get("dataset_id") or "")
+            chart_ds = str(chart_raw.get("dataset_id") or "")
+            if expected_ds and chart_ds and expected_ds != chart_ds:
+                msg = "chart_data dataset_id does not match RunManifest"
+                raise ValueError(msg)
+
+        symbols_map = chart_raw.get("symbols") or {}
+        if not isinstance(symbols_map, dict) or symbol not in symbols_map:
+            msg = f"no chart candles for symbol {symbol!r}"
+            raise ValueError(msg)
+        candles = symbols_map[symbol]
+        if not isinstance(candles, list):
+            msg = f"invalid candle series for symbol {symbol!r}"
+            raise ValueError(msg)
+
+        trades_payload = self.experiment_trades(experiment_id, symbol=symbol)
+        return {
+            "experiment_id": entry.experiment_id,
+            "run_id": entry.run_id,
+            "symbol": symbol,
+            "timeframe": chart_raw.get("timeframe", "1D"),
+            "dataset_id": chart_raw.get("dataset_id"),
+            "dataset_content_hash": chart_raw.get("dataset_content_hash"),
+            "dataset_version": entry.dataset_version,
+            "schema_version": schema_version,
+            "candles": candles,
+            "trades": trades_payload["trades"],
             "integrity": {"ok": True, "error": None},
         }
 

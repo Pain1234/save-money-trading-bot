@@ -15,6 +15,7 @@ from strategy_engine.models import StrategyParameters
 
 from research.artifacts import ArtifactWriter, artifact_dir
 from research.benchmark import compute_benchmark_result
+from research.chart_data import build_chart_data
 from research.costs import (
     COST_MODEL_VERSION,
     cost_manifest_fields,
@@ -360,6 +361,12 @@ def run_experiment(request: RunRequest) -> RunOutcome:
                 json.loads(t.model_dump_json()) for t in result.trades
             ]
             writer.write_json("trades.json", trades_payload)
+            chart_payload = build_chart_data(
+                spec,
+                filtered_bundle,
+                dataset_content_hash=verified_hash,
+            )
+            writer.write_json("chart_data.json", chart_payload)
             equity_payload = [json.loads(e.model_dump_json()) for e in result.equity_curve]
             writer.write_json("equity.json", equity_payload)
             events = [

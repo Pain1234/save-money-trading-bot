@@ -1,5 +1,11 @@
 # P4 Research Workspace — follow-up issues (Issue #240 / #242 / #265 / #266)
 
+## Status (delivered / open)
+
+**Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity).
+
+**Open:** #242 UI-Abnahme (Lab + catalog), #245 durable jobs, #246–#249 compare/robustness/gates/validation, #250 E2E/UI acceptance; Cancel/Retry deferred.
+
 ## Recommended issue split
 
 ### 1–2. P4.6 Strategy Lab + Async Runs — done in #242 / PR #243

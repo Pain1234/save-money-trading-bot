@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ExperimentJobPanel } from "@/components/research/ExperimentJobPanel";
 import { ResearchCharts } from "@/components/research/ResearchCharts";
+import { ResearchTradeChart } from "@/components/research/ResearchTradeChart";
 import { Card } from "@/components/ui/Card";
 import { PaperApiError } from "@/lib/paper-api/client";
 import {
@@ -209,6 +210,13 @@ export default async function ResearchExperimentDetailPage({
         </Card>
 
         <ResearchCharts equity={detail.equity} drawdown={detail.drawdown} />
+
+        <ResearchTradeChart
+          experimentId={metadata.experiment_id}
+          symbols={config.symbols}
+          integrityOk={detail.integrity.ok}
+          integrityError={detail.integrity.error}
+        />
       </div>
     );
   } catch (error) {
