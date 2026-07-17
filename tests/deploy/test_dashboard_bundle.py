@@ -121,7 +121,9 @@ def test_dashboard_pages_use_monitoring_error_helper() -> None:
     for page in DASHBOARD_ROOT.rglob("page.tsx"):
         source = page.read_text(encoding="utf-8")
         if "fetch" in source or "PaperApi" in source:
-            assert "getMonitoringErrorMessage" in source
+            has_monitor = "getMonitoringErrorMessage" in source
+            has_research = "getResearchErrorMessage" in source
+            assert has_monitor or has_research, page
 
 
 def test_dashboard_auth_middleware_protects_routes() -> None:

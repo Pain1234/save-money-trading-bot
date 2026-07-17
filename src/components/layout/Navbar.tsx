@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { LogoutButton } from "@/components/monitor/LogoutButton";
 import { PRIMARY_NAV } from "@/lib/dashboard/navigation";
+import { RESEARCH_NAV, WORKSPACE_NAV, isResearchPath } from "@/lib/research/navigation";
 import { cn } from "@/lib/utils";
 
 function LogoMark() {
@@ -25,6 +26,8 @@ interface NavbarProps {
 
 export function Navbar({ username }: NavbarProps) {
   const pathname = usePathname();
+  const research = isResearchPath(pathname);
+  const sectionNav = research ? RESEARCH_NAV : PRIMARY_NAV;
 
   return (
     <header className="border-b border-border" data-testid="dashboard-navbar">
@@ -37,11 +40,42 @@ export function Navbar({ username }: NavbarProps) {
             </span>
           </div>
 
-          <nav className="hidden items-center gap-4 md:flex">
-            {PRIMARY_NAV.map((item) => {
+          <nav
+            className="hidden items-center gap-1 rounded border border-border p-0.5 md:flex"
+            data-testid="workspace-switch"
+            aria-label="Workspace"
+          >
+            {WORKSPACE_NAV.map((item) => {
               const active =
-                item.href === "/dashboard"
-                  ? pathname === "/dashboard"
+                item.href === "/dashboard/research"
+                  ? research
+                  : !research &&
+                    (pathname === "/dashboard" ||
+                      (pathname?.startsWith("/dashboard/") === true &&
+                        !isResearchPath(pathname)));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded px-2.5 py-1 text-[12px] transition-colors",
+                    active
+                      ? "bg-mint/15 font-medium text-mint"
+                      : "text-text-secondary hover:text-text-primary",
+                  )}
+                  data-testid={`workspace-${item.label.toLowerCase()}`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <nav className="hidden items-center gap-4 lg:flex" data-testid="section-nav">
+            {sectionNav.map((item) => {
+              const active =
+                item.href === "/dashboard" || item.href === "/dashboard/research"
+                  ? pathname === item.href
                   : pathname.startsWith(item.href);
               return (
                 <Link

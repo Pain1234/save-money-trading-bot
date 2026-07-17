@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Not started | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine | **Complete** (research #141–#147/#163–#167 + public-release gates #176–#180) | No |
+| P4 | Research Engine und Research Workspace V1 | **In flight** (engine complete; read-only workspace slice #240) | No |
 | P5 | Honest Validation of Trend Strategy V1 | **Planning** (honest validation protocol; no OOS opened) | No |
 | P6 | Paper Trading Soak | Not started (Railway paper deploy in progress) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Not started (planning only) | No |
@@ -37,6 +37,7 @@ Central project goal:
 - **P1 complete** (2026-07-14): tag `baseline-paper-v1.0.0` at `daacb627` (PR #62 merge). Post-tag doc/lock/CI improvements tracked in PR #63 (optional `baseline-paper-v1.0.1` after merge).
 - **P3 complete** (2026-07-14): versioned historical market data pipeline implemented (`services/market_data/`, migration `010_market_data_datasets`, issues #76–#84); reproducibility audit in `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md`.
 - Dashboard UI locally usable with real paper data (login, wallet, PnL, positions, fills, equity); **not** yet classified as production-accepted performant monitoring (`docs/railway-paper-trading-dashboard-v1.md` maturity levels).
+- **P4** engine complete; Research Workspace read-only slice tracked in [#240](https://github.com/Pain1234/save-money-trading-bot/issues/240) (API + overview/list/detail). Lab/async/compare/robustness/gates remain open — see `docs/project-management/p4-research-workspace-follow-ups.md`. **P5 blocked** until Engine + API + Workspace are jointly usable enough.
 - **P2.5** milestone and seed issues defined for dashboard/API performance baseline, instrumentation, and production acceptance (governance only — no runtime optimization yet).
 - **P7** renamed to Multi-Asset and Independent Strategy Candidates; HIP-3 equity/index/commodity perpetuals and asset profiles documented in ADR-014 (`docs/DECISION_LOG.md`); planning issues only.
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
@@ -350,23 +351,31 @@ Persistent historical store with gap/duplicate detection, dataset manifests, dat
 
 ---
 
-## P4 – Research Engine
+## P4 – Research Engine und Research Workspace V1
 
-**GitHub milestone:** `P4 – Research Engine`
+**GitHub milestone:** `P4 – Research Engine` (extend / rename toward Research Workspace V1)
 
 ### Goal
 
-Standardized strategy interfaces, reproducible experiments, experiment registry, benchmarks, cost model, unified result reports.
+Standardized strategy interfaces, reproducible experiments, experiment registry,
+benchmarks, cost model, unified result reports — **and** a dashboard Research
+Workspace that reads those artifacts without introducing a second research system.
 
 ### Scope
 
 - `services/backtester/`, `services/strategy_engine/`, `services/risk_engine/`
+- `services/research/` (Spec, runner, registry, metrics, costs, benchmarks)
+- Read-only Research API + Dashboard Research UI (overview / list / detail)
 - `docs/EXPERIMENT_TEMPLATE.md`, experiment issues
 - Cost and slippage assumptions documented per experiment
 
-### Non-scope
+### Non-scope (this milestone still open)
 
-- Production paper worker changes for research convenience
+- Strategy Lab / experiment configuration UI (follow-up)
+- Async job queue / start-cancel-retry from UI (follow-up)
+- Compare View, Robustness Lab orchestration UI (follow-up)
+- Gate Evaluator persistence / promotion controls (follow-up)
+- New Experiment Postgres tables; second registry; live/paper order actions from Research
 
 ### Prerequisites
 
@@ -374,17 +383,37 @@ Standardized strategy interfaces, reproducible experiments, experiment registry,
 
 ### Deliverables
 
-- Experiment ID scheme and registry location
-- Standardized strategy interfaces / resolver contract
-- Standard report format
-- Benchmark definitions (`benchmark_id` / version, calculation, period/dataset/cost parity)
-- Cost model field/version enforcement (stress evaluation is P5)
-- Documented invalidation workflow for historical results
+#### Engine (done)
+
+- [x] Experiment ID scheme and registry location (`registry.jsonl`)
+- [x] Standardized strategy interfaces / resolver contract
+- [x] Standard report format + metrics artifacts
+- [x] Benchmark definitions (`benchmark_id` / version, calculation, period/dataset/cost parity)
+- [x] Cost model field/version enforcement (stress evaluation is P5/P4.7 follow-up)
+- [x] Documented invalidation workflow for historical results
+
+#### Research Workspace — read-only slice (#240)
+
+- [x] Thin read API over ExperimentRegistry + run artifacts (`/api/v1/research/...`)
+- [x] Monitor / Research navigation; routes under `/dashboard/research`
+- [x] Overview, experiment list (search/filter), experiment detail (metadata, config, metrics, equity/drawdown)
+- [x] Missing values as „Nicht verfügbar“ / controlled errors; no productive mock data
+- [x] Path-traversal protection; unknown experiment → 404; no live-order access from Research
+
+#### Still open (separate issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
+
+- [ ] P4.6 Strategy Lab und Experiment-Konfiguration (prefer split: form shell / spec builder / pickers)
+- [ ] P4.6 Async Research Runs und Job-Status (prefer split: job model / worker / UI controls)
+- [ ] P4.7 Experiment- und Strategie-Vergleich
+- [ ] P4.7 Robustness-Orchestrierung
+- [ ] P4.7 Versionierter Gate Evaluator und Gate-Persistenz
+- [ ] P4.8 End-to-End-, Reproduzierbarkeits- und UI-Abnahmetests
 
 ### Binding dependency chain
 
 ```
-P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → P4 done → P5
+P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → engine done
+→ #240 read-only workspace → P4.6…P4.8 → P4 done → P5
 ```
 
 Docs preparation may run in parallel from #142.
@@ -395,6 +424,8 @@ Docs preparation may run in parallel from #142.
 - [x] Acceptance/rejection criteria applied consistently (process/DoD; enforced via issue/PR template — ongoing discipline)
 - [x] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
 - [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
+- [ ] Research Workspace usable for browsing real experiments (API + UI) without a parallel system
+- [ ] Lab / async runs / compare / robustness / gates delivered or explicitly deferred with issues
 
 ### Stop criteria
 
@@ -402,9 +433,11 @@ Docs preparation may run in parallel from #142.
 
 ### Risks
 
-- Backtest bias; cost model optimism
+- Backtest bias; cost model optimism; UI inventing metrics not produced by the engine
 
-**Current gap:** None for P4. Soft process criterion (acceptance/rejection applied consistently) remains ongoing DoD discipline. Next: P5.
+**Current gap:** Engine complete on `main`. Read-only workspace (#240) in progress / landing.
+Strategy Lab, async runs, compare, robustness orchestration, and gate evaluator remain open.
+**P5 remains blocked** until Engine, Read-API, and Workspace are jointly usable enough.
 
 ---
 
@@ -428,7 +461,7 @@ Honestly decide whether frozen Strategy V1 warrants promotion evidence for P6 �
 
 ### Prerequisites
 
-- P4 research engine complete on `main`
+- P4 research engine + usable Research Workspace (read API + browse UI at minimum; Lab/async as needed for P5 workflow)
 - #181 public/private separation complete before first real P5 result
 - Signed candidate freeze + validation protocol **before** opening final holdout
 
