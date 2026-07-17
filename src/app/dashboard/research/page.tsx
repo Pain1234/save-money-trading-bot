@@ -28,10 +28,20 @@ export default async function ResearchOverviewPage() {
     if (overview.experiment_count === 0) {
       return (
         <div data-testid="research-overview-empty" className="space-y-4">
-          <h1 className="text-2xl font-semibold">Research Overview</h1>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h1 className="text-2xl font-semibold">Research Overview</h1>
+            <Link
+              href="/dashboard/research/experiments/new"
+              className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint"
+              data-testid="new-experiment-button"
+            >
+              Neues Experiment
+            </Link>
+          </div>
           <p className="text-sm text-text-muted">
-            Keine Experimente in der Registry. Führen Sie Research-Runs über die
-            CLI aus — diese Ansicht zeigt nur echte Registry-Daten.
+            Keine Experimente in der Registry. Erstellen und starten Sie
+            Research-Experimente im Strategy Lab. Die Kommandozeile bleibt
+            zusätzlich für automatisierte und lokale Workflows verfügbar.
           </p>
         </div>
       );
@@ -82,15 +92,27 @@ export default async function ResearchOverviewPage() {
           <div>
             <h1 className="text-2xl font-semibold">Research Overview</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              Daten aus ExperimentRegistry und Run-Artefakten.
+              Daten aus ExperimentRegistry und Run-Artefakten. Erstellen und
+              starten Sie Research-Experimente im Strategy Lab. Die
+              Kommandozeile bleibt zusätzlich für automatisierte und lokale
+              Workflows verfügbar.
             </p>
           </div>
-          <Link
-            href="/dashboard/research/experiments"
-            className="text-sm text-mint hover:underline"
-          >
-            Alle Experimente →
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/dashboard/research/experiments/new"
+              className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint"
+              data-testid="new-experiment-button"
+            >
+              Neues Experiment
+            </Link>
+            <Link
+              href="/dashboard/research/experiments"
+              className="text-sm text-mint hover:underline"
+            >
+              Alle Experimente →
+            </Link>
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">

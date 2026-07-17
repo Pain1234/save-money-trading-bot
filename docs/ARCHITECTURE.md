@@ -135,10 +135,11 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Strategy definition | `services/strategy_engine/` |
 | Experiment pipeline | Spec, runner, `ExperimentRegistry` (`registry.jsonl`), metrics/artifacts |
 | Read API | Mounted on readonly app: `/api/v1/research/overview`, `/experiments`, `/experiments/{id}` (+ optional metrics/equity/artifacts) |
-| Workspace UI | `/dashboard/research` (overview / list / detail) — read-only; no start/cancel/promotion |
+| Workspace UI | `/dashboard/research` overview / list / detail; Strategy Lab `/dashboard/research/experiments/new` starts `run_experiment` via job store (no cancel/promotion) |
+| Write surface | POST `/api/v1/research/experiments` + `.../start` allow-listed on private dashboard API; dataset catalog only (no free client paths) |
 | Specs | `docs/strategy-specification.md`, experiment templates |
 
-**Current Gap:** Strategy Lab, async job runs, compare/robustness UI, gate evaluator (see `docs/project-management/p4-research-workspace-follow-ups.md`). No second registry; no Experiment Postgres tables in V1 read slice.
+**Current Gap:** Compare/robustness UI, gate evaluator, durable multi-process queue, Cancel/Retry (see `docs/project-management/p4-research-workspace-follow-ups.md`). No second registry; no Experiment Postgres tables.
 
 ---
 
@@ -249,8 +250,8 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 
 | Responsibility | Details |
 |----------------|---------|
-| Read-only API | `readonly_api.py`, `/health`, `/readiness`, `/runtime`, portfolio/positions/orders/fills; Research read routes under `/api/v1/research/*` |
-| Dashboard | Next.js app, server-side fetch to private API (Monitor + Research workspaces) |
+| Read-only API | `readonly_api.py`, `/health`, `/readiness`, `/runtime`, portfolio/positions/orders/fills; Research GET + allow-listed Research POST under `/api/v1/research/*` |
+| Dashboard | Next.js app, server-side fetch to private API (Monitor + Research workspaces incl. Strategy Lab) |
 | Observability | Database fingerprint, heartbeat timestamps, structured reconnect logs |
 
 **Public surface:** Dashboard only (`docs/railway-paper-trading-dashboard-v1.md`).

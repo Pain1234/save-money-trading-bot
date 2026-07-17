@@ -8,6 +8,7 @@ export const WORKSPACE_NAV: NavItem[] = [
 export const RESEARCH_NAV: NavItem[] = [
   { label: "Overview", href: "/dashboard/research" },
   { label: "Experiments", href: "/dashboard/research/experiments" },
+  { label: "Neues Experiment", href: "/dashboard/research/experiments/new" },
 ];
 
 export function isResearchPath(pathname: string | null): boolean {

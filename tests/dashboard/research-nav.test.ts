@@ -21,6 +21,7 @@ describe("research navigation", () => {
     expect(RESEARCH_NAV.map((n) => n.href)).toEqual([
       "/dashboard/research",
       "/dashboard/research/experiments",
+      "/dashboard/research/experiments/new",
     ]);
   });
 });

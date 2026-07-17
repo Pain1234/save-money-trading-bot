@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { ExperimentsTable } from "@/components/research/ExperimentsTable";
 import {
   fetchResearchExperiments,
@@ -9,7 +11,20 @@ export const dynamic = "force-dynamic";
 export default async function ResearchExperimentsPage() {
   try {
     const data = await fetchResearchExperiments();
-    return <ExperimentsTable items={data.items} />;
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <Link
+            href="/dashboard/research/experiments/new"
+            className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint"
+            data-testid="new-experiment-button"
+          >
+            Neues Experiment
+          </Link>
+        </div>
+        <ExperimentsTable items={data.items} />
+      </div>
+    );
   } catch (error) {
     return (
       <div
