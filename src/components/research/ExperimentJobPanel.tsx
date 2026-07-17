@@ -22,8 +22,6 @@ interface ExperimentJobPanelProps {
   initialJob: JobStatusPayload | null;
 }
 
-const ACTIVE = new Set(["created", "queued", "running"]);
-
 export function ExperimentJobPanel({
   experimentId,
   initialJob,
