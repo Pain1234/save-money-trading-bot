@@ -33,7 +33,7 @@ python -m pytest tests/research/test_double_run_repro.py -q
 | Prerequisite | Status | Evidence |
 |--------------|--------|----------|
 | P4 complete on `main` | Met (docs) | ROADMAP / P4_ACCEPTANCE |
-| Material P4 regressions green | Met on evidence SHA | commands above |
+| Material P4 regressions green | **STALE / PENDING** — re-run 76+3 on final merged main | commands above are prep-only; not freeze evidence |
 | ExperimentSpec versioned | Met | #141 |
 | RunManifest immutable | Met | #142 |
 | DatasetManifest binding | Met (contract) | #163 |
