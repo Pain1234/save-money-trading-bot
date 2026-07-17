@@ -1,0 +1,19 @@
+{
+  "datasets": [
+    {
+      "bundle_path": "examples/research/local_lab/bundle.json",
+      "content_hash": "af44a701d169fb66d73850745dcaacf60a1bdc7fdcadd00804656c5bf1954b57",
+      "dataset_id": "3d9279e1ff8a0940336a2ac018c1b20b",
+      "id": "local-btc-fixture",
+      "label": "Local BTC fixture (dev)",
+      "manifest_path": "examples/research/local_lab/dataset_manifest.json",
+      "symbols": [
+        "BTC"
+      ],
+      "time_range": {
+        "end": "2024-01-31T23:59:59.000000Z",
+        "start": "2023-12-01T00:00:00.000000Z"
+      }
+    }
+  ]
+}

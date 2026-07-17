@@ -4,7 +4,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Card } from "@/components/ui/Card";
-import { validateLabDraft } from "@/lib/research/lab-validation";
+import {
+  labDayEndUtc,
+  labDayStartUtc,
+  validateLabDraft,
+} from "@/lib/research/lab-validation";
 
 export interface StrategyOption {
   strategy_id: string;
@@ -135,8 +139,8 @@ export function StrategyLabForm({
       symbols,
       timeframe,
       time_range: {
-        start: `${startDate}T00:00:00.000000Z`,
-        end: `${endDate}T23:59:59.999999Z`,
+        start: labDayStartUtc(startDate),
+        end: labDayEndUtc(endDate),
       },
       starting_capital: capital,
       parameters: paramPayload,
@@ -222,10 +226,17 @@ export function StrategyLabForm({
       <div data-testid="research-lab-no-datasets" className="space-y-2">
         <h1 className="text-2xl font-semibold">Neues Experiment</h1>
         <p className="text-sm text-text-muted">
-          Kein Dataset-Katalog konfiguriert. Setzen Sie{" "}
+          Kein Dataset-Katalog gefunden. Lokal:{" "}
+          <code className="font-mono text-xs">
+            python scripts/prepare_research_lab_local.py
+          </code>{" "}
+          (schreibt{" "}
+          <code className="font-mono text-xs">
+            examples/research/local_lab/catalog.json
+          </code>
+          ) und Research-API neu starten. Alternativ{" "}
           <code className="font-mono text-xs">RESEARCH_DATASET_CATALOG_PATH</code>{" "}
-          (oder JSON-Env) auf der Research API — freie Dateipfade vom Client sind
-          nicht erlaubt.
+          setzen — freie Dateipfade vom Client sind nicht erlaubt.
         </p>
       </div>
     );

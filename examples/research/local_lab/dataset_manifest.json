@@ -1,0 +1,30 @@
+{
+  "allow_quality_warnings": false,
+  "code_commit": "testhash",
+  "content_hash": "af44a701d169fb66d73850745dcaacf60a1bdc7fdcadd00804656c5bf1954b57",
+  "created_at": "2024-01-01T00:00:00+00:00",
+  "dataset_id": "3d9279e1ff8a0940336a2ac018c1b20b",
+  "end_timestamp": "2024-01-31T23:59:59+00:00",
+  "import_configuration": {
+    "purpose": "research-test"
+  },
+  "known_issues": [],
+  "layer": "normalized",
+  "parent_dataset_id": null,
+  "quality_status": "VALID",
+  "raw_content_hash": "af44a701d169fb66d73850745dcaacf60a1bdc7fdcadd00804656c5bf1954b57",
+  "raw_dataset_id": "raw-3d9279e1ff8a",
+  "row_count": 30,
+  "schema_version": "1.0",
+  "source": "test/research",
+  "start_timestamp": "2023-12-01T00:00:00+00:00",
+  "symbols": [
+    "BTC"
+  ],
+  "timeframes": [
+    "1D",
+    "1W",
+    "1M"
+  ],
+  "timezone": "UTC"
+}

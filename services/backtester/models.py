@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from risk_engine.constants import RISK_SPECIFICATION_VERSION
 from risk_engine.models import RiskParameters, SymbolConstraints
 from strategy_engine.constants import STRATEGY_VERSION
 from strategy_engine.models import (
+    Candle,
     EntryType,
     ReasonCode,
     StrategyEvaluation,
@@ -82,9 +82,9 @@ class BacktestConfig(BaseModel):
 class HistoricalDataBundle(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    daily: dict[str, tuple[Any, ...]]
-    weekly: dict[str, tuple[Any, ...]]
-    monthly: dict[str, tuple[Any, ...]]
+    daily: dict[str, tuple[Candle, ...]]
+    weekly: dict[str, tuple[Candle, ...]]
+    monthly: dict[str, tuple[Candle, ...]]
     funding: dict[str, tuple[FundingEvent, ...]] = Field(default_factory=dict)
     data_quality_warnings: tuple[str, ...] = Field(default_factory=tuple)
 

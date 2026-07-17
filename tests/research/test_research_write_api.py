@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -160,12 +163,11 @@ def test_start_status_complete_and_double_start(
             break
         time.sleep(0.2)
 
-    assert final_status in {"completed", "failed"}
-    if final_status == "completed":
-        detail = client.get(f"/api/v1/research/experiments/{experiment_id}").json()
-        assert detail["integrity"]["ok"] is True
-        listed = client.get("/api/v1/research/experiments").json()["items"]
-        assert any(i["experiment_id"] == experiment_id for i in listed)
+    assert final_status == "completed", status
+    detail = client.get(f"/api/v1/research/experiments/{experiment_id}").json()
+    assert detail["integrity"]["ok"] is True
+    listed = client.get("/api/v1/research/experiments").json()["items"]
+    assert any(i["experiment_id"] == experiment_id for i in listed)
 
     again = client.post(f"/api/v1/research/experiments/{experiment_id}/start")
     assert again.status_code == 409
@@ -293,3 +295,204 @@ def test_job_save_is_atomic_readable(
     raw = json.loads(path.read_text(encoding="utf-8"))
     assert raw["status"] == "created"
     assert not list(path.parent.glob(".*.tmp"))
+
+
+def test_load_dataset_catalog_falls_back_to_local_lab(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RESEARCH_DATASET_CATALOG_PATH", raising=False)
+    monkeypatch.delenv("RESEARCH_DATASET_CATALOG_JSON", raising=False)
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
+    from research.write_service import load_dataset_catalog
+
+    entries = load_dataset_catalog()
+    assert any(e.id == "local-btc-fixture" for e in entries)
+    local = next(e for e in entries if e.id == "local-btc-fixture")
+    assert local.bundle_path.replace("\\", "/").endswith(
+        "examples/research/local_lab/bundle.json"
+    )
+    assert (REPO_ROOT / Path(local.bundle_path)).is_file()
+
+
+def test_load_dataset_catalog_empty_without_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("RESEARCH_DATASET_CATALOG_PATH", raising=False)
+    monkeypatch.delenv("RESEARCH_DATASET_CATALOG_JSON", raising=False)
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(tmp_path))
+    from research.write_service import load_dataset_catalog
+
+    assert load_dataset_catalog() == []
+
+
+def test_lab_style_end_micros_beyond_local_manifest_fails_bind() -> None:
+    """P1: Lab .999999Z end is after fixture manifest 23:59:59Z."""
+    from backtester.models import HistoricalDataBundle
+    from research.dataset_binding import bind_dataset_to_bundle
+    from research.experiment_spec import parse_experiment_spec
+    from strategy_engine.constants import STRATEGY_VERSION
+
+    catalog = json.loads(
+        (REPO_ROOT / "examples/research/local_lab/catalog.json").read_text(
+            encoding="utf-8"
+        )
+    )["datasets"][0]
+    bundle = HistoricalDataBundle.model_validate(
+        json.loads((REPO_ROOT / catalog["bundle_path"]).read_text(encoding="utf-8"))
+    )
+
+    def _spec(*, end: str, hypothesis: str):
+        return parse_experiment_spec(
+            {
+                "schema_version": "1.0",
+                "hypothesis": hypothesis,
+                "strategy_version": STRATEGY_VERSION,
+                "parameters": {
+                    "strategy_id": "trend_v1",
+                    "strategy_version": STRATEGY_VERSION,
+                },
+                "dataset_manifest_ref": {
+                    "dataset_id": catalog["dataset_id"],
+                    "content_hash": catalog["content_hash"],
+                    "manifest_path": catalog["manifest_path"],
+                },
+                "symbols": ["BTC"],
+                "time_range": {
+                    "start": "2024-01-01T00:00:00.000000Z",
+                    "end": end,
+                },
+                "starting_capital": "100000",
+                "fee_assumption": {
+                    "entry_fee_rate": "0.0005",
+                    "exit_fee_rate": "0.0005",
+                    "model_version": "1.0",
+                },
+                "slippage_assumption": {
+                    "slippage_bps": "5",
+                    "model_version": "1.0",
+                },
+                "funding_assumption": {
+                    "enabled": False,
+                    "assumed_rate": None,
+                    "model_version": "1.0",
+                },
+                "benchmark": "buy_and_hold_BTC",
+                "random_seed": 7,
+                "notes": "",
+                "owner": "test",
+            }
+        )
+
+    with pytest.raises(ValueError, match="time_range.end is after DatasetManifest"):
+        bind_dataset_to_bundle(
+            _spec(end="2024-01-31T23:59:59.999999Z", hypothesis="lab overflow"),
+            bundle,
+            repo_root=REPO_ROOT,
+        )
+
+    manifest, _filtered, _hash = bind_dataset_to_bundle(
+        _spec(end="2024-01-31T23:59:59.000000Z", hypothesis="lab ok"),
+        bundle,
+        repo_root=REPO_ROOT,
+    )
+    assert manifest.end_timestamp == datetime(2024, 1, 31, 23, 59, 59, tzinfo=UTC)
+
+
+def test_committed_local_lab_fixture_run_completes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Committed local_lab catalog + Lab-safe day end → completed run."""
+    from strategy_engine.constants import STRATEGY_VERSION
+
+    catalog_path = REPO_ROOT / "examples" / "research" / "local_lab" / "catalog.json"
+    assert catalog_path.is_file()
+
+    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
+    monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
+    monkeypatch.setenv("RESEARCH_ALLOW_DIRTY_GIT", "1")
+
+    def _read() -> ResearchReadService:
+        return ResearchReadService(tmp_path)
+
+    def _write() -> ResearchWriteService:
+        return ResearchWriteService(
+            tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True
+        )
+
+    app.dependency_overrides[get_research_service] = _read
+    app.dependency_overrides[get_research_write_service] = _write
+    client = TestClient(app)
+    try:
+        payload = {
+            "strategy_id": "trend_v1",
+            "strategy_version": STRATEGY_VERSION,
+            "name": "committed local lab smoke",
+            "notes": "issue 264 regression",
+            "symbols": ["BTC"],
+            "timeframe": "1D",
+            "time_range": {
+                "start": "2024-01-01T00:00:00.000000Z",
+                "end": "2024-01-31T23:59:59.000000Z",
+            },
+            "starting_capital": "100000",
+            "parameters": {"strategy_version": STRATEGY_VERSION},
+            "fee_assumption": {
+                "entry_fee_rate": "0.0005",
+                "exit_fee_rate": "0.0005",
+            },
+            "slippage_assumption": {"slippage_bps": "5"},
+            "random_seed": 7,
+            "dataset_catalog_id": "local-btc-fixture",
+            "owner": "test",
+        }
+        created = client.post("/api/v1/research/experiments", json=payload)
+        assert created.status_code == 200, created.text
+        experiment_id = created.json()["experiment_id"]
+        started = client.post(f"/api/v1/research/experiments/{experiment_id}/start")
+        assert started.status_code == 200, started.text
+
+        deadline = time.time() + 90
+        final_status = None
+        last_body: dict[str, object] = {}
+        while time.time() < deadline:
+            last_body = client.get(
+                f"/api/v1/research/experiments/{experiment_id}/status"
+            ).json()
+            final_status = last_body["status"]
+            if final_status in {"completed", "failed"}:
+                break
+            time.sleep(0.2)
+
+        assert final_status == "completed", last_body
+        detail = client.get(f"/api/v1/research/experiments/{experiment_id}").json()
+        assert detail["integrity"]["ok"] is True
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+        app.dependency_overrides.pop(get_research_write_service, None)
+
+
+def test_local_lab_manifest_created_at_is_deterministic() -> None:
+    manifest = json.loads(
+        (REPO_ROOT / "examples/research/local_lab/dataset_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["created_at"] == "2024-01-01T00:00:00+00:00"
+
+
+def test_prepare_script_default_env_omits_dirty_git() -> None:
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "prepare_research_lab_local.py"),
+            "--print-env-only",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert "$env:RESEARCH_ALLOW_DIRTY_GIT" not in proc.stdout
+    assert "Git provenance" in proc.stdout
+    assert "Do not set RESEARCH_ALLOW_DIRTY_GIT" in proc.stdout
