@@ -13,10 +13,28 @@ from market_data.content_hash import (
     hash_normalized_candles,
 )
 from market_data.manifest import DatasetManifest, parse_manifest
-from market_data.models import MarketSymbol, MarketTimeframe, NormalizedCandle
+from market_data.models import (
+    DataQualityStatus,
+    MarketSymbol,
+    MarketTimeframe,
+    NormalizedCandle,
+)
 from strategy_engine.models import Candle
 
 from research.experiment_spec import ExperimentSpec, TimeRange
+
+_QUARANTINED = frozenset(
+    {
+        DataQualityStatus.INVALID,
+        DataQualityStatus.DISCONNECTED,
+    }
+)
+_WARN_STATUSES = frozenset(
+    {
+        DataQualityStatus.STALE,
+        DataQualityStatus.INCOMPLETE,
+    }
+)
 
 
 def load_dataset_manifest(
@@ -38,6 +56,26 @@ def load_dataset_manifest(
     return parse_manifest(raw)
 
 
+def require_manifest_research_usable(manifest: DatasetManifest) -> None:
+    """Fail-closed on quarantined / unapproved P3 quality states."""
+    status = manifest.quality_status
+    if status in _QUARANTINED:
+        msg = (
+            f"DatasetManifest quality_status {status.value} is quarantined "
+            "and cannot be used for research runs"
+        )
+        raise ValueError(msg)
+    if status in _WARN_STATUSES and not manifest.allow_quality_warnings:
+        msg = (
+            f"DatasetManifest quality_status {status.value} requires "
+            "allow_quality_warnings=true"
+        )
+        raise ValueError(msg)
+    if status is not DataQualityStatus.VALID and status not in _WARN_STATUSES:
+        msg = f"unsupported DatasetManifest quality_status {status.value}"
+        raise ValueError(msg)
+
+
 def _candle_in_range(candle: Candle, time_range: TimeRange) -> bool:
     return time_range.start <= candle.open_time <= time_range.end
 
@@ -51,7 +89,7 @@ def filter_bundle_to_time_range(
     time_range: TimeRange,
     symbols: tuple[str, ...],
 ) -> HistoricalDataBundle:
-    """Clip candles/funding to ExperimentSpec.time_range for configured symbols."""
+    """Clip candles/funding to a UTC window for configured symbols."""
     daily: dict[str, tuple[Any, ...]] = {}
     weekly: dict[str, tuple[Any, ...]] = {}
     monthly: dict[str, tuple[Any, ...]] = {}
@@ -97,7 +135,7 @@ def hash_research_bundle(
     bundle: HistoricalDataBundle,
     symbols: tuple[str, ...],
 ) -> str:
-    """SHA-256 of sorted normalized candle rows in the (already filtered) bundle."""
+    """SHA-256 of sorted normalized candle rows (funding excluded)."""
     candles: list[NormalizedCandle] = []
     for sym in symbols:
         for series in (
@@ -110,6 +148,20 @@ def hash_research_bundle(
     return hash_normalized_candles(tuple(candles))
 
 
+def _iter_symbol_candles(
+    bundle: HistoricalDataBundle,
+    symbols: tuple[str, ...],
+):
+    for sym in symbols:
+        for series in (
+            bundle.daily.get(sym, ()),
+            bundle.weekly.get(sym, ()),
+            bundle.monthly.get(sym, ()),
+        ):
+            for candle in series:
+                yield sym, candle
+
+
 def bind_dataset_to_bundle(
     spec: ExperimentSpec,
     bundle: HistoricalDataBundle,
@@ -117,6 +169,11 @@ def bind_dataset_to_bundle(
     repo_root: Path,
 ) -> tuple[DatasetManifest, HistoricalDataBundle, str]:
     """Validate Spec ↔ Manifest ↔ Bundle; return filtered bundle + content hash.
+
+    P3 identity: ``content_hash`` is the hash of candles in the **manifest**
+    window (full published dataset for the experiment symbols), not the
+    experiment ``time_range`` slice. The research window is applied after
+    identity verification.
 
     Fail-closed on any mismatch. Does not write artifacts.
     """
@@ -126,6 +183,7 @@ def bind_dataset_to_bundle(
         raise ValueError(msg)
 
     manifest = load_dataset_manifest(ref.manifest_path, repo_root=repo_root)
+    require_manifest_research_usable(manifest)
 
     if manifest.content_hash != ref.content_hash:
         msg = (
@@ -161,24 +219,36 @@ def bind_dataset_to_bundle(
         raise ValueError(msg)
 
     symbols = tuple(s.value for s in spec.symbols)
-    filtered = filter_bundle_to_time_range(bundle, spec.time_range, symbols)
-    if not any(filtered.daily.get(s) for s in symbols):
-        msg = "no daily candles remain after applying time_range"
+    manifest_window = TimeRange(
+        start=manifest.start_timestamp,
+        end=manifest.end_timestamp,
+    )
+
+    # Reject candles outside the published dataset window (fail-closed).
+    for sym, candle in _iter_symbol_candles(bundle, symbols):
+        if not _candle_in_range(candle, manifest_window):
+            msg = (
+                f"bundle candle for {sym} at {candle.open_time.isoformat()} "
+                "is outside DatasetManifest window"
+            )
+            raise ValueError(msg)
+
+    dataset_slice = filter_bundle_to_time_range(bundle, manifest_window, symbols)
+    if not any(dataset_slice.daily.get(s) for s in symbols):
+        msg = "no daily candles in DatasetManifest window"
         raise ValueError(msg)
 
-    # Candle open times must stay inside the declared research window.
-    for sym in symbols:
-        for c in filtered.daily.get(sym, ()):
-            if c.open_time < spec.time_range.start or c.open_time > spec.time_range.end:
-                msg = f"daily candle outside time_range for {sym}"
-                raise ValueError(msg)
-
-    actual_hash = hash_research_bundle(filtered, symbols)
+    actual_hash = hash_research_bundle(dataset_slice, symbols)
     if actual_hash != ref.content_hash:
         msg = (
             "HistoricalDataBundle content does not match declared content_hash: "
             f"actual={actual_hash} declared={ref.content_hash}"
         )
+        raise ValueError(msg)
+
+    filtered = filter_bundle_to_time_range(bundle, spec.time_range, symbols)
+    if not any(filtered.daily.get(s) for s in symbols):
+        msg = "no daily candles remain after applying time_range"
         raise ValueError(msg)
 
     return manifest, filtered, actual_hash
@@ -191,8 +261,14 @@ def build_manifest_dict_for_bundle(
     time_range: TimeRange,
     source: str = "test/research",
     code_commit: str = "testhash",
+    quality_status: str = "VALID",
+    allow_quality_warnings: bool = False,
 ) -> dict[str, Any]:
-    """Helper for tests: build a DatasetManifest JSON matching a filtered bundle."""
+    """Helper for tests: build a DatasetManifest JSON matching a dataset window.
+
+    ``time_range`` is the **manifest** window (published dataset bounds).
+    ``content_hash`` is computed over candles in that window (funding excluded).
+    """
     filtered = filter_bundle_to_time_range(bundle, time_range, symbols)
     content_hash = hash_research_bundle(filtered, symbols)
     row_count = sum(
@@ -219,18 +295,19 @@ def build_manifest_dict_for_bundle(
         "code_commit": code_commit,
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "+00:00"),
         "parent_dataset_id": None,
-        "quality_status": "VALID",
+        "quality_status": quality_status,
+        "allow_quality_warnings": allow_quality_warnings,
         "known_issues": [],
         "layer": "normalized",
         "dataset_id": dataset_id,
     }
 
 
-# Public API
 __all__ = [
     "bind_dataset_to_bundle",
     "build_manifest_dict_for_bundle",
     "filter_bundle_to_time_range",
     "hash_research_bundle",
     "load_dataset_manifest",
+    "require_manifest_research_usable",
 ]
