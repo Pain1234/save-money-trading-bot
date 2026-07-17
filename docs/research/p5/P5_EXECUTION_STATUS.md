@@ -34,6 +34,21 @@ Do **not** open holdout C until all are true:
 - [ ] Forward holdout length ≥ sample-sufficiency min (proposed 90 days) **and** feature warmup satisfied for the evaluation engine
 - [ ] Human pre-OOS approval recorded in Decision Log (process only)
 
+## Gate status snapshot (2026-07-17, post public-core merge)
+
+| Gate | State |
+|------|-------|
+| Public stack #181 / #196-docs / #197-#203 / #204-prep / #205-prep | On `main` |
+| Freeze evidence refresh | PR #236 merged; **human FREEZE APPROVED pending** on #196 |
+| Human locks #197-#199 | **Pending** (requested on issues) |
+| Private Partition B datasets | **Missing** (templates only) |
+| Private robustness packs #200-#203 | **Not run** (blocked) |
+| Forward holdout length | **Not started** until freeze UTC |
+| Holdout opened? | `NO` |
+| #204 OOS execution | **BLOCKED** — do not run |
+| #205 final decision | **BLOCKED** by #204 |
+| #47 | Remains open until #205 |
+
 ## One-shot OOS procedure (when unblocked)
 
 1. Pin public-core SHA in private `PINNED_PUBLIC_CORE.txt`.

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (P5 execution — gate status)
+
+- P5_EXECUTION_STATUS: snapshot recording #204/#205 blocked pending human freezes, Partition B data, and holdout sufficiency.
+
 ### Changed (P5 execution — #196 freeze evidence)
 
 - Candidate freeze: regression evidence refreshed on main tip b51bde6 (113+3); code hashes updated; STALE cleared.
