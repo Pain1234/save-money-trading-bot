@@ -50,6 +50,14 @@ Fixes #
 - [ ] Ergebnisse müssen neu berechnet werden
 - [ ] frühere Ergebnisse wurden invalidiert
 
+## P5 / Private-Edge Leakage (binding when research or P5 touched)
+
+- [ ] Diff contains **no** real PnL, drawdown, trade lists, holdout calendars, or private ExperimentSpecs
+- [ ] No checkout of `save-money-trading-bot-private-research` added to public Actions
+- [ ] Issue/PR text is process-only (link private paths; do not paste metrics)
+
+See `docs/research/p5/P5_PUBLIC_PRIVATE_ARTIFACTS.md` (#181).
+
 ## Sicherheits- und Live-Trading-Prüfung
 
 - [ ] keine Live-Trading-Aktivierung

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P5 execution — #181 public/private gate)
+
+- Private research store contract and public leakage gates for P5 artifacts.
+
 ### Added (P5 planning — honest validation)
 
 - `docs/research/p5/` planning pack: Phase A audit, data-exposure audit template, candidate freeze template, validation protocol, decision rules (`ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE`), public/private artifact classification, execution checklist.
