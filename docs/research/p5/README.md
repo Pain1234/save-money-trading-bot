@@ -59,6 +59,7 @@ Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), 
 | [P5_CANDIDATE_FREEZE.md](P5_CANDIDATE_FREEZE.md) | Freeze Strategy V1 candidate identity |
 | [P5_VALIDATION_PROTOCOL.md](P5_VALIDATION_PROTOCOL.md) | Pre-register all checks before final OOS |
 | [P5_DECISION_RULES.md](P5_DECISION_RULES.md) | ACCEPT / REJECT / INCONCLUSIVE gates |
+| [P5_BENCHMARKS_REGIMES.md](P5_BENCHMARKS_REGIMES.md) | Benchmarks + deterministic regimes (#199) |
 | [P5_PUBLIC_PRIVATE_ARTIFACTS.md](P5_PUBLIC_PRIVATE_ARTIFACTS.md) | Artifact classification (#181) |
 | [P5_EXECUTION_CHECKLIST.md](P5_EXECUTION_CHECKLIST.md) | Operational gates and stop rules |
 | [P5_PHASE_A_AUDIT.md](P5_PHASE_A_AUDIT.md) | Phase A inventory (evidence-based) |

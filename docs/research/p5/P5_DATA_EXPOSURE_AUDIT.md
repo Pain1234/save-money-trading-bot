@@ -1,8 +1,8 @@
-# P5 Data Exposure Audit (planning template)
+# P5 Data Exposure Audit
 
-**Status:** PLANNING / TEMPLATE — no final partition lock until human review
+**Status:** PARTITION LOCK PROPOSED — awaiting human approval
 **Issue:** [#197](https://github.com/Pain1234/save-money-trading-bot/issues/197) (P5-01)
-**Related:** #47, #181
+**Related:** #47, #181, #196
 
 ## Rules (binding)
 
@@ -23,46 +23,50 @@
 | `UNKNOWN_EXPOSURE` | Insufficient provenance | Not final OOS; prefer exclude or downgrade |
 | `NOT_USABLE` | Quality / coverage / contract failure | Exclude |
 
-## Inventory (fill during P5-01; placeholders only)
+## Inventory (honest)
 
-> Dataset IDs/hashes below are **TBD** until bound to real `DatasetManifest` records. Example/fixture IDs are not production research datasets.
+> Production DatasetManifest IDs/hashes for published research datasets live in the **private** store (`partitions/`) when sensitive. Public table uses classes and rules only.
 
-| Period ID | Start | End | Symbols | Dataset-ID | Dataset-Hash | Prior use | Known human/agent exposure | Allowed P5 purpose | Class | Rationale |
-|-----------|-------|-----|---------|------------|--------------|-----------|----------------------------|--------------------|-------|-----------|
-| `FIX-EXAMPLE-WEEK` | 2024-01-01 | 2024-01-07 | BTC,ETH,SOL | `example` fixture | fixture zero-hash | Unit/integration fixtures | Developers/CI | Tests only | `NOT_USABLE` | Synthetic fixture; not economic evidence |
-| `EX-SPEC-2024` | 2024-01-01 | 2024-12-31 | BTC,ETH,SOL | example ref in ExperimentSpec | placeholder `aaaa…` | Documentation example only | Anyone reading example JSON | Docs / schema demos | `UNKNOWN_EXPOSURE` | Example window is not a published research dataset; do not treat as OOS |
-| `SPEC-DEV-ERA` | TBD | TBD | BTC,ETH,SOL | TBD | TBD | Spec writing, indicator design, freeze defaults | Likely humans during 2026-07 spec freeze | Development context only | `UNKNOWN_EXPOSURE` → likely `SEEN_DEVELOPMENT` | Calendar overlap with live markets during development is probable; exact candle ranges viewed **not** inventoried in GitHub |
-| `PAPER-OPS-LIVE` | TBD (ops start) | ongoing | BTC,ETH,SOL | live/paper feeds | n/a research | Paper trading observation | Operators/dashboard users | Ops only; not research OOS | `SEEN_DEBUGGING` or `UNKNOWN_EXPOSURE` | Live paper candles may contaminate “untouched” claims for overlapping dates |
-| `PROD-HIST-CANDIDATE` | TBD | TBD | BTC,ETH,SOL | TBD published | TBD | **None documented** as formal V1 research OOS | UNKNOWN | Candidate validation / holdout **only after** exposure clearance | `UNKNOWN_EXPOSURE` until cleared | No formal OOS report found in repo (Phase A) |
-| `FORWARD-HOLDOUT` | TBD (post freeze) | TBD | BTC,ETH,SOL | future publish | TBD | None (by construction after freeze) | None after lock | Final one-shot OOS | `FINAL_HOLDOUT_ELIGIBLE` (planned) | Preferred if historical untouched window cannot be proven |
+| Period ID | Start | End | Symbols | Dataset-ID | Dataset-Hash | Prior use | Known exposure | Allowed P5 purpose | Class | Rationale |
+|-----------|-------|-----|---------|------------|--------------|-----------|----------------|--------------------|-------|-----------|
+| `FIX-EXAMPLE-WEEK` | 2024-01-01 | 2024-01-07 | BTC,ETH,SOL | fixture example | fixture | Unit/integration | CI/devs | Tests only | `NOT_USABLE` | Synthetic |
+| `EX-SPEC-2024` | 2024-01-01 | 2024-12-31 | BTC,ETH,SOL | example Spec ref | placeholder | Docs example | Readers of example JSON | Docs only | `UNKNOWN_EXPOSURE` | Not a published research dataset |
+| `SPEC-DEV-ERA` | ≤2026-07-11 | freeze UTC | BTC,ETH,SOL | n/a single ID | n/a | Spec/freeze design | Humans during V1 freeze | Debug/repro only | `SEEN_DEVELOPMENT` | Spec Freeze dated 2026-07-11; treat overlapping history as seen |
+| `PAPER-OPS-LIVE` | paper deploy → ongoing | ongoing | BTC,ETH,SOL | live/paper | n/a research | Ops observation | Operators/dashboard | Ops only | `SEEN_DEBUGGING` | Contaminates untouched claims for overlapping dates |
+| `HIST-UNKNOWN` | any published hist before freeze | freeze UTC | BTC,ETH,SOL | private catalog | private | Unknown viewing | UNKNOWN | Validation **only if** later cleared with human disclosure | `UNKNOWN_EXPOSURE` | Phase A: no formal OOS report; cannot claim untouched |
+| `FORWARD-HOLDOUT` | human freeze UTC | open until #204 | BTC,ETH,SOL | post-freeze DatasetManifest | bind at #204 | None after freeze | None after lock | Final one-shot OOS | `FINAL_HOLDOUT_ELIGIBLE` | **Locked choice** when history cannot be proven untouched |
 
-## Logical partitions (targets; dates TBD in P5-01)
+## Locked logical partitions
 
 | Partition | Intent | Source classes | Lock rule |
 |-----------|--------|----------------|-----------|
-| A. Development / Seen | Reproduce, debug | `SEEN_*`, cleared fixtures | Never label as OOS |
-| B. Walk-Forward / Validation | Stability under frozen params | `VALIDATION_ELIGIBLE` only | No param optimization from fold results |
-| C. Final Untouched Holdout | One-shot gate | `FINAL_HOLDOUT_ELIGIBLE` only | Technically + organizationally sealed until P5-08 |
+| A. Development / Seen | Reproduce, debug | `SEEN_*`, fixtures | Never label as OOS |
+| B. Walk-Forward / Validation | Stability under frozen params | Only periods later **explicitly cleared** to `VALIDATION_ELIGIBLE` by human disclosure; else synthetic/fixture debug only | No param optimization from fold results |
+| C. Final Untouched Holdout | One-shot gate | `FORWARD-HOLDOUT` only | Sealed until #204; start = Candidate Freeze UTC |
 
-## Leakage controls (plan)
+**Binding decision:** Do **not** promote `HIST-UNKNOWN` to final OOS. Use forward holdout (option 2).
 
-- Chronological splits only; no random row splits.
-- Document purge/embargo if label or position windows overlap fold boundaries (warmup, ATR/EMA lookbacks, open trades spanning folds).
-- Embargo length: **TBD** — propose ≥ max indicator lookback in bars (monthly EMA 20 ≈ multi-month) with human approval; do not invent a false “safe” short embargo.
+## Purge / embargo
 
-## Missing genuine holdout — forced options
+- Chronological splits only.
+- **Proposed embargo:** 90 calendar days (≥ monthly EMA 20 lookback in calendar time for daily bars, conservative).
+- Apply embargo between fold train/eval boundaries and before holdout start.
+- Human must approve embargo length before partition lock is final.
 
-If after audit no `FINAL_HOLDOUT_ELIGIBLE` period exists:
+## Missing / short holdout
 
-1. Wait for new post-freeze market time and publish a new dataset, or
-2. Define an explicit forward holdout with start = freeze timestamp, or
-3. Record final decision `INCONCLUSIVE` (no `ACCEPT_FOR_P6`).
+If at #204 the forward window fails sample-sufficiency (see protocol):
+
+1. Extend forward collection, or
+2. Record `INCONCLUSIVE` (no `ACCEPT_FOR_P6`).
+
+Never relabel seen history as untouched to force ACCEPT.
 
 ## Sign-off
 
 | Role | Name | Date | Notes |
 |------|------|------|-------|
-| Author (audit) | TBD | TBD | |
-| Human approver | TBD | TBD | Required before partition lock |
+| Author (audit) | Cursor agent (P5 execution) | 2026-07-17 | Forward-holdout lock proposed |
+| Human approver | **REQUIRED** | | Comment on #197: `PARTITIONS LOCKED` + embargo days |
 
-**Holdout opened?** `NO` (planning document only)
+**Holdout opened?** `NO`

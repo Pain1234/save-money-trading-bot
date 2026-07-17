@@ -1,7 +1,7 @@
 # P5 Decision Rules (ACCEPT / REJECT / INCONCLUSIVE)
 
-**Status:** PLANNING / NOT FROZEN
-**Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) / [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205) (P5-02 / P5-09)
+**Status:** GATES PROPOSED — awaiting human freeze
+**Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) / [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205)
 **Hard rule:** Freeze before final OOS. No post-hoc threshold changes. Positive return alone never promotes.
 
 ## Outcomes
@@ -12,65 +12,64 @@
 | `REJECT` | No | Failed hard rules or failed final OOS gate |
 | `INCONCLUSIVE` | No | Insufficient or non-decisive evidence |
 
-## Hard REJECT (examples — binding once frozen)
-
-Trigger `REJECT` (invalidate promotion path) when any apply:
+## Hard REJECT (binding once frozen)
 
 - Data leakage or unsealed holdout used for tuning
 - Wrong / unreproducible dataset identity
 - Post-hoc parameter or filter change on the frozen candidate
 - Final OOS fails pre-registered numeric gates
-- Intolerable drawdown vs pre-approved limit (limit TBD at freeze)
-- Net result fails under realistic **base** costs
-- Result unacceptably dependent on few trades (per sufficiency rule)
-- Clear walk-forward instability (pre-registered fold aggregation rules)
+- Max drawdown worse than −25% of starting capital on OOS equity (proposed)
+- Net PnL under **base** costs ≤ 0 on OOS (proposed hard floor)
+- Top-3 trades contribute > 50% of OOS net PnL
+- Walk-forward: fewer than 2 of ≥3 folds with net PnL ≥ 0 under base costs (proposed)
 - Severe backtester / execution inconsistency vs documented parity
-- Public leak of private results that compromises process integrity (process stop; decision may be `REJECT` or halt)
+- Public leak of private results that compromises process integrity
 
-## INCONCLUSIVE (examples)
+## INCONCLUSIVE
 
-- Too few trades / too short history / inadequate regime coverage
-- No genuine untouched holdout and no approved forward holdout yet
-- Technical or data uncertainty without clear economic failure
-- Contradictory evidence without meeting hard REJECT
-- Bootstrap/MC not applicable **and** sample too weak for confidence (document)
+- Sample sufficiency fails
+- Forward holdout shorter than 90 days at evaluation time
+- Inadequate regime coverage (< 2 regimes)
+- Technical/data uncertainty without clear economic failure
+- Bootstrap/MC N/A **and** sample too weak
 
 Default when sufficiency fails: `INCONCLUSIVE`, not `ACCEPT_FOR_P6`.
 
 ## ACCEPT_FOR_P6 (all required)
 
-All must hold:
-
-- [ ] Final OOS gate passed under frozen rules
-- [ ] Net result after costs adequate vs frozen benchmark-relative / absolute gates (TBD at freeze)
-- [ ] Drawdown within pre-approved bound
-- [ ] Walk-forward not driven by a single fold (aggregation rule TBD)
-- [ ] Parameter sensitivity not extremely fragile
-- [ ] Bootstrap/MC risk acceptable **or** documented N/A with sufficiency still met
+- [ ] Final OOS gate passed under frozen numeric rules
+- [ ] OOS net PnL > 0 under base costs
+- [ ] OOS max drawdown ≥ −25% bound (not worse)
+- [ ] Walk-forward fold rule passed
+- [ ] Parameter sensitivity not extremely fragile (no cliff where only exact freeze point works)
+- [ ] Bootstrap/MC 5% net-PnL quantile ≥ 0 **or** documented N/A with sufficiency still met
 - [ ] Sample sufficiency passed
 - [ ] No leakage findings
-- [ ] Full reproducibility (commit, dataset, manifests, seeds)
-- [ ] Human approval recorded in `docs/DECISION_LOG.md`
+- [ ] Full reproducibility
+- [ ] Human approval in `docs/DECISION_LOG.md`
 
-## Numeric gates (template — fill before freeze)
+Benchmark excess vs `eq_weight_btc_eth_sol@1.0` is **informational** for V1 (not a hard ACCEPT gate) to avoid unsuitable-benchmark flattery; cash/net and drawdown remain hard.
+
+## Numeric gates (proposed — human must approve)
 
 | Gate | Direction | Proposed | Rationale | Human approval |
 |------|-----------|----------|-----------|----------------|
-| OOS net PnL vs cash | ≥ | TBD | TBD | TBD |
-| OOS excess vs primary benchmark | ≥ / or informational | TBD | TBD | TBD |
-| Max drawdown | ≤ | TBD | Risk spec alignment | TBD |
-| Min trades (OOS) | ≥ | TBD | Sufficiency | TBD |
-| Max top-N trade PnL share | ≤ | TBD | Fragility | TBD |
-| Walk-forward fold pass rule | e.g. k of n | TBD | Stability | TBD |
-| Cost-stress survival | base + named stresses | TBD | Realism | TBD |
+| OOS net PnL vs cash | > | 0 | Must beat inactivity after costs | Pending |
+| OOS excess vs eq-weight portfolio | informational | — | Avoid forced alpha vs arbitrary weights | Pending |
+| Max drawdown | ≥ | −25% of start capital | Risk budget proxy pending risk-spec ADR | Pending |
+| Min trades (OOS) | ≥ | 30 | Sufficiency | Pending |
+| Max top-3 trade PnL share | ≤ | 50% | Fragility | Pending |
+| Walk-forward fold pass | ≥ | 2 of n (n≥3) net≥0 | Stability | Pending |
+| Cost-stress survival | net≥0 under combined elevated | required | Realism | Pending |
+| Combined extreme stress | informational / soft | may be <0 | Document; not sole REJECT unless base also fails | Pending |
 
-Until filled and approved, execution remains blocked.
+Until human comments `DECISION RULES FROZEN` on #198, OOS execution remains blocked.
 
 ## Decision record (P5-09 template)
 
 ```text
 Decision: ACCEPT_FOR_P6 | REJECT | INCONCLUSIVE
-Candidate: strategy_id @ strategy_version @ git_sha
+Candidate: trend_v1 @ 1.0.0 @ <git_sha>
 Evidence refs: (private paths + public issue links without metrics)
 Deviations: none | ...
 Human decider: ...
