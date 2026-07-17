@@ -5,20 +5,23 @@ Offline, reproducible experiment pipeline for BTC/ETH/SOL paper research.
 ## Binding dependency chain
 
 ```text
-P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → P4 done → P5
+P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → {#163…#167} → #147 → P4 research done → P5
 ```
+
+Public-release gates (#176–#180) may remain open on the milestone after research docs (#147).
 
 ## Modules
 
 | Module | Role |
 |--------|------|
 | `experiment_spec` | Versioned ExperimentSpec (#141) |
+| `dataset_binding` | P3 DatasetManifest bind + quarantine (#163) |
 | `identity` / `run_manifest` | experiment_id / run_id / attempt_id (#142) |
-| `strategy_resolver` | Strategy interface + Trend V1 resolver (#148) |
-| `costs` | Cost field enforcement + backtester mapping (#49) |
-| `metrics_contract` / `benchmark` | metrics.json + report.md + buy-and-hold (#144) |
+| `strategy_resolver` | Strategy interface + injected engine (#148 / #166) |
+| `costs` | Cost field enforcement + backtester mapping (#49 / #164) |
+| `metrics_contract` / `benchmark` | metrics.json + report.md + buy-and-hold (#144 / #164) |
 | `runner` / `artifacts` | CLI runner + atomic layout (#143) |
-| `registry` | Index + compare + invalidation sidecar (#145) |
+| `registry` | Index + semantic compare + trust-anchor verify + invalidation (#145 / #165 / #167) |
 | `repro` | Semantic double-run compare (#146) |
 
 ## End-to-end CLI example
@@ -70,9 +73,31 @@ python -m pytest tests/research/test_double_run_repro.py -v
 | `run <spec> --bundle <json> [--artifacts-root] [--dry-run]` | Execute or identity dry-run; registers on complete |
 | `inspect <run_dir>` | Print manifest + metrics + experiment |
 | `list [--artifacts-root]` | List registry entries |
-| `show <run_id>` | Show one entry (verifies checksums) |
-| `compare <run_a> <run_b>` | Compare two runs (compatibility + checksums) |
+| `show <run_id>` | Show one entry; verifies files against **registry** checksums (#165) |
+| `compare <run_a> <run_b>` | Semantic Spec + RunManifest identity compare (#167); see below |
 | `invalidate <run_id> --reason ... [--actor] [--replacement-run-id]` | Sidecar invalidation |
+
+### Compare semantics (#167)
+
+`compare` loads validated `experiment.json` / `run_manifest.json` and diffs:
+
+- every key of `semantic_spec_dict()` as `spec.*` (symbols, time_range, starting_capital, fee/slippage/funding assumptions, parameters, random_seed, cost_scenarios, dataset hash, …)
+- every key of `semantic_manifest_payload()` as `manifest.*` (git commit, env/schema/cost pins, …; excludes `attempt_id` / timestamps)
+- registry entry status / version fields
+
+Runs are compatible only when both are `complete` and there are **no** diffs. Invalidated runs are incompatible.
+
+### Interpret costs
+
+Read `costs.json` together with `metrics.json`: fee/slippage/funding model versions, `funding_semantics`, and the gross identity `net + fees + slippage + funding_costs`. Funding detail: [FUNDING.md](FUNDING.md). Cost **stress** sweeps are **P5**.
+
+### Analyze failures
+
+Incomplete/invalid runs stay out of “complete” registry status. Use `inspect` on the run directory, check binding errors (dataset/quality), and prefer a new `attempt_id` / corrected Spec over editing sealed artifacts.
+
+### Archive and retention
+
+Completed `(experiment_id, run_id)` directories are immutable. Keep originals; mark bad runs with `invalidate` (registry + sidecar). Do not rewrite `run_manifest.json` or reseal trust by editing only `checksums.json`.
 
 ## Docs in this folder
 
