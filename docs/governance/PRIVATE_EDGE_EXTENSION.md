@@ -1,6 +1,6 @@
 # Private-edge extension boundary
 
-Parent epic: **#176**. This issue: **#180**.
+Parent epic: **#176**. This issue: **#180** / repair **#210**.
 
 ## Goal
 
@@ -50,7 +50,7 @@ Preferred packaging: **pip-installable public package** (pip install from public
 
 ## Public CI
 
-Public workflows under .github/workflows/ must succeed with only this repository. No 	oken for private repos, no conditional private checkouts.
+Public workflows under .github/workflows/ must succeed with only this repository. No token for private repos, no conditional private checkouts.
 
 ## Verification checklist
 
