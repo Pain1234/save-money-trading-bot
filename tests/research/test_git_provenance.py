@@ -55,8 +55,43 @@ def test_resolve_git_commit_dirty_allowed(tmp_path: Path) -> None:
 def test_resolve_git_commit_missing_repo_fails(tmp_path: Path) -> None:
     empty = tmp_path / "not-a-repo"
     empty.mkdir()
-    with pytest.raises(ValueError, match="unable to resolve HEAD"):
+    with pytest.raises(ValueError, match="no \\.git|unable to resolve HEAD"):
         resolve_git_commit(empty, allow_dirty=False)
+
+
+def test_resolve_git_commit_uses_deploy_env_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty = tmp_path / "image-root"
+    empty.mkdir()
+    monkeypatch.delenv("RESEARCH_GIT_COMMIT", raising=False)
+    monkeypatch.delenv("RAILWAY_GIT_COMMIT_SHA", raising=False)
+    with pytest.raises(ValueError, match="RESEARCH_GIT_COMMIT|RAILWAY_GIT_COMMIT_SHA"):
+        resolve_git_commit(empty, allow_dirty=False)
+
+    pinned = "bc542ca95414c9e395fb8e6a575ca2654442a696"
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", pinned)
+    assert resolve_git_commit(empty, allow_dirty=False) == pinned
+
+    monkeypatch.setenv("RESEARCH_GIT_COMMIT", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    assert (
+        resolve_git_commit(empty, allow_dirty=False)
+        == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    )
+
+
+def test_assert_git_commit_stable_env_pin_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from research.runner import assert_git_commit_stable
+
+    empty = tmp_path / "image-root"
+    empty.mkdir()
+    pinned = "bc542ca95414c9e395fb8e6a575ca2654442a696"
+    monkeypatch.setenv("RESEARCH_GIT_COMMIT", pinned)
+    assert_git_commit_stable(empty, pinned, allow_dirty=False)
+    with pytest.raises(ValueError, match="provenance changed"):
+        assert_git_commit_stable(empty, "0" * 40, allow_dirty=False)
 
 
 def test_assert_git_commit_stable_head_mismatch(tmp_path: Path) -> None:

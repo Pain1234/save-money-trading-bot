@@ -183,6 +183,14 @@ Optional public URL for redirects/metadata:
 |----------|-------|
 | `DASHBOARD_PUBLIC_URL` | `https://bot.save-money.xyz` |
 
+### Research Lab (API, Issue #270)
+
+The API image includes `examples/research/local_lab/`. `start-api.sh` sets
+`RESEARCH_REPO_ROOT` / `RESEARCH_ARTIFACTS_ROOT` to `/app` and points
+`RESEARCH_DATASET_CATALOG_PATH` at the shipped catalog when unset. Registry
+artifacts under `/app/artifacts/research` are ephemeral across redeploys unless
+a volume is attached later.
+
 Never set `NEXT_PUBLIC_PRIVATE_PAPER_API_URL` or expose database URLs to the
 browser bundle.
 
