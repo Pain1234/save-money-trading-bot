@@ -431,7 +431,7 @@ export async function fetchValidationStudy(
 ): Promise<ValidationStudyDetail> {
   return fetchPaperApi<ValidationStudyDetail>(
     `/api/v1/research/validation/${encodeURIComponent(studyId)}`,
-    { revalidate: 5 },
+    { revalidate: 5 }
   );
 }
 
@@ -455,7 +455,7 @@ export async function fetchResearchCompare(
   const params = new URLSearchParams({ run_a: runA, run_b: runB });
   return fetchPaperApi<ResearchCompareResult>(
     `/api/v1/research/experiments/compare?${params.toString()}`,
-    { revalidate: 10 },
+    { revalidate: 10 }
   );
 }
 

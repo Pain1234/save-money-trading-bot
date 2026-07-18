@@ -115,6 +115,7 @@ Completed `(experiment_id, run_id)` directories are immutable. Keep originals; m
 - [GATES.md](GATES.md)
 - [VALIDATION_STUDIES.md](VALIDATION_STUDIES.md)
 - [P4_ACCEPTANCE.md](P4_ACCEPTANCE.md)
+- [RESEARCH_WORKSPACE_ACCEPTANCE.md](RESEARCH_WORKSPACE_ACCEPTANCE.md) — Workspace E2E + manual UI acceptance (#250)
 - [BACKTESTER_PAPER_PARITY.md](BACKTESTER_PAPER_PARITY.md)
 
 ## Phase boundaries
