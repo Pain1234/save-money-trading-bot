@@ -397,6 +397,12 @@ describe rulesets as the source of truth. Phase 2 may retarget check names per
 **Status:** Accepted (architecture / planning — **not** a runtime activation)
 **Date:** 2026-07-18
 
+**Ownership:** ADR-018 is the **sole** architecture decision record for
+centralized Strategy Intent allocation and the single execution owner per
+trading account. Other ADRs (including ADR-014) may reference this model; they
+MUST NOT redefine, renumber, or claim a competing intent-allocation or
+multi-writer execution-owner design.
+
 **Context:**
 The long-term target is a multi-universe, multi-asset, multi-timeframe,
 multi-strategy research platform with optional later execution. Today strategies
