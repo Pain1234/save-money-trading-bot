@@ -24,13 +24,16 @@ This module does **not**:
 
 | Field | Value | Notes |
 |-------|-------|-------|
-| `period` | `calendar_month` | Labels use only bars inside the month (no look-ahead) |
+| `period` | `calendar_month` | Period metrics use only bars inside the month |
 | `trend_bull_min` | `0.05` | Same public +5% rule as #199 |
 | `trend_bear_max` | `-0.05` | Same public −5% rule as #199 |
 | `vol_low_max` | `0.015` | Generic public default (daily-return population stdev) |
 | `vol_high_min` | `0.035` | Generic public default; not private P5 median |
 | `min_bars_per_period` | `5` | Below → `INSUFFICIENT` (fail-closed) |
 | `transition_window_bars` | `5` | Days tagged `TRANSITION_IN` / `TRANSITION_OUT` |
+| `require_calendar_adjacency` | `true` | Missing months break transition chains |
+| `labeling_mode` | `ex_post_period_attribution` | Day labels inherit completed-month labels |
+| `point_in_time_safe` | `false` | Not for causal / live signals |
 
 Identity binding: `classifier_version` **and**
 `classifier_content_hash` (SHA-256 over canonical classifier JSON). Silent
@@ -63,6 +66,24 @@ bars_content_hash}))}`
 
 Same pins + same closes → same labels, transitions, distribution, and id.
 
+## Ex-post attribution vs point-in-time
+
+| Layer | Look-ahead rule |
+|-------|-----------------|
+| **Period** trend/vol | Uses only closes inside that calendar month (no cross-month look-ahead) |
+| **Day** trend/vol / events | **Ex-post:** each day inherits the completed month label (#199). Completing the month can change earlier days' inherited labels. |
+| **Transitions** | Only between **calendar-adjacent** months; gaps are recorded in `calendar_gaps` and do **not** fabricate skip transitions |
+
+Artifact flags (binding for consumers / #291 API):
+
+- `labeling_mode`: `ex_post_period_attribution`
+- `point_in_time_safe`: `false`
+- `usage.forbidden`: includes `point_in_time_signal`, `live_entry_filter`, `causal_intrabar_decision`
+- Day / event rows include `"attribution": "period_ex_post"`
+
+Do **not** feed day labels into a causal backtest decision path. Scorecard
+Layer 2 / regime quality breakdowns are the intended consumers.
+
 ## Artifact
 
 Path convention (sibling store, like robustness/gates):
@@ -76,8 +97,9 @@ Overwrite of an existing sealed artifact is refused. Tampering fails
 `verify_regime_labels_seal`.
 
 Artifact fields include `period_labels`, `day_labels`, `transitions`,
-`day_events`, and `distribution`. Missing/short periods use `INSUFFICIENT`
-— never coerced to a zero score.
+`calendar_gaps`, `day_events`, and `distribution`. Missing/short periods use
+`INSUFFICIENT` — never coerced to a zero score. Day/event rows are
+ex-post attribution only (`point_in_time_safe=false`).
 
 ## Public / private
 

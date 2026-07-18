@@ -64,8 +64,11 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     regime = json.loads((run_dir / "regime_labels.json").read_text(encoding="utf-8"))
     assert regime["classifier_version"] == "1.0"
     assert len(regime["classifier_content_hash"]) == 64
+    assert regime["point_in_time_safe"] is False
+    assert regime["labeling_mode"] == "ex_post_period_attribution"
     assert "distribution" in regime
     assert "period_labels" in regime
+    assert "calendar_gaps" in regime
 
     costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
     assert costs["gross_net_required"] is True

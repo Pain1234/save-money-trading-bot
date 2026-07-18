@@ -38,12 +38,20 @@ class RegimeClassifier:
     transition_window_bars: int
     period: str = "calendar_month"
     schema_version: str = "1.0"
+    # Transitions only between immediate calendar neighbors (no Jan→Mar skip).
+    require_calendar_adjacency: bool = True
+    # Day labels inherit completed-month labels (#199 attribution); not PIT-safe.
+    labeling_mode: str = "ex_post_period_attribution"
+    point_in_time_safe: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
             "description": self.description,
+            "labeling_mode": self.labeling_mode,
             "min_bars_per_period": self.min_bars_per_period,
             "period": self.period,
+            "point_in_time_safe": self.point_in_time_safe,
+            "require_calendar_adjacency": self.require_calendar_adjacency,
             "schema_version": self.schema_version,
             "transition_window_bars": self.transition_window_bars,
             "trend_bear_max": self.trend_bear_max,
@@ -74,7 +82,9 @@ _CLASSIFIER_REGISTRY: dict[str, RegimeClassifier] = {
         description=(
             "Generic P4.9 regime classifier: calendar-month trend "
             "(#199 +5%/-5%) and three-way vol bounds with explicit "
-            "transition windows. Not the private P5 partition-B median; "
+            "transition windows. Day labels are ex-post period "
+            "attribution (not point-in-time safe). Transitions require "
+            "calendar adjacency. Not the private P5 partition-B median; "
             "Strategy V1 freeze binding is #294."
         ),
         trend_bull_min="0.05",
@@ -84,6 +94,9 @@ _CLASSIFIER_REGISTRY: dict[str, RegimeClassifier] = {
         vol_high_min="0.035",
         min_bars_per_period=5,
         transition_window_bars=5,
+        require_calendar_adjacency=True,
+        labeling_mode="ex_post_period_attribution",
+        point_in_time_safe=False,
     ),
 }
 

@@ -1,9 +1,14 @@
-"""Deterministic monthly regime labeling without look-ahead (Issue #285).
+"""Deterministic monthly regime labeling (Issue #285).
 
-Each calendar month is labeled using **only** closes inside that month.
-Day-level labels inherit the month's trend/vol. Volatility thresholds are
-frozen on the classifier definition (never fitted from the evaluation window),
-so future months cannot change past labels.
+**Period metrics** (trend/vol for a calendar month) use **only** closes inside
+that month — no cross-month look-ahead when computing the month return/vol.
+
+**Day labels** intentionally **inherit the completed month's** ex-post label
+(#199 / scorecard attribution). They are **not** point-in-time safe: adding
+later bars in the same month can change earlier days' inherited labels.
+Artifacts set ``point_in_time_safe=false`` and
+``labeling_mode=ex_post_period_attribution`` so consumers must not use them as
+causal trading signals.
 """
 
 from __future__ import annotations
@@ -17,6 +22,10 @@ from decimal import Decimal
 from research.regime.classifier import RegimeClassifier
 from research.regime.taxonomy import TrendLabel, VolLabel
 
+# Binding contract fields echoed into every regime_labels artifact.
+LABELING_MODE = "ex_post_period_attribution"
+POINT_IN_TIME_SAFE = False
+
 
 @dataclass(frozen=True)
 class PriceBar:
@@ -28,7 +37,7 @@ class PriceBar:
 
 @dataclass(frozen=True)
 class PeriodLabel:
-    """One calendar-month regime label."""
+    """One calendar-month regime label (ex-post over the full period)."""
 
     period_id: str  # YYYY-MM
     trend: TrendLabel
@@ -41,7 +50,7 @@ class PeriodLabel:
 
 @dataclass(frozen=True)
 class DayLabel:
-    """Day inherits its calendar month's trend/vol (no intra-month look-ahead)."""
+    """Day inherits its calendar month's **ex-post** trend/vol (not PIT-safe)."""
 
     as_of: date
     period_id: str
@@ -181,7 +190,10 @@ def label_days(
     bars: Sequence[PriceBar],
     period_labels: Sequence[PeriodLabel],
 ) -> tuple[DayLabel, ...]:
-    """Attach each bar to its month's trend/vol label."""
+    """Attach each bar to its month's **ex-post** trend/vol label.
+
+    Not point-in-time safe — see module docstring and artifact flags.
+    """
     by_period = {p.period_id: p for p in period_labels}
     out: list[DayLabel] = []
     for bar in bars:

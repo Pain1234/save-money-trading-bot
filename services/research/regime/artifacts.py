@@ -20,6 +20,7 @@ from research.regime.classifier import (
     compute_classifier_content_hash,
 )
 from research.regime.labeling import (
+    LABELING_MODE,
     DayLabel,
     PeriodLabel,
     PriceBar,
@@ -31,6 +32,7 @@ from research.regime.labeling import (
 from research.regime.transitions import (
     DayEventLabel,
     PeriodTransition,
+    detect_calendar_gaps,
     detect_period_transitions,
     label_day_events,
 )
@@ -122,14 +124,38 @@ def classify_regime_series(
 
     periods = label_periods(ordered, classifier)
     days = label_days(ordered, periods)
-    transitions = detect_period_transitions(periods)
-    events = label_day_events(ordered, days, periods, classifier)
+    adjacency = classifier.require_calendar_adjacency
+    transitions = detect_period_transitions(
+        periods, require_calendar_adjacency=adjacency
+    )
+    gaps = detect_calendar_gaps(periods)
+    events = label_day_events(
+        ordered,
+        days,
+        periods,
+        classifier,
+        require_calendar_adjacency=adjacency,
+    )
 
     artifact: dict[str, object] = {
         "schema_version": REGIME_LABELS_SCHEMA_VERSION,
         "classification_id": classification_id,
         "classifier_version": classifier.version,
         "classifier_content_hash": clf_hash,
+        "labeling_mode": classifier.labeling_mode or LABELING_MODE,
+        "point_in_time_safe": classifier.point_in_time_safe,
+        "usage": {
+            "allowed": [
+                "ex_post_attribution",
+                "regime_quality_breakdown",
+                "scorecard_layer_2",
+            ],
+            "forbidden": [
+                "point_in_time_signal",
+                "live_entry_filter",
+                "causal_intrabar_decision",
+            ],
+        },
         "dataset_id": dataset_id,
         "dataset_content_hash": dataset_content_hash,
         "reference_symbol": reference_symbol,
@@ -154,6 +180,7 @@ def classify_regime_series(
                 "trend": d.trend,
                 "vol": d.vol,
                 "status": d.status,
+                "attribution": "period_ex_post",
             }
             for d in days
         ],
@@ -171,12 +198,21 @@ def classify_regime_series(
             }
             for t in transitions
         ],
+        "calendar_gaps": [
+            {
+                "after_period_id": g.after_period_id,
+                "before_period_id": g.before_period_id,
+                "missing_period_ids": list(g.missing_period_ids),
+            }
+            for g in gaps
+        ],
         "day_events": [
             {
                 "as_of": e.as_of.isoformat(),
                 "period_id": e.period_id,
                 "event": e.event,
                 "transition_id": e.transition_id,
+                "attribution": "period_ex_post",
             }
             for e in events
         ],

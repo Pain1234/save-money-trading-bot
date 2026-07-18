@@ -14,7 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   semantic double-run compare includes the artifact.
 - Docs: `docs/research/REGIME_CLASSIFIER.md`; extends #199 without private
   P5 numbers; ARTIFACT_FORMAT / REGIME_SCORECARD / P5 regimes updated.
-- Unit + runner tests: Bull/Bear/Sideways, transitions, no look-ahead,
+- Unit + runner tests: Bull/Bear/Sideways, transitions, no cross-month
+  period look-ahead, ex-post day-label contract, calendar-gap non-adjacency,
   INSUFFICIENT, hash stability, seal tamper rejection, repro parity.
 
 ### Added (P7 architecture — centralized intent / single execution owner)

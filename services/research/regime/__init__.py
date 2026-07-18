@@ -23,6 +23,8 @@ from research.regime.classifier import (
     verify_classifier_content_hash,
 )
 from research.regime.labeling import (
+    LABELING_MODE,
+    POINT_IN_TIME_SAFE,
     DayLabel,
     PeriodLabel,
     PriceBar,
@@ -34,12 +36,16 @@ from research.regime.labeling import (
 from research.regime.transitions import (
     DayEventLabel,
     PeriodTransition,
+    detect_calendar_gaps,
     detect_period_transitions,
     directed_transition_id,
     label_day_events,
+    months_are_calendar_adjacent,
 )
 
 __all__ = [
+    "LABELING_MODE",
+    "POINT_IN_TIME_SAFE",
     "REGIME_LABELS_FILENAME",
     "REGIME_LABELS_SCHEMA_VERSION",
     "DayEventLabel",
@@ -57,6 +63,7 @@ __all__ = [
     "compute_bars_content_hash",
     "compute_classification_id",
     "compute_classifier_content_hash",
+    "detect_calendar_gaps",
     "detect_period_transitions",
     "directed_transition_id",
     "get_classifier",
@@ -64,6 +71,7 @@ __all__ = [
     "label_days",
     "label_periods",
     "list_classifier_versions",
+    "months_are_calendar_adjacent",
     "regime_distribution",
     "verify_classifier_content_hash",
     "verify_regime_labels_seal",
