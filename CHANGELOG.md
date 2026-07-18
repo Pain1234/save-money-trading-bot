@@ -19,9 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (#104, #106, #128–#130, #135, #139, #304, #305).
 - Note: accidental re-seed duplicates #306–#332 from a 2026-07-18 governance
   `--apply` were closed the same day as duplicates of canonical issues. Root
-  cause corrected: not “closed seeds ignored” on current `main` (script already
-  uses `state=all` + skip); likely apply from an outdated worktree/branch.
-  Record `git rev-parse HEAD` before future authenticated applies.
+  cause of the apply remains **unknown** (HEAD not recorded). Ruled out on
+  current `main`: “closed seeds ignored” (script already uses `state=all` +
+  skip). Leading hypothesis: outdated worktree/branch. Record
+  `git rev-parse HEAD` before future authenticated applies.
 
 ### Fixed (Dashboard design ↔ paper API — #238 re-review)
 

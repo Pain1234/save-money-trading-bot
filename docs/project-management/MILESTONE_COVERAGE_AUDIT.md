@@ -96,18 +96,18 @@ No runtime.
 closed P0–P2.5 and P7 seed issues as #306–#332. Those duplicates were closed
 the same day pointing at canonical issues (#2–#16, #95–#103, #104–#106).
 
-**Root cause (evidenced):** Current `main` (and this PR's base) already loads
-issues with `state=all` via `load_all_issues()` and skips creation when
-`find_seed_issue()` matches a closed or open seed (`SKIP duplicate creation`),
-with regression coverage in `tests/governance/`. The apply that produced
-#306–#332 is therefore **not** explained by “closed seeds are ignored” on the
-current script. The credible cause is an **apply from an outdated local
-worktree/branch** (or otherwise stale checkout) that lacked that closed-seed
-idempotency path. The exact local HEAD of that apply was not recorded at the
-time; governance sync commits on this branch begin at
-`f88eb7b6443d623429b3b6007013b0080b9609c2` (ADR-018 docs). Prefer
-`--dry-run` only for governance verification unless repairing known
-duplicates; record `git rev-parse HEAD` before any authenticated `--apply`.
+**Root cause: unknown.** The exact local HEAD of that `--apply` was **not**
+recorded. What can be ruled out on current `main`: closed seeds are **not**
+ignored — `load_all_issues()` uses `state=all`, `find_seed_issue()` skips
+duplicates (`SKIP duplicate creation`), and `tests/governance/` covers that
+path. Therefore the earlier claim “closed seeds are not treated as satisfied”
+is incorrect for the current script. **Leading hypothesis** (not proven): an
+apply from an outdated local worktree/branch that lacked that closed-seed
+idempotency path. Governance sync commits on this docs branch begin at
+`f88eb7b6443d623429b3b6007013b0080b9609c2` (ADR-018 docs start — **not** the
+apply HEAD). Prefer `--dry-run` only for governance verification unless
+repairing known duplicates; record `git rev-parse HEAD` before any
+authenticated `--apply`.
 
 ### Open PRs (audit-time)
 
