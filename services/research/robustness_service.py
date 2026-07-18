@@ -734,12 +734,14 @@ class RobustnessOrchestrationService:
                 bootstrap_result=bootstrap_result,
                 summary=summary,
             )
-            save_robustness_manifest(self.root, manifest)
+            save_path, manifest_digest = save_robustness_manifest(self.root, manifest)
+            del save_path  # path is under robustness_artifact_dir; digest is the seal
 
             def _finish(job_: RobustnessJob) -> None:
                 job_.status = "completed"
                 job_.updated_at = _utc_now()
                 job_.finished_at = job_.updated_at
+                job_.manifest_content_hash = manifest_digest
                 if n_failed:
                     job_.error = f"{n_failed} von {len(children)} Kind-Läufen fehlgeschlagen"
                     job_.error_detail = json.dumps(
