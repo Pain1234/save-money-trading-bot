@@ -20,6 +20,7 @@ SEMANTIC_ARTIFACT_NAMES: tuple[str, ...] = (
     "costs.json",
     "experiment.json",
     "chart_data.json",
+    "regime_labels.json",
 )
 
 

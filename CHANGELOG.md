@@ -10,10 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Versioned deterministic regime + transition classifier under
   `services/research/regime/` (`classifier_version` `1.0` + content hash).
-- Sealed `regime_labels.json` artifact helpers; docs
-  `docs/research/REGIME_CLASSIFIER.md`; extends #199 without private P5 numbers.
-- Unit tests: Bull/Bear/Sideways, transitions, no look-ahead, INSUFFICIENT,
-  hash stability, seal tamper rejection.
+- Research runner writes sealed-in-checksums `regime_labels.json` per run;
+  semantic double-run compare includes the artifact.
+- Docs: `docs/research/REGIME_CLASSIFIER.md`; extends #199 without private
+  P5 numbers; ARTIFACT_FORMAT / REGIME_SCORECARD / P5 regimes updated.
+- Unit + runner tests: Bull/Bear/Sideways, transitions, no look-ahead,
+  INSUFFICIENT, hash stability, seal tamper rejection, repro parity.
 
 ### Added (P7 architecture — centralized intent / single execution owner)
 

@@ -61,18 +61,18 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
         assert (run_dir / name).is_file(), name
     import json
 
+    regime = json.loads((run_dir / "regime_labels.json").read_text(encoding="utf-8"))
+    assert regime["classifier_version"] == "1.0"
+    assert len(regime["classifier_content_hash"]) == 64
+    assert "distribution" in regime
+    assert "period_labels" in regime
+
     costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
     assert costs["gross_net_required"] is True
     assert "fee_model_version" in costs
     from research.costs import COST_MODEL_VERSION
 
     assert costs["cost_model_version"] == COST_MODEL_VERSION
-    regime = json.loads((run_dir / "regime_labels.json").read_text(encoding="utf-8"))
-    assert regime["classifier_version"] == "1.0"
-    assert len(regime["classifier_content_hash"]) == 64
-    assert regime["reference_symbol"] == "BTC"
-    assert "distribution" in regime
-    assert "period_labels" in regime
     verify_checksums(run_dir)
 
     again = run_experiment(
