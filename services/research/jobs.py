@@ -479,7 +479,12 @@ class ResearchJobStore:
         lease_id: str,
         lease_seconds: int,
     ) -> ResearchJob:
-        """Heartbeat: extend ``lease_expires_at`` while still the current owner."""
+        """Heartbeat: extend ``lease_expires_at`` while still the current owner.
+
+        Under the same cross-process lock, also rejects renewals when
+        ``lease_expires_at`` has already elapsed — a paused worker must not
+        keep a lease alive after orphan recovery is entitled to reclaim it.
+        """
         with self.lock_for(experiment_id), _JobFileLock(self._lock_path(experiment_id)):
             job = self._read_unlocked(experiment_id)
             if job is None:
@@ -487,6 +492,11 @@ class ResearchJobStore:
             if job.status != "running" or job.worker_id != worker_id or job.lease_id != lease_id:
                 raise JobTransitionError(
                     "lease is no longer owned by this worker/attempt",
+                    current_status=job.status,
+                )
+            if _lease_expired(job.lease_expires_at):
+                raise JobTransitionError(
+                    "lease expired; refusing renewal",
                     current_status=job.status,
                 )
             job.lease_expires_at = _future_iso(lease_seconds)
@@ -505,11 +515,10 @@ class ResearchJobStore:
         """Conditional terminal write (Issue #245 P1).
 
         Applies ``mutate`` (expected to set a terminal status) only if the
-        job is not already terminal and the caller still owns its current
-        ``worker_id`` + ``lease_id``. A stale worker whose lease has since
-        been reassigned or recovered — or a job already failed/completed by
-        orphan recovery — raises :class:`JobTransitionError` instead of
-        silently overwriting state.
+        job is not already terminal, the caller still owns its current
+        ``worker_id`` + ``lease_id``, **and** the lease has not expired.
+        A paused worker that lost its lease must not write ``completed``
+        after orphan recovery is entitled to fail-close the job.
         """
         with self.lock_for(experiment_id), _JobFileLock(self._lock_path(experiment_id)):
             job = self._read_unlocked(experiment_id)
@@ -525,6 +534,11 @@ class ResearchJobStore:
             if job.worker_id != worker_id or job.lease_id != lease_id:
                 raise JobTransitionError(
                     "stale worker/lease; refusing terminal write",
+                    current_status=job.status,
+                )
+            if _lease_expired(job.lease_expires_at):
+                raise JobTransitionError(
+                    "lease expired; refusing terminal write",
                     current_status=job.status,
                 )
             mutate(job)

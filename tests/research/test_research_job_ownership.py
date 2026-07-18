@@ -230,6 +230,35 @@ def test_finish_rejects_stale_worker_and_lease(tmp_path: Path) -> None:
     assert store.get("exp_finish").status == "completed"
 
 
+def test_renew_and_finish_reject_expired_lease(tmp_path: Path) -> None:
+    """Paused worker must not renew/finish after lease_expires_at elapsed."""
+    store = ResearchJobStore(tmp_path)
+    store.save(_queued_job("exp_expired_owner"))
+    job = store.claim("exp_expired_owner", worker_id="worker-a", lease_seconds=30)
+
+    past = (datetime.now(UTC) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    store.update(
+        "exp_expired_owner",
+        lambda j: setattr(j, "lease_expires_at", past),
+    )
+
+    with pytest.raises(JobTransitionError, match="lease expired"):
+        store.renew_lease(
+            "exp_expired_owner",
+            worker_id="worker-a",
+            lease_id=job.lease_id,
+            lease_seconds=60,
+        )
+    with pytest.raises(JobTransitionError, match="lease expired"):
+        store.finish(
+            "exp_expired_owner",
+            worker_id="worker-a",
+            lease_id=job.lease_id,
+            mutate=lambda j: setattr(j, "status", "completed"),
+        )
+    assert store.get("exp_expired_owner").status == "running"
+
+
 def test_finish_rejects_write_after_orphan_recovery_reassigned_job(tmp_path: Path) -> None:
     """A worker that lost its lease to recovery must not resurrect the job."""
     store = ResearchJobStore(tmp_path)
