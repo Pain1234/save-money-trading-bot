@@ -14,27 +14,57 @@ transition-risk profile. No LLM as source of persisted labels.
 
 ## Rules (policy `1.0`)
 
-Versioned + content-hashed thresholds in `BehaviourPolicy`.
+Versioned + content-hashed thresholds **and** priority orders in
+`BehaviourPolicy` (including late-entry/exit floors, reentry multiplier,
+transition-risk cutoffs). Silent edits change `policy_content_hash`.
 
 | Label | Deterministic condition (summary) |
 |-------|-----------------------------------|
-| `DEFENSIVE_INACTIVE` | Zero closed trades (incl. Sideways) — **not** a failure |
-| `PROFITABLE` | `net_pnl >= profitable_net_min` |
+| `DEFENSIVE_INACTIVE` | Zero closed trades **and** trend `SIDEWAYS` — not a failure |
+| `LATE_ENTRY` | Zero closed trades on `BULL`/`BEAR`, or low time-in-market on trend |
+| `PROFITABLE` | `net_pnl >= profitable_net_min` (`0.01`; break-even / missing ≠ profit) |
 | `CONTROLLED_BLEED` | Mild negative net within floor |
 | `WHIPSAW_PRONE` | Many trades, non-positive expectancy, negative net |
 | `COST_INTENSIVE` | Cost / max(\|net\|,1) above ratio |
 | `TAIL_RISK_EXPOSED` | `tail_loss` above floor |
 | `SHOCK_DEPENDENT` | High PnL concentration with losses |
-| `LATE_ENTRY` / `LATE_EXIT` | Exposure proxies on trend regimes |
-| `OVERACTIVE_REENTRY` | Very high trade count with non-positive net |
-| `INSUFFICIENT_EVIDENCE` | Insufficient status / empty label set |
+| `LATE_EXIT` | High time-in-market on trend with negative net |
+| `OVERACTIVE_REENTRY` | Trades ≥ whipsaw × multiplier with non-positive net |
+| `INSUFFICIENT_EVIDENCE` | Missing required metrics, untrusted evidence, or empty label set |
 
-`main_weakness` / `main_strength` follow a documented priority order.
+`main_weakness` / `main_strength` use **policy-versioned** priority tuples.
+
+### Evidence fail-closed
+
+When `regime_metrics.evidence_status != OK` (e.g. incomplete coverage from
+#287 → `INCONCLUSIVE`):
+
+- Per-regime labels forced to `INSUFFICIENT_EVIDENCE`
+- `main_strength` suppressed (`null`)
+- `evidence_trusted: false`
+- Transition `risk_label` → `INSUFFICIENT_EVIDENCE`
+
+Missing / `NOT_AVAILABLE` `net_pnl` on active regimes → `INSUFFICIENT_EVIDENCE`
+(never coerced to 0 / PROFITABLE).
+
+## Identity
+
+`behaviour_id` binds: `run_id`, `quality_id`, `classification_id`,
+`classifier_content_hash`, `transition_evidence_hash` (canonical transitions +
+day_events), `policy_version`, `policy_content_hash`.
+
+Pin checks against `regime_labels` require matching dataset **and**
+classification pins (reject foreign classification of the same dataset).
+
+`evaluate_behaviour_profile_from_run_dir` **requires** external
+`trusted_checksums` (registry trust anchor). Local `checksums.json` alone is
+not accepted.
 
 ## Transition risk
 
 From `regime_labels.transitions` + `day_events` (optional trades in IN/OUT
-windows). Emits `risk_label` and counts; MAE / time-to-derisk stay
+windows). Emits `risk_label`, trade count, PnL, costs, and
+`window_turnover` (`quantity × entry_fill_price`). MAE / time-to-derisk stay
 `NOT_AVAILABLE` until tick paths exist.
 
 ## Output
@@ -44,6 +74,7 @@ windows). Emits `risk_label` and counts; MAE / time-to-derisk stay
 - `llm_source: false`, `decision_binding: false`, `auto_promotion: false`
 - `human_readable_summary: null` (optional prose never feeds labels)
 - Per-regime `labels`, global weakness/strength, `transition_risk`
+- `evidence_trusted`, classification pins, `transition_evidence_hash`
 
 ## Reproducibility
 

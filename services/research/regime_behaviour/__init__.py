@@ -13,6 +13,7 @@ from research.regime_behaviour.evaluator import (
     BehaviourProfileError,
     BehaviourProfileResult,
     compute_behaviour_id,
+    compute_transition_evidence_hash,
     evaluate_behaviour_profile,
     evaluate_behaviour_profile_from_run_dir,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "build_transition_risk_profile",
     "compute_behaviour_id",
     "compute_policy_content_hash",
+    "compute_transition_evidence_hash",
     "derive_regime_labels",
     "evaluate_behaviour_profile",
     "evaluate_behaviour_profile_from_run_dir",
