@@ -22,7 +22,7 @@ Central project goal:
 | P4 | Research Engine und Research Workspace V1 | **In flight** (Lab #242/#243; catalog #265; chart #266; #245 ownership via #247 stack; #249 Validation Studies pinned; #250 E2E on `feat/250-research-e2e`; #246 compare merged onto this branch for real E2E) | No |
 | P5 | Honest Validation of Trend Strategy V1 | **Planning** (helpers #200–#203 ≠ execution; #251–#254 open; no OOS opened) | No |
 | P6 | Paper Trading Soak | **Not started** (Epic #46; sub-issues #256–#262; clock not started) | No |
-| P7 | Multi-Asset and Independent Strategy Candidates | Planning only (no new impl split until P5/P6 gates) | No |
+| P7 | Multi-Asset and Independent Strategy Candidates | Planning + architecture contracts (ADR-018); identity scaffolding #128–#130 exception; no runtime activation until P5/P6 | No |
 | P8 | Separate Micro-Live System | Blocked (boundary #184 only; no live impl issues) | **Yes — explicit human approval** |
 | P9 | Controlled Scaling | Blocked (boundary #185 only; detailed split after P8) | **Yes — explicit human approval** |
 
@@ -41,7 +41,9 @@ Central project goal:
 - **P5** planning/helpers (#197–#203, #181) ≠ actual Strategy V1 validation. Execution issues: #251–#254; study register #255; final OOS #204 still blocked. See `docs/research/p5/README.md`.
 - **P6** soak **not started**. Epic #46 decomposed into #256–#262; private telemetry boundary #182.
 - **P2.5** seed issues are closed but ROADMAP exit criteria remain open — status drift documented in the coverage audit; not marked complete.
-- **P7** planning issues only (ADR-014); no implementation decomposition in this sync.
+- **P7** planning + architecture (ADR-014 amended, ADR-018); identity scaffolding
+  #128–#130 may merge under parity/freeze rules; no multi-asset runtime activation
+  until P5/P6. Further activation decomposition after gates.
 - **P8/P9** blocked; only boundary issues (#184/#185). Detailed live/scaling split required before any activation — no wallet/order/signing work.
 - Live trading, wallet signing, and real exchange orders explicitly **not implemented** (`services/paper_trading/README.md`).
 
@@ -613,33 +615,57 @@ Full checklist: `docs/research/p5/P5_EXECUTION_CHECKLIST.md`.
 
 **GitHub milestone:** `P7 – Multi-Asset and Independent Strategy Candidates`
 
-**Planning only** — no multi-asset implementation until P5 validation and P6 paper soak complete (ADR-014).
+**Planning and architecture contracts only** for multi-asset / multi-strategy
+**activation**. Productive implementation and market activation remain blocked
+until P4 completion, P5 honest validation, P6 paper soak, and required human
+approvals (ADR-014 / ADR-018).
+
+**Identity scaffolding exception:** #128–#130 (InstrumentId + additive plumbing)
+MAY merge before P5/P6 as cross-cutting architectural scaffolding only, under
+ADR-018 parity and freeze-window rules. Scaffolding ≠ runtime activation.
 
 ### Goal
 
-Expand beyond BTC/ETH/SOL to additional Hyperliquid markets and independent strategy hypotheses. Each asset class and strategy passes the same research pipeline; no unreviewed simultaneous activation.
+Expand research beyond BTC/ETH/SOL toward multiple research universes, asset
+classes, timeframes, and economically independent strategy modules — with
+centralized opportunity selection, portfolio allocation, internal strategy
+sleeves, and exactly one order owner per trading account. No uncoordinated bots
+with direct write access to the same account (ADR-018, R-025).
 
 ### Scope
 
-- Additional crypto perpetuals (research/shadow first)
-- HIP-3 equity, index, and commodity perpetuals on the same Hyperliquid platform
-- Asset-specific metadata profiles (`CRYPTO_24_7`, `HIP3_EQUITY_PERP`, `HIP3_INDEX_PERP`, `HIP3_COMMODITY_PERP`)
-- Independent strategy portfolio with correlation analysis
+- Architecture / governance / planning issues (contracts, ADRs, issue map)
+- Research universe ≠ execution venue
+- Orthogonal metadata: `asset_class` × `instrument_type` × venue profile (#104)
+- Correlated exposure / cluster risk model (#106)
+- Instrument identity scaffolding (#128–#130) under parity gates
+- Independent / portfolio shadow trading plan (#135) — sleeves, netting,
+  allocation, single executor
+- Multi-asset research dashboard plan (#139) — distinct from P4.9 UI
+- Multi-timeframe role contract and normalized portfolio StrategyIntent contract
+  (planning issues)
+- Additional crypto perpetuals and HIP-3 synthetic perpetuals as **future**
+  research/shadow candidates (P7A–C) — not activated in this planning work
+- Independent strategy portfolio hypotheses (P7D) — planning only
 
 ### Non-scope
 
-- Parallel live activation
-- Treating synthetic equity perps as real stock ownership
-- Bypassing P5/P6 gates
-- Runtime trading implementation in this planning phase
-- **New implementation issues filed only to “complete” the matrix** (this sync documents gaps; decomposition waits for gates)
+- Parallel live activation; wallet signing; real exchange orders
+- Treating synthetic equity/index/commodity perps as real ownership or as futures
+- Bypassing P5/P6 gates for multi-asset / multi-strategy **activation**
+- Runtime trading implementation of allocator, ranking, clustering, or
+  multi-writer execution in this planning phase
+- Hyperliquid subaccounts / multi-process live isolation (P8 — #184)
+- Duplicating P4.9 Research Workspace UI (#297–#303)
 
 ### Prerequisites
 
-- P4 experiment pipeline
+- P4 experiment pipeline / workspace contracts
 - P5 honest validation of Trend Strategy V1
 - P6 paper soak learnings
 - P2.5 dashboard production acceptance (operational monitoring)
+- Before P5 candidate freeze: #128–#130 merged+parity **or** explicitly deferred
+  until after P6 (ADR-018)
 
 ### Sub-phases
 
@@ -653,29 +679,31 @@ Expand beyond BTC/ETH/SOL to additional Hyperliquid markets and independent stra
 #### P7B – HIP-3 Equity Perpetuals
 
 - Stock perpetuals via Hyperliquid/HIP-3 on the same platform
-- **Not** real share ownership — synthetic perpetual exposure only
+- **Not** real share ownership — `EQUITY` + `SYNTHETIC_PERPETUAL` only
 - Separate asset profile with liquidity, funding, gap, and corporate-action assumptions
 - Research and shadow mode first
 
 #### P7C – HIP-3 Index and Commodity Perpetuals
 
-- Index and commodity perpetuals
-- Separate asset profile
+- Index and commodity **synthetic perpetuals** (not futures)
+- Separate asset profile (`INDEX`/`COMMODITY` + `SYNTHETIC_PERPETUAL`)
 - Distinct market, oracle, funding, and liquidity rules
 - Research and shadow mode first
 
 #### P7D – Independent Strategy Portfolio
 
 - Multiple economically distinct strategies (not merely more correlated assets)
-- Separate risk budgets
-- Correlation analysis and portfolio drawdown budget
+- Strategy sleeves, central allocation, single execution owner (ADR-018)
+- Correlation analysis and portfolio drawdown budget (#106)
 - Evaluate marginal benefit vs single-strategy baseline
 
 ### Exit criteria
 
-- [ ] Multi-asset metadata contract defined (planning issue)
-- [ ] HIP-3 equity perpetual validation requirements documented
-- [ ] Correlated multi-asset exposure model defined
+- [ ] Multi-asset metadata contract defined (planning issue #104)
+- [ ] HIP-3 equity perpetual validation requirements documented (#105)
+- [ ] Correlated multi-asset exposure model defined (#106)
+- [ ] Instrument identity scaffolding merged or explicitly deferred (#128–#130)
+- [ ] Centralized intent / single execution owner architecture accepted (ADR-018)
 - [ ] Each candidate has experiment chain through P5-equivalent gates
 - [ ] Correlation to V1 measured
 - [ ] At most one new candidate in paper at a time unless ADR approves
@@ -684,16 +712,24 @@ Expand beyond BTC/ETH/SOL to additional Hyperliquid markets and independent stra
 
 - High correlation cluster → reject diversification claim
 - Asset profile gaps → block paper promotion for that market
+- More than one active order writer per account, or order not traceable to
+  exactly one allocation decision → halt multi-strategy execution design (R-025)
 
 ### Risks
 
 - Apparent diversification with correlated exposure (R-018, R-022)
 - HIP-3 equity perps carry distinct funding/oracle/liquidity risks (R-023)
 - Synthetic equity perps must not be described as real stock holdings (R-024)
+- Multiple execution writers / ambiguous order ownership (R-025)
 
-**Architecture target:** See `docs/ARCHITECTURE.md` § Multi-asset target architecture and ADR-014.
+**Architecture target:** See `docs/ARCHITECTURE.md` § Multi-asset target
+architecture, ADR-014 (amended), and ADR-018.
 
-**Current gap:** Planning issues only (`#104`–`#106`, `#128`–`#130`, `#134`–`#135`, `#139`, `#183`); no multi-asset runtime implementation. Further impl decomposition **after** P5/P6 gates.
+**Current gap:** Planning/architecture issues
+(`#104`–`#106`, `#128`–`#130`, `#134`–`#135`, `#139`, `#183`, `#304`
+MTF-role contract, `#305` StrategyIntent contract; ADR-018). No multi-asset /
+multi-strategy **runtime** implementation. Identity scaffolding may proceed
+under ADR-018; further activation decomposition **after** P5/P6 gates.
 
 ---
 
