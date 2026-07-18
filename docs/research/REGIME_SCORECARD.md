@@ -222,6 +222,10 @@ Per-regime labels from **documented deterministic rules** over raw metrics.
 No LLM output as persisted research result. Optional human-readable summary
 must be clearly separated from deterministic labels.
 
+Runtime (Issue [#289](https://github.com/Pain1234/save-money-trading-bot/issues/289)):
+`services/research/regime_behaviour/`, contract
+[`REGIME_BEHAVIOUR.md`](REGIME_BEHAVIOUR.md), sealed `behavior_profile.json`.
+
 Example labels:
 
 `PROFITABLE` · `DEFENSIVE_INACTIVE` · `CONTROLLED_BLEED` · `WHIPSAW_PRONE` ·

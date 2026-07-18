@@ -55,6 +55,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
         "chart_data.json",
         "regime_labels.json",
         "regime_metrics.json",
+        "behavior_profile.json",
         "events.jsonl",
         "checksums.json",
         "costs.json",
@@ -84,6 +85,15 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     assert quality["reconciliation"]["balanced"] is True
     assert quality["evidence_status"] in ("OK", "INCONCLUSIVE")
     assert quality["attribution_rule"]["drawdown"] == "contiguous_episode_rebased"
+
+    behaviour = json.loads(
+        (run_dir / "behavior_profile.json").read_text(encoding="utf-8")
+    )
+    assert behaviour["schema_version"] == "1.0"
+    assert behaviour["llm_source"] is False
+    assert behaviour["decision_binding"] is False
+    assert "regimes" in behaviour
+    assert "transition_risk" in behaviour
 
     costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
     assert costs["gross_net_required"] is True
