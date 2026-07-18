@@ -9,11 +9,19 @@ import {
   createSeriesMarkers,
   type IChartApi,
   type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type UTCTimestamp,
 } from "lightweight-charts";
 
 import { Card } from "@/components/ui/Card";
-import { buildStopSeriesPoints } from "@/lib/research/trade-chart";
+import {
+  buildStopSeriesPoints,
+  buildTradeMarkers,
+  ChartDataError,
+  parseCandlesForChart,
+  pnlClassName,
+  tradeFocusRange,
+} from "@/lib/research/trade-chart";
 
 interface ChartCandle {
   time: string;
@@ -36,6 +44,7 @@ interface ResearchTrade {
   exit_time: string | null;
   entry_fill_price: string;
   exit_fill_price: string | null;
+  entry_type?: string | null;
   initial_stop?: string | null;
   net_pnl: string | null;
   exit_reason: string | null;
@@ -84,15 +93,6 @@ function chartColors() {
   };
 }
 
-function toUtcTimestamp(iso: string): UTCTimestamp {
-  return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp;
-}
-
-function parseNum(value: string | null | undefined): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
 function formatTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -113,6 +113,7 @@ export function ResearchTradeChart({
   const [symbol, setSymbol] = useState(symbols[0] ?? "");
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartDataResponse | null>(null);
   const [selectedTradeIdx, setSelectedTradeIdx] = useState<number | null>(null);
 
@@ -124,6 +125,7 @@ export function ResearchTradeChart({
     if (!integrityOk || !symbol) {
       setChartData(null);
       setFetchError(null);
+      setChartError(null);
       setLoading(false);
       return;
     }
@@ -131,6 +133,7 @@ export function ResearchTradeChart({
     let cancelled = false;
     setLoading(true);
     setFetchError(null);
+    setChartError(null);
     setChartData(null);
     setSelectedTradeIdx(null);
 
@@ -167,16 +170,51 @@ export function ResearchTradeChart({
   const zoomToTrade = useCallback((trade: ResearchTrade) => {
     const chart = chartRef.current;
     if (!chart) return;
-    const entry = toUtcTimestamp(trade.entry_time);
-    const exit = trade.exit_time ? toUtcTimestamp(trade.exit_time) : entry;
-    const from = (Math.min(entry, exit) - 86400 * 3) as UTCTimestamp;
-    const to = (Math.max(entry, exit) + 86400 * 3) as UTCTimestamp;
-    chart.timeScale().setVisibleRange({ from, to });
+    const { from, to } = tradeFocusRange(trade);
+    chart.timeScale().setVisibleRange({
+      from: from as UTCTimestamp,
+      to: to as UTCTimestamp,
+    });
   }, []);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !integrityOk || loading || fetchError || !chartData) {
+      return;
+    }
+
+    setChartError(null);
+    let candles;
+    let stopData;
+    let markers: SeriesMarker<UTCTimestamp>[];
+    try {
+      candles = parseCandlesForChart(chartData.candles).map((c) => ({
+        time: c.time as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
+      stopData = buildStopSeriesPoints(chartData.trades).map((p) =>
+        "value" in p
+          ? { time: p.time as UTCTimestamp, value: p.value }
+          : { time: p.time as UTCTimestamp },
+      );
+      const colors = chartColors();
+      markers = buildTradeMarkers(chartData.trades, {
+        win: colors.mint,
+        loss: colors.negative,
+        neutral: colors.textMuted,
+      }).map((m) => ({
+        ...m,
+        time: m.time as UTCTimestamp,
+      }));
+    } catch (err) {
+      const message =
+        err instanceof ChartDataError
+          ? err.message
+          : "Chart-Daten sind semantisch ungültig.";
+      setChartError(message);
       return;
     }
 
@@ -205,16 +243,7 @@ export function ResearchTradeChart({
       wickUpColor: colors.mint,
       wickDownColor: colors.negative,
     });
-
-    candleSeries.setData(
-      chartData.candles.map((c) => ({
-        time: toUtcTimestamp(c.time),
-        open: parseNum(c.open),
-        high: parseNum(c.high),
-        low: parseNum(c.low),
-        close: parseNum(c.close),
-      })),
-    );
+    candleSeries.setData(candles);
 
     const stopSeries = chart.addSeries(LineSeries, {
       color: colors.warning,
@@ -223,35 +252,14 @@ export function ResearchTradeChart({
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const stopData = buildStopSeriesPoints(chartData.trades).map((p) =>
-      "value" in p
-        ? { time: p.time as UTCTimestamp, value: p.value }
-        : { time: p.time as UTCTimestamp },
-    );
     if (stopData.length > 0) {
       stopSeries.setData(stopData);
     }
 
-    const markers = chartData.trades.flatMap((trade) => {
-      const items = [
-        {
-          time: toUtcTimestamp(trade.entry_time),
-          position: "belowBar" as const,
-          color: colors.mint,
-          shape: "arrowUp" as const,
-        },
-      ];
-      if (trade.exit_time) {
-        items.push({
-          time: toUtcTimestamp(trade.exit_time),
-          position: "aboveBar" as const,
-          color: colors.negative,
-          shape: "arrowDown" as const,
-        });
-      }
-      return items;
-    });
-    markersRef.current = createSeriesMarkers(candleSeries, markers);
+    markersRef.current = createSeriesMarkers(
+      candleSeries,
+      markers,
+    ) as ISeriesMarkersPluginApi<UTCTimestamp>;
 
     const ro = new ResizeObserver(() => {
       if (container) {
@@ -281,6 +289,7 @@ export function ResearchTradeChart({
       ? chartData.trades[selectedTradeIdx]
       : null;
   const reasonCodes = selectedTrade?.strategy_reason_codes ?? [];
+  const displayError = fetchError ?? chartError;
 
   if (!integrityOk) {
     return (
@@ -307,6 +316,7 @@ export function ResearchTradeChart({
             onChange={(e) => setSymbol(e.target.value)}
             className="rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs text-text-primary"
             data-testid="trade-chart-symbol"
+            aria-label="Symbol"
           >
             {symbols.map((s) => (
               <option key={s} value={s}>
@@ -331,22 +341,46 @@ export function ResearchTradeChart({
         />
       )}
 
-      {!loading && fetchError && (
+      {!loading && displayError && (
         <p
           className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
           data-testid="research-trade-chart-error"
         >
-          {fetchError}
+          {displayError}
         </p>
       )}
 
-      {!loading && !fetchError && chartData && (
+      {!loading && !displayError && chartData && (
         <>
           <div
             ref={containerRef}
             className="h-[320px] w-full"
             data-testid="research-trade-chart-canvas"
           />
+
+          {selectedTrade && (
+            <div
+              className="mt-2 rounded border border-border-subtle bg-bg-elevated px-3 py-2 text-xs"
+              data-testid="trade-chart-tooltip"
+            >
+              <span className="text-text-muted">Fokus: </span>
+              <span className="font-mono">
+                {formatTime(selectedTrade.entry_time)}
+                {" → "}
+                {formatTime(selectedTrade.exit_time)}
+              </span>
+              <span className="mx-2 text-text-muted">·</span>
+              <span className={`font-mono ${pnlClassName(selectedTrade.net_pnl)}`}>
+                PnL {selectedTrade.net_pnl ?? "—"}
+              </span>
+              {selectedTrade.exit_reason && (
+                <>
+                  <span className="mx-2 text-text-muted">·</span>
+                  <span className="font-mono">{selectedTrade.exit_reason}</span>
+                </>
+              )}
+            </div>
+          )}
 
           {chartData.trades.length === 0 ? (
             <p
@@ -379,6 +413,13 @@ export function ResearchTradeChart({
                         selectedTradeIdx === idx ? "bg-mint/10" : ""
                       }`}
                       onClick={() => setSelectedTradeIdx(idx)}
+                      data-testid={`trade-row-${idx}`}
+                      data-pnl={(() => {
+                        const cls = pnlClassName(trade.net_pnl);
+                        if (cls === "text-positive") return "win";
+                        if (cls === "text-negative") return "loss";
+                        return "unknown";
+                      })()}
                     >
                       <td className="px-2 py-1.5 font-mono">
                         {formatTime(trade.entry_time)}
@@ -392,7 +433,9 @@ export function ResearchTradeChart({
                       <td className="px-2 py-1.5 font-mono">
                         {trade.exit_fill_price ?? "—"}
                       </td>
-                      <td className="px-2 py-1.5 font-mono">
+                      <td
+                        className={`px-2 py-1.5 font-mono ${pnlClassName(trade.net_pnl)}`}
+                      >
                         {trade.net_pnl ?? "—"}
                       </td>
                       <td className="px-2 py-1.5 font-mono">

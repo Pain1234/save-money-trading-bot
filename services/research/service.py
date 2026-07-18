@@ -538,6 +538,49 @@ class ResearchReadService:
             value = value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
 
+    @staticmethod
+    def _validate_positive_price(raw: object, *, field: str) -> Decimal:
+        if raw is None or raw == "":
+            msg = f"missing {field}"
+            raise ValueError(msg)
+        try:
+            value = Decimal(str(raw))
+        except Exception as exc:
+            msg = f"invalid {field}: {raw!r}"
+            raise ValueError(msg) from exc
+        if not value.is_finite() or value <= 0:
+            msg = f"{field} must be a finite positive price: {raw!r}"
+            raise ValueError(msg)
+        return value
+
+    @classmethod
+    def _validate_candle_ohlcv(cls, row: dict[str, Any], *, index: int) -> None:
+        """Fail-closed: no invented zeros; OHLC must be finite, positive, consistent."""
+        open_px = cls._validate_positive_price(row.get("open"), field=f"candle[{index}].open")
+        high_px = cls._validate_positive_price(row.get("high"), field=f"candle[{index}].high")
+        low_px = cls._validate_positive_price(row.get("low"), field=f"candle[{index}].low")
+        close_px = cls._validate_positive_price(
+            row.get("close"), field=f"candle[{index}].close"
+        )
+        volume_raw = row.get("volume")
+        if volume_raw is None or volume_raw == "":
+            volume = Decimal("0")
+        else:
+            try:
+                volume = Decimal(str(volume_raw))
+            except Exception as exc:
+                msg = f"invalid candle[{index}].volume: {volume_raw!r}"
+                raise ValueError(msg) from exc
+            if not volume.is_finite() or volume < 0:
+                msg = f"candle[{index}].volume must be finite and >= 0"
+                raise ValueError(msg)
+        if high_px < low_px:
+            msg = f"candle[{index}] high < low"
+            raise ValueError(msg)
+        if high_px < max(open_px, close_px) or low_px > min(open_px, close_px):
+            msg = f"candle[{index}] OHLC inconsistent"
+            raise ValueError(msg)
+
     def _spec_time_range_bounds(
         self, spec: dict[str, Any]
     ) -> tuple[datetime, datetime]:
@@ -590,6 +633,7 @@ class ResearchReadService:
             signal_time = self._parse_iso_datetime(signal_raw, field="signal_time")
             _in_range(signal_time, "signal_time")
 
+        exit_time: datetime | None = None
         exit_raw = trade.get("exit_time")
         if exit_raw is not None and exit_raw != "":
             exit_time = self._parse_iso_datetime(exit_raw, field="exit_time")
@@ -599,6 +643,7 @@ class ResearchReadService:
                 msg = "exit_time is before entry_time"
                 raise ValueError(msg)
 
+        prev_stop_time: datetime | None = None
         for idx, snap in enumerate(trade.get("trailing_stop_history") or []):
             if not isinstance(snap, dict):
                 msg = f"trailing_stop_history[{idx}] is invalid"
@@ -608,6 +653,32 @@ class ResearchReadService:
             )
             _in_range(snap_time, f"trailing_stop_history[{idx}].time")
             _on_candle_axis(snap_time, f"trailing_stop_history[{idx}].time")
+            if snap_time < entry_time:
+                msg = (
+                    f"trailing_stop_history[{idx}].time is before entry_time"
+                )
+                raise ValueError(msg)
+            if exit_time is not None and snap_time > exit_time:
+                msg = (
+                    f"trailing_stop_history[{idx}].time is after exit_time"
+                )
+                raise ValueError(msg)
+            if prev_stop_time is not None and snap_time < prev_stop_time:
+                msg = (
+                    f"trailing_stop_history[{idx}].time is out of order"
+                )
+                raise ValueError(msg)
+            self._validate_positive_price(
+                snap.get("effective_stop"),
+                field=f"trailing_stop_history[{idx}].effective_stop",
+            )
+            prev_stop_time = snap_time
+
+        initial_stop = trade.get("initial_stop")
+        if initial_stop is not None and initial_stop != "":
+            self._validate_positive_price(
+                initial_stop, field="initial_stop"
+            )
 
     def experiment_trades(
         self,
@@ -747,6 +818,7 @@ class ResearchReadService:
             if ts < range_start or ts > range_end:
                 msg = f"candle[{idx}].time outside experiment time_range"
                 raise ValueError(msg)
+            self._validate_candle_ohlcv(row, index=idx)
             candle_times.add(ts)
 
         # Validate trades against range + candle axis (do not reuse trades endpoint

@@ -610,3 +610,114 @@ def test_chart_data_hash_mismatch_fail_closed(
         assert "dataset_content_hash" in resp.json()["detail"]
     finally:
         app.dependency_overrides.pop(get_research_service, None)
+
+
+def _reseal_run(tmp_path: Path, run_dir: Path) -> None:
+    checksums = compute_artifact_checksums(run_dir)
+    registry = tmp_path / "artifacts" / "research" / "registry.jsonl"
+    lines = registry.read_text(encoding="utf-8").strip().splitlines()
+    entry = json.loads(lines[-1])
+    entry["checksums"] = checksums
+    registry.write_text(json.dumps(entry, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def test_chart_rejects_invalid_ohlc_zero_price(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-ohlc", run_id="run-ohlc")
+    chart = json.loads((run_dir / "chart_data.json").read_text(encoding="utf-8"))
+    chart["symbols"]["BTC"][0]["close"] = "0"
+    (run_dir / "chart_data.json").write_text(
+        json.dumps(chart, sort_keys=True), encoding="utf-8"
+    )
+    _reseal_run(tmp_path, run_dir)
+
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get(
+            "/api/v1/research/experiments/exp-ohlc/chart-data",
+            params={"symbol": "BTC"},
+        )
+        assert resp.status_code == 400
+        assert "positive" in resp.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_chart_rejects_inconsistent_ohlc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-ohlc2", run_id="run-ohlc2")
+    chart = json.loads((run_dir / "chart_data.json").read_text(encoding="utf-8"))
+    chart["symbols"]["BTC"][0]["high"] = "100"
+    chart["symbols"]["BTC"][0]["low"] = "40000"
+    (run_dir / "chart_data.json").write_text(
+        json.dumps(chart, sort_keys=True), encoding="utf-8"
+    )
+    _reseal_run(tmp_path, run_dir)
+
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get(
+            "/api/v1/research/experiments/exp-ohlc2/chart-data",
+            params={"symbol": "BTC"},
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"].lower()
+        assert "ohlc" in detail or "high" in detail
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_trades_reject_stop_outside_trade_lifetime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-stop", run_id="run-stop")
+    trades = json.loads((run_dir / "trades.json").read_text(encoding="utf-8"))
+    trades[0]["trailing_stop_history"] = [
+        {
+            "time": "2024-01-25T00:00:00Z",  # after exit_time 2024-01-20
+            "trail_stop": "41000",
+            "effective_stop": "41000",
+        }
+    ]
+    (run_dir / "trades.json").write_text(json.dumps(trades), encoding="utf-8")
+    _reseal_run(tmp_path, run_dir)
+
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get("/api/v1/research/experiments/exp-stop/trades")
+        assert resp.status_code == 400
+        assert "exit_time" in resp.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+
+
+def test_trades_reject_stop_out_of_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dir = _write_run(tmp_path, experiment_id="exp-stop-ord", run_id="run-so")
+    trades = json.loads((run_dir / "trades.json").read_text(encoding="utf-8"))
+    trades[0]["trailing_stop_history"] = [
+        {
+            "time": "2024-01-15T00:00:00Z",
+            "trail_stop": "41000",
+            "effective_stop": "41000",
+        },
+        {
+            "time": "2024-01-12T00:00:00Z",
+            "trail_stop": "40500",
+            "effective_stop": "40500",
+        },
+    ]
+    (run_dir / "trades.json").write_text(json.dumps(trades), encoding="utf-8")
+    # Candle axis needs 2024-01-15 for chart path; trades endpoint only checks range.
+    _reseal_run(tmp_path, run_dir)
+
+    client = _client_for(tmp_path, monkeypatch)
+    try:
+        resp = client.get("/api/v1/research/experiments/exp-stop-ord/trades")
+        assert resp.status_code == 400
+        assert "order" in resp.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
