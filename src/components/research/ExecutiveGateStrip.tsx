@@ -86,12 +86,46 @@ export function ExecutiveGateStrip({ summary }: ExecutiveGateStripProps) {
             Executive Gates
           </h2>
           <p className="mt-0.5 text-[11px] text-text-muted">
-            Integrity → Critical Gates → Evidence → Decision. Fehlende
-            Scorecard-Felder bleiben ehrlich „Nicht verfügbar“ — keine
-            erfundenen Metriken.
+            Integrity → Critical Gates → Evidence → Decision. Alle gebundenen
+            Zellen teilen eine Validation-Study-Evidence-Identität. Fehlende
+            Scorecard-Felder bleiben „Nicht verfügbar“.
           </p>
         </div>
         <Badge variant="neutral">gate-first</Badge>
+      </div>
+
+      <div
+        className="rounded-sm border border-border-subtle bg-bg-base/30 px-2.5 py-1.5 text-[11px]"
+        data-testid="executive-evidence-anchor"
+      >
+        {summary.evidence ? (
+          <p className="text-text-secondary">
+            Evidence-Anker:{" "}
+            <Link
+              href={`/dashboard/research/validation/${encodeURIComponent(summary.evidence.studyId)}`}
+              className="font-mono text-mint hover:underline"
+            >
+              {summary.evidence.studyId}
+            </Link>
+            <span className="text-text-muted">
+              {" "}
+              · {summary.evidence.studyName} · exp{" "}
+              <span className="font-mono">{summary.evidence.experimentId}</span>
+              {summary.evidence.runId ? (
+                <>
+                  {" "}
+                  · run{" "}
+                  <span className="font-mono">{summary.evidence.runId}</span>
+                </>
+              ) : null}
+            </span>
+          </p>
+        ) : (
+          <p className="text-text-muted">
+            Evidence-Anker: Nicht verfügbar — kein Validation Study; Gate,
+            Decision und Strategy werden nicht gemischt.
+          </p>
+        )}
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
@@ -108,7 +142,10 @@ export function ExecutiveGateStrip({ summary }: ExecutiveGateStripProps) {
           <p className="text-[10px] uppercase tracking-[0.06em] text-text-muted">
             Strategy
           </p>
-          <p className="mt-0.5 font-mono text-[12px] text-text-primary">
+          <p
+            className="mt-0.5 font-mono text-[12px] text-text-primary"
+            data-testid="executive-strategy-id"
+          >
             {displayValue(summary.strategyId)}
           </p>
         </div>
@@ -116,7 +153,10 @@ export function ExecutiveGateStrip({ summary }: ExecutiveGateStripProps) {
           <p className="text-[10px] uppercase tracking-[0.06em] text-text-muted">
             Strategy Version
           </p>
-          <p className="mt-0.5 font-mono text-[12px] text-text-primary">
+          <p
+            className="mt-0.5 font-mono text-[12px] text-text-primary"
+            data-testid="executive-strategy-version"
+          >
             {displayValue(summary.strategyVersion)}
           </p>
         </div>

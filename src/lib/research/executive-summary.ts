@@ -20,51 +20,154 @@ export interface ExecutiveCell {
   source: string;
 }
 
+export interface ExecutiveEvidenceAnchor {
+  studyId: string;
+  studyName: string;
+  experimentId: string;
+  runId: string | null;
+  strategyId: string | null;
+  strategyVersion: string | null;
+  gateRunIds: string[];
+  robustnessIds: string[];
+}
+
 export interface ExecutiveSummary {
   cells: ExecutiveCell[];
+  /** Single Validation Study that all bound cells refer to — or null. */
+  evidence: ExecutiveEvidenceAnchor | null;
   strategyId: string | null;
   strategyVersion: string | null;
   freezeLabel: string;
   freezeDetail: string;
 }
 
-function jobCounts(jobs: RobustnessJobSummary[], testType: string) {
-  const matched = jobs.filter((j) => j.test_type === testType);
-  const complete = matched.filter(
-    (j) => j.status === "completed" || j.status === "complete",
-  ).length;
-  const failed = matched.filter((j) => j.status === "failed").length;
-  const running = matched.filter(
-    (j) => j.status === "running" || j.status === "queued",
-  ).length;
-  return { total: matched.length, complete, failed, running };
+function byNewestCreated<T extends { created_at: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
-function integrityCell(
+/**
+ * One evidence identity for the strip: prefer newest decided study, else newest open.
+ * Gate / Decision / Strategy / Integrity / robustness inventory must all bind here.
+ */
+export function selectEvidenceStudy(
+  studies: ValidationStudyDetail[],
+): ValidationStudyDetail | null {
+  const decided = byNewestCreated(
+    studies.filter((s) => s.status === "decided" && s.decision != null),
+  );
+  if (decided[0]) return decided[0];
+  return byNewestCreated(studies.filter((s) => s.status === "open"))[0] ?? null;
+}
+
+export function toEvidenceAnchor(
+  study: ValidationStudyDetail,
+): ExecutiveEvidenceAnchor {
+  return {
+    studyId: study.study_id,
+    studyName: study.name,
+    experimentId: study.experiment_id,
+    runId: study.run_id,
+    strategyId: study.strategy_id,
+    strategyVersion: study.strategy_version,
+    gateRunIds: [...study.gate_run_ids],
+    robustnessIds: [...study.robustness_ids],
+  };
+}
+
+function jobCounts(jobs: RobustnessJobSummary[]) {
+  const complete = jobs.filter(
+    (j) => j.status === "completed" || j.status === "complete",
+  ).length;
+  const failed = jobs.filter((j) => j.status === "failed").length;
+  const running = jobs.filter(
+    (j) => j.status === "running" || j.status === "queued",
+  ).length;
+  return { total: jobs.length, complete, failed, running };
+}
+
+/** Robustness jobs pinned to the evidence study only. */
+export function filterJobsForEvidence(
+  jobs: RobustnessJobSummary[],
+  evidence: ExecutiveEvidenceAnchor,
+  testType: string,
+): RobustnessJobSummary[] {
+  const pinned = new Set(evidence.robustnessIds);
+  return jobs.filter((j) => {
+    if (j.test_type !== testType) return false;
+    if (pinned.has(j.robustness_id)) return true;
+    return j.base_experiment_id === evidence.experimentId;
+  });
+}
+
+/** Active gate runs that belong to the evidence study. */
+export function filterGatesForEvidence(
+  gateRuns: GateRunRecord[],
+  evidence: ExecutiveEvidenceAnchor,
+): GateRunRecord[] {
+  const pinnedIds = new Set(evidence.gateRunIds);
+  return gateRuns.filter((g) => {
+    if (g.status !== "active") return false;
+    if (pinnedIds.has(g.gate_run_id)) return true;
+    if (evidence.runId && g.run_id === evidence.runId) return true;
+    return g.experiment_id === evidence.experimentId;
+  });
+}
+
+function findPinnedExperiment(
   experiments: ResearchExperimentSummary[],
+  evidence: ExecutiveEvidenceAnchor,
+): ResearchExperimentSummary | null {
+  if (evidence.runId) {
+    const byRun = experiments.find((e) => e.run_id === evidence.runId);
+    if (byRun) return byRun;
+  }
+  return (
+    experiments.find((e) => e.experiment_id === evidence.experimentId) ?? null
+  );
+}
+
+/**
+ * Integrity is scoped to the evidence-pinned experiment only.
+ * Never roll up unrelated recent experiments into VALID/INVALID.
+ */
+function integrityCellForEvidence(
+  experiments: ResearchExperimentSummary[],
+  evidence: ExecutiveEvidenceAnchor | null,
 ): ExecutiveCell {
-  if (experiments.length === 0) {
+  if (!evidence) {
     return {
       id: "integrity",
       label: "Integrity",
       value: UNAVAILABLE,
-      detail: "Keine Experimente zur Prüfung",
+      detail: "Kein Validation-Study-Anker — keine gebundene Integrity-Aussage",
       tone: "muted",
-      href: null,
-      source: "experiment.integrity_ok",
+      href: "/dashboard/research/validation",
+      source: "evidence.anchor",
     };
   }
 
-  const broken = experiments.filter((e) => e.integrity_ok === false);
-  if (broken.length > 0) {
+  const pinned = findPinnedExperiment(experiments, evidence);
+  if (!pinned) {
+    return {
+      id: "integrity",
+      label: "Integrity",
+      value: "NOT_VERIFIABLE",
+      detail: `Primary ${evidence.experimentId} nicht in Overview-Recent — Registry-Integrity nicht prüfbar`,
+      tone: "warning",
+      href: `/dashboard/research/experiments/${encodeURIComponent(evidence.experimentId)}`,
+      source: "experiment.integrity_ok (pinned)",
+    };
+  }
+
+  if (pinned.integrity_ok === false) {
     return {
       id: "integrity",
       label: "Integrity",
       value: "INVALID",
-      detail: `${broken.length} mit Integrity-Fehler (Registry)`,
+      detail: `Pinned ${pinned.experiment_id}${pinned.integrity_error ? `: ${pinned.integrity_error}` : ""}`,
       tone: "danger",
-      href: `/dashboard/research/experiments/${encodeURIComponent(broken[0]!.experiment_id)}`,
-      source: "experiment.integrity_ok",
+      href: `/dashboard/research/experiments/${encodeURIComponent(pinned.experiment_id)}`,
+      source: "experiment.integrity_ok (pinned)",
     };
   }
 
@@ -72,30 +175,45 @@ function integrityCell(
     id: "integrity",
     label: "Integrity",
     value: "VALID",
-    detail: `${experiments.length} recent — Registry-Checksummen ok`,
+    detail: `Nur gepinnter Run ${pinned.run_id} · Study ${evidence.studyId}`,
     tone: "mint",
-    href: null,
-    source: "experiment.integrity_ok",
+    href: `/dashboard/research/experiments/${encodeURIComponent(pinned.experiment_id)}`,
+    source: "experiment.integrity_ok (pinned)",
   };
 }
 
-function criticalGatesCell(gateRuns: GateRunRecord[]): ExecutiveCell {
-  const active = gateRuns.filter((g) => g.status === "active");
-  if (active.length === 0) {
+function criticalGatesCellForEvidence(
+  gateRuns: GateRunRecord[],
+  evidence: ExecutiveEvidenceAnchor | null,
+): ExecutiveCell {
+  if (!evidence) {
     return {
       id: "critical-gates",
       label: "Critical Gates",
       value: UNAVAILABLE,
-      detail: "Keine aktiven Gate-Runs (#248)",
+      detail: "Kein Validation-Study-Anker — Gates nicht aggregiert",
       tone: "muted",
       href: "/dashboard/research/validation",
-      source: "gates.overall_status",
+      source: "evidence.anchor",
     };
   }
 
-  const pass = active.filter((g) => g.overall_status === "pass").length;
-  const fail = active.filter((g) => g.overall_status === "fail").length;
-  const latest = [...active].sort((a, b) =>
+  const bound = filterGatesForEvidence(gateRuns, evidence);
+  if (bound.length === 0) {
+    return {
+      id: "critical-gates",
+      label: "Critical Gates",
+      value: UNAVAILABLE,
+      detail: `Study ${evidence.studyId}: keine gebundenen aktiven Gate-Runs`,
+      tone: "muted",
+      href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
+      source: "gates (study-bound)",
+    };
+  }
+
+  const pass = bound.filter((g) => g.overall_status === "pass").length;
+  const fail = bound.filter((g) => g.overall_status === "fail").length;
+  const latest = [...bound].sort((a, b) =>
     b.evaluated_at.localeCompare(a.evaluated_at),
   )[0]!;
 
@@ -104,10 +222,10 @@ function criticalGatesCell(gateRuns: GateRunRecord[]): ExecutiveCell {
       id: "critical-gates",
       label: "Critical Gates",
       value: "FAIL",
-      detail: `${fail} fail / ${pass} pass (active)`,
+      detail: `${fail} fail / ${pass} pass · Study ${evidence.studyId}`,
       tone: "danger",
-      href: "/dashboard/research/validation",
-      source: "gates.overall_status",
+      href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
+      source: "gates.overall_status (study-bound)",
     };
   }
 
@@ -115,10 +233,10 @@ function criticalGatesCell(gateRuns: GateRunRecord[]): ExecutiveCell {
     id: "critical-gates",
     label: "Critical Gates",
     value: "PASS",
-    detail: `${pass} active pass · latest ${latest.policy_version}`,
+    detail: `${pass} pass · policy ${latest.policy_version} · Study ${evidence.studyId}`,
     tone: "mint",
-    href: "/dashboard/research/validation",
-    source: "gates.overall_status",
+    href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
+    source: "gates.overall_status (study-bound)",
   };
 }
 
@@ -144,14 +262,25 @@ function robustnessInventoryCell(
   label: string,
   jobs: RobustnessJobSummary[],
   testType: string,
+  evidence: ExecutiveEvidenceAnchor | null,
 ): ExecutiveCell {
-  const counts = jobCounts(jobs, testType);
+  if (!evidence) {
+    return unavailableScorecardCell(
+      id,
+      label,
+      "Kein Validation-Study-Anker — Robustheit nicht inventarisiert",
+      "/dashboard/research/robustness",
+    );
+  }
+
+  const bound = filterJobsForEvidence(jobs, evidence, testType);
+  const counts = jobCounts(bound);
   if (counts.total === 0) {
     return unavailableScorecardCell(
       id,
       label,
-      `Scorecard-Feld fehlt · keine ${testType}-Jobs`,
-      "/dashboard/research/robustness",
+      `Scorecard fehlt · Study ${evidence.studyId}: keine ${testType}-Jobs`,
+      `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
     );
   }
 
@@ -159,15 +288,17 @@ function robustnessInventoryCell(
     id,
     label,
     value: UNAVAILABLE,
-    detail: `Scorecard fehlt · Jobs ${counts.complete} complete / ${counts.failed} failed / ${counts.running} running`,
+    detail: `Scorecard fehlt · Study ${evidence.studyId}: Jobs ${counts.complete} complete / ${counts.failed} failed / ${counts.running} running`,
     tone: "muted",
-    href: "/dashboard/research/robustness",
-    source: `robustness.test_type=${testType}`,
+    href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
+    source: `robustness.test_type=${testType} (study-bound)`,
   };
 }
 
-function finalDecisionCell(studies: ValidationStudyDetail[]): ExecutiveCell {
-  if (studies.length === 0) {
+function finalDecisionCell(
+  study: ValidationStudyDetail | null,
+): ExecutiveCell {
+  if (!study) {
     return {
       id: "final-decision",
       label: "Final Decision",
@@ -179,13 +310,10 @@ function finalDecisionCell(studies: ValidationStudyDetail[]): ExecutiveCell {
     };
   }
 
-  const decided = [...studies]
-    .filter((s) => s.status === "decided" && s.decision != null)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const href = `/dashboard/research/validation/${encodeURIComponent(study.study_id)}`;
 
-  if (decided.length > 0) {
-    const study = decided[0]!;
-    const outcome = study.decision!.outcome;
+  if (study.status === "decided" && study.decision != null) {
+    const outcome = study.decision.outcome;
     const tone: ExecutiveTone =
       outcome === "accept"
         ? "mint"
@@ -196,37 +324,28 @@ function finalDecisionCell(studies: ValidationStudyDetail[]): ExecutiveCell {
       id: "final-decision",
       label: "Final Decision",
       value: outcome.toUpperCase(),
-      detail: study.name,
+      detail: `${study.name} · ${study.study_id}`,
       tone,
-      href: `/dashboard/research/validation/${encodeURIComponent(study.study_id)}`,
-      source: "validation.decision.outcome",
+      href,
+      source: "validation.decision.outcome (anchor)",
     };
   }
-
-  const open = studies.filter((s) => s.status === "open");
-  const latestOpen = [...open].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at),
-  )[0];
 
   return {
     id: "final-decision",
     label: "Final Decision",
     value: "pending",
-    detail: latestOpen
-      ? `${open.length} open · ${latestOpen.name}`
-      : `${studies.length} Studien ohne Decision`,
+    detail: `${study.name} · ${study.study_id}`,
     tone: "warning",
-    href: latestOpen
-      ? `/dashboard/research/validation/${encodeURIComponent(latestOpen.study_id)}`
-      : "/dashboard/research/validation",
-    source: "validation.status",
+    href,
+    source: "validation.status (anchor)",
   };
 }
 
 /**
  * Gate-first executive summary (#299).
- * Binds only existing Research / Gates / Validation / Robustness APIs.
- * Scorecard fields without runtime (#291/#295) stay "Nicht verfügbar".
+ * All Decision / Gates / Strategy / Integrity / robustness inventory cells
+ * share one Validation Study evidence identity when present.
  */
 export function buildExecutiveSummary(input: {
   overview: ResearchOverview;
@@ -235,26 +354,13 @@ export function buildExecutiveSummary(input: {
   robustnessJobs: RobustnessJobSummary[];
 }): ExecutiveSummary {
   const { overview, gateRuns, studies, robustnessJobs } = input;
-
-  const latestStudy = [...studies].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at),
-  )[0];
-
-  const strategyId =
-    latestStudy?.strategy_id ??
-    overview.known_strategy_ids[0] ??
-    overview.recent_experiments.find((e) => e.strategy_id)?.strategy_id ??
-    null;
-
-  const strategyVersion =
-    latestStudy?.strategy_version ??
-    overview.recent_experiments[0]?.strategy_version ??
-    null;
+  const focus = selectEvidenceStudy(studies);
+  const evidence = focus ? toEvidenceAnchor(focus) : null;
 
   return {
     cells: [
-      integrityCell(overview.recent_experiments),
-      criticalGatesCell(gateRuns),
+      integrityCellForEvidence(overview.recent_experiments, evidence),
+      criticalGatesCellForEvidence(gateRuns, evidence),
       unavailableScorecardCell(
         "evidence-confidence",
         "Evidence Confidence",
@@ -270,17 +376,20 @@ export function buildExecutiveSummary(input: {
         "Cost Stress",
         robustnessJobs,
         "cost_stress",
+        evidence,
       ),
       robustnessInventoryCell(
         "parameter-area",
         "Parameter Area",
         robustnessJobs,
         "parameter_stability",
+        evidence,
       ),
-      finalDecisionCell(studies),
+      finalDecisionCell(focus),
     ],
-    strategyId,
-    strategyVersion,
+    evidence,
+    strategyId: evidence?.strategyId ?? null,
+    strategyVersion: evidence?.strategyVersion ?? null,
     freezeLabel: UNAVAILABLE,
     freezeDetail:
       "P5 Parameter-Freeze / Holdout-Freeze noch nicht als Scorecard-Feld exponiert",
