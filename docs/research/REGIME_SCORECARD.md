@@ -200,6 +200,12 @@ Confidence is derived from measurable inputs (not free manual estimate), e.g.:
 | `INSUFFICIENT` | Below documented floors |
 | `NOT_AVAILABLE` | Required inputs missing |
 
+**Implementation ([#288](https://github.com/Pain1234/save-money-trading-bot/issues/288)):**
+`services/research/confidence/` + contract [`CONFIDENCE.md`](CONFIDENCE.md).
+Versioned policy `1.0` (content-hashed), sealed `confidence_profile.json`,
+visible serial-dependence / multiple-testing limitations. PSR/DSR/PBO/MTRL
+remain deferred until formula + synthetic tests exist.
+
 Advanced statistics (PSR, DSR, PBO, MTRL) may be added only when:
 
 - formula and version are documented,
