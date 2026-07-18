@@ -360,8 +360,13 @@ class RobustnessManifest:
         }
 
 
-def save_robustness_manifest(root: Path, manifest: RobustnessManifest) -> Path:
-    """Atomic write of the per-test artifact (temp file + ``os.replace``)."""
+def save_robustness_manifest(root: Path, manifest: RobustnessManifest) -> tuple[Path, str]:
+    """Atomic write of the per-test artifact; return path + SHA-256 of sealed bytes.
+
+    Also writes ``manifest.json.sha256`` as an independent on-disk trust
+    anchor so gate evaluation can detect post-completion tampering even
+    when a job record is absent (fixtures) or stale.
+    """
 
     path = robustness_manifest_path(root, manifest.robustness_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -375,7 +380,57 @@ def save_robustness_manifest(root: Path, manifest: RobustnessManifest) -> Path:
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
-    return path
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    sidecar = path.parent / "manifest.json.sha256"
+    sidecar.write_text(digest + "\n", encoding="utf-8")
+    return path, digest
+
+
+def robustness_manifest_sidecar_path(root: Path, robustness_id: str) -> Path:
+    return robustness_artifact_dir(root, robustness_id) / "manifest.json.sha256"
+
+
+def read_sealed_manifest_hash(root: Path, robustness_id: str) -> str | None:
+    """Return the on-disk trust anchor hash, or None if the sidecar is missing."""
+    sidecar = robustness_manifest_sidecar_path(root, robustness_id)
+    if not sidecar.is_file():
+        return None
+    text = sidecar.read_text(encoding="utf-8").strip()
+    return text or None
+
+
+def verify_robustness_manifest_seal(
+    root: Path, robustness_id: str, *, expected_hash: str | None = None
+) -> str:
+    """Fail closed unless current manifest bytes match a trust-anchor hash.
+
+    Preference order for the expected hash:
+    1. Explicit ``expected_hash`` (typically ``RobustnessJob.manifest_content_hash``)
+    2. Sidecar ``manifest.json.sha256`` written at terminal seal time
+
+    Returns the verified digest.
+    """
+    path = robustness_manifest_path(root, robustness_id)
+    if not path.is_file():
+        msg = f"robustness manifest missing: {robustness_id}"
+        raise FileNotFoundError(msg)
+    current = hashlib.sha256(path.read_bytes()).hexdigest()
+    expected = (expected_hash or "").strip() or None
+    if expected is None:
+        expected = read_sealed_manifest_hash(root, robustness_id)
+    if expected is None:
+        msg = (
+            f"robustness {robustness_id} has no sealed manifest trust anchor "
+            "(job.manifest_content_hash / manifest.json.sha256 missing)"
+        )
+        raise ValueError(msg)
+    if current != expected:
+        msg = (
+            f"robustness {robustness_id} manifest content hash mismatch "
+            f"(sealed={expected[:12]}… current={current[:12]}…)"
+        )
+        raise ValueError(msg)
+    return current
 
 
 def load_robustness_manifest(root: Path, robustness_id: str) -> dict[str, Any] | None:
