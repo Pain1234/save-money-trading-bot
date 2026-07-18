@@ -94,3 +94,19 @@
   --ds-chart-market-preferred: 18vw;
   --ds-chart-market-max: 310px;
 }
+
+/* Research shell tokens (#298) — scoped; do not mutate Monitor freeze above. */
+.research-shell {
+  --rs-shell-x: 12px;
+  --rs-shell-y: 12px;
+  --rs-sidebar-width: 200px;
+  --rs-radius: 4px;
+  --rs-ticker-height: 32px;
+}
+
+@media (min-width: 1280px) {
+  .research-shell {
+    --rs-shell-x: 14px;
+    --rs-sidebar-width: 212px;
+  }
+}

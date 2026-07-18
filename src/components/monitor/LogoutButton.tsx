@@ -2,7 +2,13 @@
 
 import { useRouter } from "next/navigation";
 
-export function LogoutButton() {
+import { cn } from "@/lib/utils";
+
+interface LogoutButtonProps {
+  className?: string;
+}
+
+export function LogoutButton({ className }: LogoutButtonProps) {
   const router = useRouter();
 
   async function logout() {
@@ -15,7 +21,10 @@ export function LogoutButton() {
     <button
       type="button"
       onClick={logout}
-      className="rounded-md border border-border-subtle px-3 py-1 text-sm"
+      className={cn(
+        "rounded-md border border-border-subtle px-3 py-1 text-sm",
+        className,
+      )}
     >
       Logout
     </button>

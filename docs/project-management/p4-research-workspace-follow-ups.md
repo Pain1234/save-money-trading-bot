@@ -174,6 +174,13 @@ issue to optionally bridge Postgres-normalized datasets into the Lab catalog
 (absolute/relative path rules, quality gate, R-015 snapshots) when product needs
 it.
 
+## P4.9 UI — Hyperliquid-Style Research Workspace
+
+Visual rebuild epic [#297](https://github.com/Pain1234/save-money-trading-bot/issues/297)
+(UI-01…UI-06 = #298–#303). Spec:
+`docs/design/RESEARCH_WORKSPACE_UI_SPEC.md`. Distinct from scorecard data epic
+[#295](https://github.com/Pain1234/save-money-trading-bot/issues/295).
+
 ## Milestone note
 
 Milestone remains **P4 – Research Engine und Research Workspace V1**.

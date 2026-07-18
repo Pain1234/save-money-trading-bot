@@ -7,35 +7,32 @@ import { ArchitectureDiagram } from "@/components/sidebar/ArchitectureDiagram";
 import { ConceptLayers } from "@/components/sidebar/ConceptLayers";
 import { TechStackGrid } from "@/components/sidebar/TechStackGrid";
 import { DETAIL_NAV } from "@/lib/dashboard/navigation";
-import { RESEARCH_NAV, isResearchPath } from "@/lib/research/navigation";
 import { cn } from "@/lib/utils";
 
+/** Monitor-only sidebar. Research uses ResearchSidebar via ResearchShell. */
 export function Sidebar() {
   const pathname = usePathname();
-  const research = isResearchPath(pathname);
-  const nav = research ? RESEARCH_NAV : DETAIL_NAV;
 
   return (
     <aside className="space-y-2.5" data-testid="dashboard-sidebar">
       <div>
         <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-text-primary">
-          {research ? "Research Workspace" : "Paper Trading Monitor"}
+          Paper Trading Monitor
         </h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-text-secondary">
-          {research
-            ? "ExperimentRegistry und Run-Artefakte. Strategy Lab startet Runs über die bestehende Research-Engine — ohne Cancel, Promotion oder Live-Orders."
-            : "Read-only Dashboard für Paper-Trading auf Hyperliquid. Status, Positionen und Equity — ohne Order- oder Bot-Steuerung."}
+          Read-only Dashboard für Paper-Trading auf Hyperliquid. Status,
+          Positionen und Equity — ohne Order- oder Bot-Steuerung.
         </p>
       </div>
 
       <div>
         <p className="mb-1.5 text-[11px] uppercase tracking-[0.05em] text-text-muted">
-          {research ? "Research" : "Diagnose"}
+          Diagnose
         </p>
         <nav className="flex flex-col gap-1">
-          {nav.map((item) => {
+          {DETAIL_NAV.map((item) => {
             const active =
-              item.href === "/dashboard" || item.href === "/dashboard/research"
+              item.href === "/dashboard"
                 ? pathname === item.href
                 : pathname.startsWith(item.href);
             return (
@@ -56,13 +53,9 @@ export function Sidebar() {
         </nav>
       </div>
 
-      {!research && (
-        <>
-          <ConceptLayers />
-          <ArchitectureDiagram />
-          <TechStackGrid />
-        </>
-      )}
+      <ConceptLayers />
+      <ArchitectureDiagram />
+      <TechStackGrid />
     </aside>
   );
 }
