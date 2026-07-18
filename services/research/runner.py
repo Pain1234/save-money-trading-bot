@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -41,13 +42,36 @@ from research.run_manifest import build_run_manifest, dumps_run_manifest
 from research.strategy_resolver import resolve_strategy
 
 
+def _deploy_commit_from_env() -> str | None:
+    """Commit pin for images without a ``.git`` directory (Railway / Docker)."""
+    for key in ("RESEARCH_GIT_COMMIT", "RAILWAY_GIT_COMMIT_SHA"):
+        raw = os.environ.get(key, "").strip()
+        if raw and raw.lower() != "unknown" and len(raw) >= 7:
+            return raw
+    return None
+
+
 def resolve_git_commit(repo_root: Path, *, allow_dirty: bool = False) -> str:
     """Return full HEAD SHA for identity pins, or fail closed.
 
     Complete research runs must pin a real commit. ``unknown`` is never returned.
     A dirty working tree is rejected unless ``allow_dirty`` is explicitly set
     (tests / documented emergency only — not exposed on the default CLI).
+
+    Production API images often ship without ``.git``. In that case the deploy
+    commit from ``RESEARCH_GIT_COMMIT`` / ``RAILWAY_GIT_COMMIT_SHA`` is used
+    (Issue #272).
     """
+    if not (repo_root / ".git").exists():
+        pinned = _deploy_commit_from_env()
+        if pinned is not None:
+            return pinned
+        msg = (
+            "git commit required for research runs; no .git at repo_root and "
+            "neither RESEARCH_GIT_COMMIT nor RAILWAY_GIT_COMMIT_SHA is set"
+        )
+        raise ValueError(msg)
+
     try:
         head = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -109,6 +133,9 @@ def assert_git_commit_stable(
             f"HEAD is {current}, expected {expected_commit}"
         )
     if allow_dirty:
+        return
+    # Immutable deploy image without .git: env SHA pin is the provenance.
+    if not (repo_root / ".git").exists():
         return
     porcelain = subprocess.check_output(
         ["git", "status", "--porcelain"],
