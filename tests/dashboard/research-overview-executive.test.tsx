@@ -168,6 +168,7 @@ const STUDY_DECIDED_A = study({
   run_id: "run_a",
   status: "decided",
   created_at: "2024-01-05T00:00:00Z",
+  robustness_ids: ["rob_cost_a"],
   decision: {
     outcome: "accept",
     rationale: "fixture",
@@ -185,6 +186,7 @@ const STUDY_OPEN_OTHER = study({
   strategy_id: "mean_reversion_x",
   strategy_version: "9.9.9",
   gate_run_ids: ["gate_fail_other"],
+  robustness_ids: ["rob_cost_other"],
   status: "open",
   created_at: "2024-01-06T00:00:00Z",
   decision: null,
@@ -297,6 +299,55 @@ describe("buildExecutiveSummary evidence identity", () => {
     };
     const summary = buildExecutiveSummary({
       overview: overviewMissingPin,
+      gateRuns: [GATE_PASS_A],
+      studies: [STUDY_DECIDED_A],
+      robustnessJobs: [],
+    });
+    expect(summary.cells.find((c) => c.id === "integrity")?.value).toBe(
+      "NOT_VERIFIABLE",
+    );
+  });
+
+  it("ignores unpinned gates/jobs that share experiment identity", () => {
+    const unpinnedFailSameExp: GateRunRecord = {
+      ...GATE_PASS_A,
+      gate_run_id: "gate_fail_same_exp_unpinned",
+      overall_status: "fail",
+      evaluated_at: "2024-01-09T00:00:00Z",
+      experiment_id: "exp_a",
+      run_id: "run_a",
+    };
+    const unpinnedCostSameExp: RobustnessJobSummary = {
+      ...COST_JOB_A,
+      robustness_id: "rob_cost_unpinned",
+      base_experiment_id: "exp_a",
+      status: "failed",
+    };
+    const summary = buildExecutiveSummary({
+      overview: OVERVIEW_MIXED,
+      gateRuns: [GATE_PASS_A, unpinnedFailSameExp],
+      studies: [STUDY_DECIDED_A],
+      robustnessJobs: [COST_JOB_A, unpinnedCostSameExp],
+    });
+    const byId = Object.fromEntries(summary.cells.map((c) => [c.id, c]));
+    expect(byId["critical-gates"]?.value).toBe("PASS");
+    expect(byId["critical-gates"]?.detail).not.toMatch(/fail/i);
+    expect(byId["cost-stress"]?.detail).toMatch(/Jobs 1 complete \/ 0 failed/);
+  });
+
+  it("does not use a different run of the same experiment for integrity", () => {
+    const overviewWrongRun: ResearchOverview = {
+      ...OVERVIEW_MIXED,
+      recent_experiments: [
+        experiment({
+          experiment_id: "exp_a",
+          run_id: "run_a_later",
+          integrity_ok: true,
+        }),
+      ],
+    };
+    const summary = buildExecutiveSummary({
+      overview: overviewWrongRun,
       gateRuns: [GATE_PASS_A],
       studies: [STUDY_DECIDED_A],
       robustnessJobs: [],

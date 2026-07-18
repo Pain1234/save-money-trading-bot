@@ -62,15 +62,27 @@ export function selectEvidenceStudy(
 export function toEvidenceAnchor(
   study: ValidationStudyDetail,
 ): ExecutiveEvidenceAnchor {
+  const snapshot = study.evidence_snapshot;
+  const gateRunIds =
+    snapshot && snapshot.gates.length > 0
+      ? snapshot.gates.map((g) => g.gate_run_id)
+      : [...study.gate_run_ids];
+  const robustnessIds =
+    snapshot && snapshot.robustness.length > 0
+      ? snapshot.robustness.map((r) => r.robustness_id)
+      : [...study.robustness_ids];
+  const experimentId = snapshot?.primary.experiment_id ?? study.experiment_id;
+  const runId = snapshot?.primary.run_id ?? study.run_id;
+
   return {
     studyId: study.study_id,
     studyName: study.name,
-    experimentId: study.experiment_id,
-    runId: study.run_id,
+    experimentId,
+    runId,
     strategyId: study.strategy_id,
     strategyVersion: study.strategy_version,
-    gateRunIds: [...study.gate_run_ids],
-    robustnessIds: [...study.robustness_ids],
+    gateRunIds,
+    robustnessIds,
   };
 }
 
@@ -85,32 +97,52 @@ function jobCounts(jobs: RobustnessJobSummary[]) {
   return { total: jobs.length, complete, failed, running };
 }
 
-/** Robustness jobs pinned to the evidence study only. */
+/** Robustness jobs pinned by study.robustness_ids only — no experiment fallback. */
 export function filterJobsForEvidence(
   jobs: RobustnessJobSummary[],
   evidence: ExecutiveEvidenceAnchor,
   testType: string,
 ): RobustnessJobSummary[] {
+  if (evidence.robustnessIds.length === 0) return [];
   const pinned = new Set(evidence.robustnessIds);
-  return jobs.filter((j) => {
-    if (j.test_type !== testType) return false;
-    if (pinned.has(j.robustness_id)) return true;
-    return j.base_experiment_id === evidence.experimentId;
-  });
+  return jobs.filter(
+    (j) => j.test_type === testType && pinned.has(j.robustness_id),
+  );
 }
 
-/** Active gate runs that belong to the evidence study. */
+/**
+ * Active gate runs pinned by study.gate_run_ids only.
+ * Never widen to experiment_id/run_id — that leaks later unpinned evaluations.
+ */
 export function filterGatesForEvidence(
   gateRuns: GateRunRecord[],
   evidence: ExecutiveEvidenceAnchor,
 ): GateRunRecord[] {
+  if (evidence.gateRunIds.length === 0) return [];
   const pinnedIds = new Set(evidence.gateRunIds);
-  return gateRuns.filter((g) => {
-    if (g.status !== "active") return false;
-    if (pinnedIds.has(g.gate_run_id)) return true;
-    if (evidence.runId && g.run_id === evidence.runId) return true;
-    return g.experiment_id === evidence.experimentId;
-  });
+  return gateRuns.filter(
+    (g) => g.status === "active" && pinnedIds.has(g.gate_run_id),
+  );
+}
+
+/**
+ * Prefer gates already hydrated on the Validation Study detail.
+ * Fall back to global list filtered by pinned gate_run_ids only.
+ * Never widen to experiment_id / run_id.
+ */
+export function resolveBoundGates(
+  study: ValidationStudyDetail,
+  gateRuns: GateRunRecord[],
+): GateRunRecord[] {
+  const evidence = toEvidenceAnchor(study);
+  if (evidence.gateRunIds.length === 0) return [];
+  const pinned = new Set(evidence.gateRunIds);
+  if (study.gates.length > 0) {
+    return study.gates.filter(
+      (g) => g.status === "active" && pinned.has(g.gate_run_id),
+    );
+  }
+  return filterGatesForEvidence(gateRuns, evidence);
 }
 
 function findPinnedExperiment(
@@ -118,8 +150,8 @@ function findPinnedExperiment(
   evidence: ExecutiveEvidenceAnchor,
 ): ResearchExperimentSummary | null {
   if (evidence.runId) {
-    const byRun = experiments.find((e) => e.run_id === evidence.runId);
-    if (byRun) return byRun;
+    // Exact run pin — never fall back to a different run of the same experiment.
+    return experiments.find((e) => e.run_id === evidence.runId) ?? null;
   }
   return (
     experiments.find((e) => e.experiment_id === evidence.experimentId) ?? null
@@ -184,9 +216,9 @@ function integrityCellForEvidence(
 
 function criticalGatesCellForEvidence(
   gateRuns: GateRunRecord[],
-  evidence: ExecutiveEvidenceAnchor | null,
+  focus: ValidationStudyDetail | null,
 ): ExecutiveCell {
-  if (!evidence) {
+  if (!focus) {
     return {
       id: "critical-gates",
       label: "Critical Gates",
@@ -198,16 +230,17 @@ function criticalGatesCellForEvidence(
     };
   }
 
-  const bound = filterGatesForEvidence(gateRuns, evidence);
+  const evidence = toEvidenceAnchor(focus);
+  const bound = resolveBoundGates(focus, gateRuns);
   if (bound.length === 0) {
     return {
       id: "critical-gates",
       label: "Critical Gates",
       value: UNAVAILABLE,
-      detail: `Study ${evidence.studyId}: keine gebundenen aktiven Gate-Runs`,
+      detail: `Study ${evidence.studyId}: keine gepinnten aktiven Gate-Runs`,
       tone: "muted",
       href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
-      source: "gates (study-bound)",
+      source: "gates (study-bound pins)",
     };
   }
 
@@ -225,7 +258,7 @@ function criticalGatesCellForEvidence(
       detail: `${fail} fail / ${pass} pass · Study ${evidence.studyId}`,
       tone: "danger",
       href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
-      source: "gates.overall_status (study-bound)",
+      source: "gates.overall_status (study-bound pins)",
     };
   }
 
@@ -236,7 +269,7 @@ function criticalGatesCellForEvidence(
     detail: `${pass} pass · policy ${latest.policy_version} · Study ${evidence.studyId}`,
     tone: "mint",
     href: `/dashboard/research/validation/${encodeURIComponent(evidence.studyId)}`,
-    source: "gates.overall_status (study-bound)",
+    source: "gates.overall_status (study-bound pins)",
   };
 }
 
@@ -360,7 +393,7 @@ export function buildExecutiveSummary(input: {
   return {
     cells: [
       integrityCellForEvidence(overview.recent_experiments, evidence),
-      criticalGatesCellForEvidence(gateRuns, evidence),
+      criticalGatesCellForEvidence(gateRuns, focus),
       unavailableScorecardCell(
         "evidence-confidence",
         "Evidence Confidence",
