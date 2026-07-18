@@ -4,9 +4,11 @@
 
 **Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity). #247 — Robustness-Orchestrierung (walk-forward, cost stress, parameter stability, bootstrap) auf derselben Runner/Registry/Artefakt-Linie + minimale UI unter `/dashboard/research/robustness` (siehe §4). #248 — Versionierter Gate Evaluator und Gate-Persistenz (Policy-Content-Hash-Bindung, evidenzgebundene, append-only Gate-Records, Read/Evaluate-API, keine Auto-Promotion; siehe §5).
 
-#249 — Validation Studies API and UI, aggregating already-produced experiment/robustness/gate evidence (no second engine, no live/paper promotion). #250 — E2E/reproducibility/UI-acceptance suite implemented on `feat/250-research-e2e` (stacked on `main → #245-via-#247 → #246 → #247 → #248 → #249`); see §7. Playwright Research smoke is explicitly waived in `docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md` until accepted or added — PR uses `Refs #250` (not `Closes #250`) until then.
+#249 — Validation Studies API and UI, aggregating already-produced experiment/robustness/gate evidence (no second engine, no live/paper promotion). #250 — E2E/reproducibility suite on `main` (PR #283); Playwright Research smoke remains waived in `docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md` until accepted or added — browser click-through checklist still owns remaining #250 Abnahme.
 
-**Open:** #242 UI-Abnahme (Lab + catalog; manual checklist documented, human run outstanding); Cancel/Retry deferred. #245/#246 land on this #250 branch for real ownership + compare E2E (issue/PR status on `main` may still be open).
+**#242 Lab acceptance (2026-07-18, `main` @ `00378e4…`):** Strategy Lab code (PR #243), catalog visibility (#265/#267), durable jobs (#245), Hyperliquid catalog (#274/#275), and job-only failed detail (#278/#335) are on `main`. API E2E Lab matrix green (`tests/research/test_e2e_acceptance.py`, 11 passed including create/start/detail/double-start/fail-closed). Issue #242 smoke protocol (Write-Service Lab contracts against `local_lab` catalog) is documented on the issue. **Browser click-through** for Lab form/polling/chart remains under #250 checklist §B — not a second Lab feature track.
+
+**Open:** Cancel/Retry deferred. #250 manual browser UI checklist (human-run evidence table). P4.9 scorecard chain (#285→…).
 
 ## Recommended issue split
 
@@ -21,8 +23,10 @@ in-process threads that did not resume after an API process restart; stale
 replaces this with a durable, cross-process-safe ownership contract — see
 below.
 
-**Abnahme:** #242 remains open until manual UI acceptance with a dataset catalog
-(also covered by #250). Local catalog helper tracked separately (#264).
+**Abnahme (closed 2026-07-18):** Lab feature + catalog binding accepted via
+merged PRs + API E2E + documented Write-Service smoke on #242. Remaining
+**browser** click-through for Lab (§B in
+`docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`) is owned by #250 only.
 
 ### 1b. P4.6b Durable Research Job Execution und Restart Recovery — #245
 
