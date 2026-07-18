@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 regime classifier — #285)
+
+- Versioned deterministic regime + transition classifier under
+  `services/research/regime/` (`classifier_version` `1.0` + content hash).
+- Research runner writes sealed-in-checksums `regime_labels.json` per run;
+  semantic double-run compare includes the artifact.
+- Docs: `docs/research/REGIME_CLASSIFIER.md`; extends #199 without private
+  P5 numbers; ARTIFACT_FORMAT / REGIME_SCORECARD / P5 regimes updated.
+- Unit + runner tests: Bull/Bear/Sideways, transitions, no cross-month
+  period look-ahead, ex-post day-label contract, calendar-gap non-adjacency,
+  INSUFFICIENT, hash stability, seal tamper rejection, repro parity.
+
 ### Added (P7 architecture — centralized intent / single execution owner)
 
 - ADR-018: centralized Strategy Intent allocation and a single execution owner
@@ -33,6 +45,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   R-026–R-031; ROADMAP / ARCHITECTURE / research docs updated.
 - Extends existing #247/#248/#249 surfaces; no second registry; no auto-promotion;
   no private Strategy V1 thresholds frozen in this change.
+
+### Added (P4.9 regime classifier — #285)
+
+- Versioned deterministic monthly regime + transition classifier package
+  (`services/research/regime/`, `classifier_version` `1.0` with content hash).
+  Research runs emit `regime_labels.json`.
+- Trend axis aligned with #199 (±5%); public three-way vol buckets use versioned
+  absolute thresholds (not private P5 partition-B median).
+- Docs: `REGIME_CLASSIFIER.md`, `P5_BENCHMARKS_REGIMES.md` mapping; unit + runner
+  repro tests.
 
 ### Fixed (Dashboard design ↔ paper API — #238 re-review)
 

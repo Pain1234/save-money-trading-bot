@@ -26,6 +26,7 @@ Public-release gates (#176–#180) may remain open on the milestone after resear
 | `robustness` / `robustness_service` | Walk-forward / cost-stress / parameter-stability / bootstrap orchestration (#247) |
 | `gate_policy` / `gate_evaluator` / `gate_service` | Versioned, evidence-bound gate evaluation + append-only persistence (#248) |
 | `validation_study` / `validation_service` | Validation Study aggregate over experiments + robustness + gates, append-only human decision (#249) |
+| `regime` | Versioned deterministic regime + transition classifier + sealed `regime_labels.json` (#285) |
 
 ## End-to-end CLI example
 

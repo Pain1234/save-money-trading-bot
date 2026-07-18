@@ -446,8 +446,8 @@ Layered evidence profile on top of existing Registry / Robustness / Gates / Vali
 Studies — **no** second registry, **no** auto-promotion. Contract:
 [`docs/research/REGIME_SCORECARD.md`](docs/research/REGIME_SCORECARD.md), ADR-019.
 
-- [ ] [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284) docs: versioned scorecard + anti-overfitting contract
-- [ ] [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285) feat: deterministic regime + transition classifier
+- [x] [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284) docs: versioned scorecard + anti-overfitting contract
+- [x] [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285) feat: deterministic regime + transition classifier
 - [ ] [#286](https://github.com/Pain1234/save-money-trading-bot/issues/286) feat: integrity profile + critical gate categories
 - [ ] [#287](https://github.com/Pain1234/save-money-trading-bot/issues/287) feat: regime quality metrics + worst-regime profile
 - [ ] [#288](https://github.com/Pain1234/save-money-trading-bot/issues/288) feat: evidence confidence / sample sufficiency

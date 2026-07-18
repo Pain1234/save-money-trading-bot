@@ -139,6 +139,11 @@ Evaluate **per regime**, not only portfolio aggregate.
 - **Volatility axis:** `LOW_VOL` | `NORMAL_VOL` | `HIGH_VOL`
 - **Event layer:** `TRANSITION_IN` | `TRANSITION_OUT` | `STABLE_REGIME`
 
+Runtime classifier (Issue [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285)):
+`services/research/regime/`, contract
+[`REGIME_CLASSIFIER.md`](REGIME_CLASSIFIER.md), starting version `1.0`
+(content-hashed; sealed `regime_labels.json`).
+
 Final taxonomy, thresholds, windows, and `classifier_version` must be frozen
 before the final holdout ([#199](https://github.com/Pain1234/save-money-trading-bot/issues/199), [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)).
 **Forbidden:** post-hoc regime selection to hide bad results.
@@ -246,8 +251,10 @@ holdout data. P5 Strategy V1 remains on the frozen point.
 
 ## 5. Transitions (explicit module)
 
-Monthly regime labels alone can hide fast switches. Plan a versioned
-transition module with:
+Monthly regime labels alone can hide fast switches. Versioned transition
+detection ships with classifier `1.0` ([#285](https://github.com/Pain1234/save-money-trading-bot/issues/285);
+[`REGIME_CLASSIFIER.md`](REGIME_CLASSIFIER.md)). Transition **quality /
+behaviour scores** remain later issues (#287 / #289). The module covers:
 
 - Windows before / at / after regime change
 - Change direction; volatility jump
