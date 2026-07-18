@@ -5,13 +5,19 @@ Explicit matrix (see Issue #250):
 1. Trend Strategy V1 listed exactly once (no alias duplicate).
 2. Price/trade chart matches the bound dataset + ``trades.json``.
 3. Tampered checksum / dataset mismatch -> fail-closed (chart/trades hidden).
-4. Equity/drawdown remain available when only the chart surface fails integrity.
+4. Equity/drawdown remain available when only the chart *semantic* surface fails
+   (dataset-hash mismatch with resealed checksums); whole-artifact byte tamper
+   of ``chart_data.json`` / ``trades.json`` fails closed for those surfaces.
 5. Deterministic **failed** job without any private data.
 6. Lab -> Run -> Detail happy path against the committed ``local_lab`` catalog.
 7. Double-start is blocked.
-8. Compare surface (#246) is not present on this branch stack -> documented.
+8. Compare surface (#246 / #277): real
+   ``GET /api/v1/research/experiments/compare?run_a=&run_b=`` with compatible
+   and incompatible cases (must fail if Compare is missing).
 9. Robustness (#247) / Gate (#248) / Validation (#249) smoke, as delivered.
-10. Restart/orphan recovery (#245) is not present on this branch stack -> documented.
+10. Restart/orphan recovery (#245 / #276): real
+    ``ResearchWriteService.recover_orphans`` — orphaned ``queued`` re-dispatch
+    and dead ``running`` fail-closed.
 
 Design notes:
 
@@ -29,6 +35,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -43,6 +50,8 @@ from research.api import (
 )
 from research.artifacts import compute_artifact_checksums
 from research.gate_service import GateService
+from research.jobs import ResearchJob, ResearchJobStore
+from research.jobs import _utc_now as jobs_utc_now
 from research.robustness_service import RobustnessOrchestrationService
 from research.service import ResearchReadService
 from research.validation_service import ValidationStudyService
@@ -410,45 +419,148 @@ def test_deterministic_failed_job_without_private_data(
     assert "net_pnl" not in json.dumps(final).lower()
 
 
-# --- 8. Compare surface (#246) not present on this branch stack -------------
+# --- 8. Compare surface (#246 / #277) — real endpoint -----------------------
 
 
-def test_compare_surface_not_present_on_this_stack(e2e_client: TestClient) -> None:
-    """#246 (P4.7a compare) is a separate PR, not stacked under #249 -> #250.
+def test_compare_compatible_and_incompatible_runs(e2e_client: TestClient) -> None:
+    """Exercise ``GET /api/v1/research/experiments/compare`` (#277).
 
-    Documents current absence rather than silently skipping: if a compare
-    route is ever wired up without updating this test, that is a signal to
-    add real coverage here instead of leaving this note stale.
+    Compatible: a completed run compared to itself (empty diffs).
+    Incompatible: two completed Lab runs with different Spec ``name`` fields.
+    Must fail (404) if the Compare route is missing from this stack.
     """
-    resp = e2e_client.get("/api/v1/research/compare")
-    assert resp.status_code == 404
-    # POST is not on the research write allow-list either -> the readonly
-    # method middleware blocks it (405) before it could ever reach a route.
-    resp_post = e2e_client.post("/api/v1/research/compare", json={})
-    assert resp_post.status_code == 405
+    created_a = e2e_client.post(
+        "/api/v1/research/experiments",
+        json=_lab_payload(name="E2E compare A"),
+    )
+    assert created_a.status_code == 200, created_a.text
+    exp_a = created_a.json()["experiment_id"]
+    e2e_client.post(f"/api/v1/research/experiments/{exp_a}/start")
+    assert _poll_status(e2e_client, exp_a) == "completed"
+    run_a = e2e_client.get(f"/api/v1/research/experiments/{exp_a}").json()[
+        "summary"
+    ]["run_id"]
+    assert run_a
+
+    created_b = e2e_client.post(
+        "/api/v1/research/experiments",
+        json=_lab_payload(name="E2E compare B"),
+    )
+    assert created_b.status_code == 200, created_b.text
+    exp_b = created_b.json()["experiment_id"]
+    e2e_client.post(f"/api/v1/research/experiments/{exp_b}/start")
+    assert _poll_status(e2e_client, exp_b) == "completed"
+    run_b = e2e_client.get(f"/api/v1/research/experiments/{exp_b}").json()[
+        "summary"
+    ]["run_id"]
+    assert run_b
+    assert run_a != run_b
+
+    # Wrong legacy path must not falsely pass as "compare present".
+    assert e2e_client.get("/api/v1/research/compare").status_code == 404
+
+    same = e2e_client.get(
+        "/api/v1/research/experiments/compare",
+        params={"run_a": run_a, "run_b": run_a},
+    )
+    assert same.status_code == 200, same.text
+    same_body = same.json()
+    assert same_body["compatible"] is True
+    assert same_body["diffs"] == {}
+    assert same_body["run_a"] == run_a
+    assert same_body["run_b"] == run_a
+    assert same_body["runs"]["a"]["integrity"]["ok"] is True
+
+    diff = e2e_client.get(
+        "/api/v1/research/experiments/compare",
+        params={"run_a": run_a, "run_b": run_b},
+    )
+    assert diff.status_code == 200, diff.text
+    diff_body = diff.json()
+    assert diff_body["compatible"] is False
+    assert "spec.name" in diff_body["diffs"]
+    assert diff_body["diffs"]["spec.name"] == ["E2E compare A", "E2E compare B"]
+    assert diff_body["runs"]["a"]["summary"]["run_id"] == run_a
+    assert diff_body["runs"]["b"]["summary"]["run_id"] == run_b
 
 
-# --- 10. Restart/orphan recovery (#245) not present on this branch stack ----
+# --- 10. Restart/orphan recovery (#245 / #276) — real ownership contract ----
 
 
-def test_restart_ownership_api_not_present_on_this_stack(
+def test_recover_orphans_redispatches_queued_and_fails_dead_running(
     e2e_client: TestClient,
 ) -> None:
-    """#245 (durable job ownership + restart recovery) is not on this stack.
+    """Real #245/#276 ownership: recover_orphans re-dispatches orphaned queued
+    jobs and fails closed running jobs with a dead lease.
 
-    V1 in-process jobs documented limitation (services/research/jobs.py):
-    queued/running jobs without a live thread are marked failed on the next
-    status read after a process restart; there is no separate
-    restart/ownership endpoint to smoke-test here yet.
+    Uses ``ResearchWriteService.recover_orphans`` (same contract the API
+    lifespan hook calls) — not invented ownership/restart HTTP endpoints.
     """
-    resp = e2e_client.get("/api/v1/research/experiments/exp_missing/ownership")
-    assert resp.status_code == 404
-    # POST is not on the research write allow-list either -> the readonly
-    # method middleware blocks it (405) before it could ever reach a route.
-    resp2 = e2e_client.post(
-        "/api/v1/research/experiments/exp_missing/restart", json={}
+    root = Path(app.dependency_overrides[get_research_service]().root)
+
+    # --- queued orphan -> re-dispatch -> completed ---
+    created = e2e_client.post(
+        "/api/v1/research/experiments",
+        json=_lab_payload(name="E2E orphan queued redispatch"),
     )
-    assert resp2.status_code == 405
+    assert created.status_code == 200, created.text
+    queued_id = created.json()["experiment_id"]
+
+    store = ResearchJobStore(root)
+
+    def _to_queued_no_dispatch(job: ResearchJob) -> None:
+        job.status = "queued"
+        job.updated_at = jobs_utc_now()
+
+    store.compare_and_set(
+        queued_id, expected_status="created", mutate=_to_queued_no_dispatch
+    )
+    assert store.is_active(queued_id) is False
+
+    write_svc = ResearchWriteService(
+        root, repo_root=REPO_ROOT, allow_dirty_git=False
+    )
+    outcome = write_svc.recover_orphans()
+    assert queued_id in outcome["redispatched"]
+    assert queued_id not in outcome["failed_closed"]
+
+    assert _poll_status(e2e_client, queued_id) == "completed"
+
+    # --- running + dead lease -> fail-closed ---
+    created_run = e2e_client.post(
+        "/api/v1/research/experiments",
+        json=_lab_payload(name="E2E orphan running fail-closed"),
+    )
+    assert created_run.status_code == 200, created_run.text
+    running_id = created_run.json()["experiment_id"]
+
+    past = (datetime.now(UTC) - timedelta(seconds=5)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+    now = jobs_utc_now()
+
+    def _to_dead_running(job: ResearchJob) -> None:
+        job.status = "running"
+        job.updated_at = now
+        job.started_at = now
+        job.worker_id = "dead-worker"
+        job.lease_id = "dead-lease"
+        job.lease_expires_at = past
+
+    store.compare_and_set(
+        running_id, expected_status="created", mutate=_to_dead_running
+    )
+
+    outcome2 = write_svc.recover_orphans()
+    assert running_id in outcome2["failed_closed"]
+    assert running_id not in outcome2["redispatched"]
+
+    status = e2e_client.get(
+        f"/api/v1/research/experiments/{running_id}/status"
+    ).json()
+    assert status["status"] == "failed"
+    assert status["error"] is not None
+    assert "Prozessneustart" in status["error"] or "Lease" in status["error"]
 
 
 # --- 9. Robustness (#247) / Gate (#248) / Validation (#249) smoke ----------

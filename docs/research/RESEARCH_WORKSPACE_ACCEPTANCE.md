@@ -11,11 +11,37 @@ data, and never record private Strategy V1 economic metrics here (see
 ## Scope
 
 Covers: Strategy catalog, Strategy Lab, Run start/poll/detail, Kurs & Trades
-chart, Robustness, Gates (read-only smoke), Validation Studies, double-start
-protection, and dataset-integrity fail-closed behavior — everything this
-branch stack (`main → #247 → #248 → #249 → #250`) actually ships. Compare
-(#246) and durable job ownership/restart-recovery (#245) are **not** on this
-stack; see "Explicitly out of scope" below.
+chart, Compare, Robustness, Gates (read-only smoke), Validation Studies,
+double-start protection, dataset-integrity fail-closed behavior, and the
+durable job ownership / restart-recovery contract exercised in API E2E —
+everything this branch stack
+(`main → #245-via-#247 → #246 → #247 → #248 → #249 → #250`) ships.
+
+## Playwright waiver (explicit)
+
+Issue #250 asks for Playwright + API E2E + documented manual UI acceptance.
+
+**Waiver (until a Research Playwright smoke lands or this waiver is
+accepted):** there is **no** Research Workspace Playwright coverage in this
+PR. Rationale:
+
+- Existing Playwright configs (`playwright.config.ts`,
+  `playwright.perf.config.ts`) drive the **paper-trading** dashboard against
+  `scripts/paper-api-stub.mjs`, which has **no** research API routes or
+  fixtures.
+- Adding a credible Research browser smoke would require stubbing Lab /
+  experiments / chart / compare / validation surfaces (or standing up a real
+  research API + clean git + local_lab catalog in CI) — out of scope for a
+  minimal #250 acceptance fix and not yet wired in this repo.
+- Substitutes for this PR:
+  1. API E2E: `tests/research/test_e2e_acceptance.py` (full Issue #250 matrix,
+     including real Compare `#277` and `recover_orphans` ownership `#245/#276`)
+  2. CLI compat: `tests/research/test_cli_compat.py`
+  3. Frontend unit coverage: vitest (`tests/dashboard/research-*.test.tsx`)
+  4. This manual UI checklist (human-run evidence table below)
+
+Until Playwright is added **or** this waiver is explicitly accepted,
+PR #283 must use **`Refs #250` only** — not `Closes #250`.
 
 ## Prerequisites
 
@@ -74,15 +100,33 @@ for the dashboard `.env.local` setup, including the `\$` escaping gotcha).
       markers; clicking a row focuses/zooms the chart to that trade's range.
 - [ ] No "why traded" text invents a reason not present in stored reason
       codes; empty/missing reason codes show as unavailable, not fabricated.
-- [ ] **Integrity drill:** manually corrupt one byte of that run's
-      `chart_data.json` on disk (outside the UI) and reload the detail page.
-      Expected: the chart view shows a clear "Integrität fehlgeschlagen" /
-      unavailable state (no candles, no invented markers) while the
-      **equity/drawdown panel on the same page keeps working** — restore the
-      file afterward. This is the fail-closed property automated in
-      `tests/research/test_e2e_acceptance.py`.
+- [ ] **Integrity drill (whole-artifact byte tamper):** corrupt one byte of
+      that run's `trades.json` **or** `chart_data.json` on disk **without**
+      resealing registry checksums, then reload the detail page. Expected:
+      trades and/or chart fail closed ("Integrität fehlgeschlagen" /
+      unavailable — no candles, no invented markers). Do **not** expect
+      equity/drawdown to keep working after an unreasealed byte-tamper of
+      sealed artifacts: whole-artifact integrity may fail closed for the
+      detail surface as well. Restore the file afterward.
+- [ ] **Integrity drill (chart-scoped semantic mismatch):** to verify
+      equity/drawdown independence as automated in
+      `test_chart_integrity_failure_leaves_equity_drawdown_available`, the
+      failure must be a **dataset-hash mismatch inside `chart_data.json`
+      with checksums resealed** (so registry trust for equity artifacts
+      remains valid while chart endpoints that verify chart binding fail).
+      Only that scoped case guarantees equity/drawdown stay readable while
+      the chart is hidden. A raw unreasealed byte-tamper of `chart_data.json`
+      is **not** that case.
 
-### D. Robustness (#247) / Gates (#248, read-only) / Validation Studies (#249)
+### D. Compare (#246 / #277)
+
+- [ ] `/dashboard/research/compare` loads; selecting two completed runs
+      shows a compatible or incompatible result with explicit diffs — never
+      a silent empty success when Spec fields disagree.
+- [ ] From an experiment detail page, a link/action into Compare pre-fills
+      at least one run id when the UI provides that affordance.
+
+### E. Robustness (#247) / Gates (#248, read-only) / Validation Studies (#249)
 
 - [ ] `/dashboard/research/robustness` lists jobs; creating a bootstrap
       robustness job against a completed base experiment runs to
@@ -96,7 +140,7 @@ for the dashboard `.env.local` setup, including the `\$` escaping gotcha).
       reproducibility block (dataset hash, policy version/hash) without any
       private Strategy V1 numbers.
 
-### E. General workspace hygiene
+### F. General workspace hygiene
 
 - [ ] No route in this checklist ever offers a live/paper order action.
 - [ ] No route accepts a free-form filesystem path (dataset selection is
@@ -106,15 +150,20 @@ for the dashboard `.env.local` setup, including the `\$` escaping gotcha).
       (e.g. visit a route before any experiments exist, throttle network in
       devtools once, and request an unknown experiment id).
 
-## Explicitly out of scope on this stack
+## Ownership / restart recovery (#245 / #276)
 
-| Feature | Issue | Status here |
-|---------|-------|--------------|
-| Compare view (experiment/strategy comparison) | #246 | Not present — separate PR off `main`, not stacked under #249 → #250. `tests/research/test_e2e_acceptance.py::test_compare_surface_not_present_on_this_stack` documents the current 404. |
-| Durable job ownership / restart recovery | #245 | Not present — same reason. In-process V1 jobs are marked `failed` on the next status read after a process restart (documented in `services/research/jobs.py`); no dedicated ownership/restart endpoint exists yet. `test_restart_ownership_api_not_present_on_this_stack` documents the current 404. |
+No dedicated ownership/restart HTTP endpoints exist (and inventing them is
+not part of acceptance). Recovery is the API lifespan hook calling
+`ResearchWriteService.recover_orphans` / `ResearchJobStore.recover_orphans`:
 
-Re-run this checklist (sections A–D at minimum) once #245/#246 land on a
-branch that includes this stack.
+- orphaned `queued` → re-dispatched
+- `running` with dead lease → fail-closed (no mid-run resume)
+
+Covered by `tests/research/test_e2e_acceptance.py::test_recover_orphans_redispatches_queued_and_fails_dead_running`
+and `tests/research/test_research_job_ownership.py`. Manual UI check: after an
+API process restart, a previously mid-run experiment should surface as
+`failed` with a clear restart/lease reason rather than hanging forever on
+`running`.
 
 ## Evidence recording
 
@@ -132,12 +181,13 @@ commit, pass/fail per section, and any deviations with a linked issue.
 |---------------------|-----------|--------------------|
 | Trend Strategy V1 listed exactly once | `test_e2e_acceptance.py::test_trend_strategy_v1_listed_exactly_once`, `tests/dashboard/research-strategies.test.tsx` | Section A |
 | Chart vs bound dataset + trades.json | `test_e2e_acceptance.py::test_chart_matches_bound_dataset_and_trades_json` | Section C |
-| Tampered checksum / dataset mismatch fail-closed | `test_e2e_acceptance.py::test_tampered_checksum_fails_closed_trades_and_chart_hidden` | Section C (integrity drill) |
-| Equity/drawdown unaffected by chart integrity failure | `test_e2e_acceptance.py::test_chart_integrity_failure_leaves_equity_drawdown_available` | Section C (integrity drill) |
+| Tampered checksum fail-closed (trades/chart) | `test_e2e_acceptance.py::test_tampered_checksum_fails_closed_trades_and_chart_hidden` | Section C (byte-tamper drill) |
+| Chart semantic dataset-hash mismatch; equity/drawdown remain | `test_e2e_acceptance.py::test_chart_integrity_failure_leaves_equity_drawdown_available` | Section C (scoped semantic drill) |
 | Deterministic failed job, no private data | `test_e2e_acceptance.py::test_deterministic_failed_job_without_private_data` | — (no safe manual trigger without a real dataset window mistake) |
 | Lab → Run → Detail happy path | `test_e2e_acceptance.py::test_lab_run_detail_happy_path_and_double_start_blocked`, `tests/research/test_research_write_api.py` | Section B |
 | Double-start blocked | same test as above | Section B |
-| Compare surface | documented absent (#246) | Explicitly out of scope table |
-| Robustness / Validation smoke | `test_e2e_acceptance.py::test_robustness_gate_validation_smoke` | Section D |
-| Restart/orphan (#245) | documented absent (#245) | Explicitly out of scope table |
+| Compare (#246 / #277) | `test_e2e_acceptance.py::test_compare_compatible_and_incompatible_runs` | Section D |
+| Robustness / Validation smoke | `test_e2e_acceptance.py::test_robustness_gate_validation_smoke` | Section E |
+| Restart/orphan (#245 / #276) | `test_e2e_acceptance.py::test_recover_orphans_redispatches_queued_and_fails_dead_running` | Ownership section |
 | CLI compatibility | `tests/research/test_cli_compat.py` | — (CLI, not UI) |
+| Playwright Research smoke | **waived** (see Playwright waiver above) | — |
