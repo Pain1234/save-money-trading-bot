@@ -50,7 +50,25 @@ export default async function ResearchExperimentDetailPage({
 
   try {
     const detail = await fetchResearchExperiment(experimentId);
-    const { metadata, config, metrics } = detail;
+    const metadata = detail.metadata;
+    const config = {
+      symbols: detail.config?.symbols ?? [],
+      time_range_start: detail.config?.time_range_start ?? null,
+      time_range_end: detail.config?.time_range_end ?? null,
+      timeframe: detail.config?.timeframe ?? "Nicht verfügbar",
+      starting_capital: detail.config?.starting_capital ?? null,
+      parameters: detail.config?.parameters ?? {},
+      fee_assumption: detail.config?.fee_assumption ?? null,
+      slippage_assumption: detail.config?.slippage_assumption ?? null,
+      funding_assumption: detail.config?.funding_assumption ?? null,
+      costs: detail.config?.costs ?? null,
+      in_sample_config: detail.config?.in_sample_config ?? "Nicht verfügbar",
+      out_of_sample_config:
+        detail.config?.out_of_sample_config ?? "Nicht verfügbar",
+      benchmark: detail.config?.benchmark ?? "Nicht verfügbar",
+      hypothesis: detail.config?.hypothesis ?? null,
+    };
+    const metrics = detail.metrics ?? {};
 
     return (
       <div data-testid="research-detail-ready" className="space-y-4">
