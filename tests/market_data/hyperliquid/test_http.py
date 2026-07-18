@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -144,3 +145,98 @@ def test_decimal_without_float_loss() -> None:
     parsed = loads_decimal('{"price":42000.123456789}')
     assert isinstance(parsed["price"], Decimal)
     assert str(parsed["price"]) == "42000.123456789"
+
+
+@pytest.mark.asyncio
+async def test_post_info_with_raw_preserves_exact_bytes() -> None:
+    config = HyperliquidPublicConfig.for_network(HyperliquidNetwork.TESTNET)
+    raw = b'[{"s":"BTC","i":"1d","t":1704067200000,"T":1704153599000,'
+    raw += b'"o":"100","h":"110","l":"90","c":"105","v":"1000","n":42}]'
+
+    async def handle(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=raw,
+            headers={"content-type": "application/json"},
+        )
+
+    client = HyperliquidHttpClient(
+        config,
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handle), base_url=config.http_base_url
+        ),
+    )
+    parsed, captured = await client.post_info_with_raw(
+        {"type": "candleSnapshot", "req": {}}, request_id="raw-bytes"
+    )
+    assert captured == raw
+    assert isinstance(parsed, list)
+    assert str(parsed[0]["o"]) == "100"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fetch_candles_with_raw_pages_order_and_roundtrip() -> None:
+    """Paginated raw pages keep order; re-parse equals provider candles."""
+    from market_data.content_hash import derive_dataset_id, hash_raw_bytes
+    from research.hl_dataset_export import raw_candles_from_hl_pages, raw_source_for_network
+
+    day1 = candle_dict(t=1704067200000, big_t=1704153599000, o="100", c="101")
+    day2 = candle_dict(t=1704153600000, big_t=1704239999000, o="101", c="102")
+    page0 = json_bytes([day1])
+    page1 = json_bytes([day2])
+
+    config = HyperliquidPublicConfig.for_network(
+        HyperliquidNetwork.TESTNET, max_candles_per_snapshot=1
+    )
+    call_raw: list[bytes] = []
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        start = int(body["req"]["startTime"])
+        # Emit fixed bytes (not httpx json= re-serialize) so capture is exact.
+        # Cursor after page0 advances to close_time+1 (= 1704153599001).
+        if start == 1704067200000:
+            raw = page0
+        elif start == 1704153599001:
+            raw = page1
+        else:
+            raw = b"[]"
+        call_raw.append(raw)
+        return httpx.Response(200, content=raw, headers={"content-type": "application/json"})
+
+    client = HyperliquidHttpClient(
+        config,
+        client=httpx.AsyncClient(
+            transport=httpx.MockTransport(handle), base_url=config.http_base_url
+        ),
+    )
+    provider = HyperliquidHistoricalProvider(client, config)
+    start = datetime(2024, 1, 1, tzinfo=UTC)
+    end = datetime(2024, 1, 2, 23, 59, 59, tzinfo=UTC)
+    candles, pages = await provider.fetch_candles_with_raw_pages(
+        MarketSymbol.BTC, MarketTimeframe.DAILY, start, end, end
+    )
+    assert pages == (page0, page1)
+    assert call_raw == [page0, page1]
+    assert len(candles) == 2
+    replayed = raw_candles_from_hl_pages(pages, symbol=MarketSymbol.BTC, evaluation_time=end)
+    assert len(replayed) == 2
+    assert replayed[0].open_time == candles[0].open_time
+    assert replayed[0].close == candles[0].close
+    assert replayed[1].close == candles[1].close
+
+    # Testnet raw identity seed (not mainnet).
+    raw_hash = hash_raw_bytes(b"".join(pages))
+    testnet_id = derive_dataset_id(
+        raw_hash, "1.0", raw_source_for_network(HyperliquidNetwork.TESTNET)
+    )
+    mainnet_id = derive_dataset_id(
+        raw_hash, "1.0", raw_source_for_network(HyperliquidNetwork.MAINNET)
+    )
+    assert testnet_id != mainnet_id
+    await client.aclose()
+
+
+def json_bytes(items: list[dict[str, object]]) -> bytes:
+    return json.dumps(items, separators=(",", ":"), ensure_ascii=False).encode("utf-8")

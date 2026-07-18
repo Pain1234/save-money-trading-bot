@@ -183,13 +183,44 @@ Optional public URL for redirects/metadata:
 |----------|-------|
 | `DASHBOARD_PUBLIC_URL` | `https://bot.save-money.xyz` |
 
-### Research Lab (API, Issue #270)
+### Research Lab (API, Issue #270 / #274)
 
-The API image includes `examples/research/local_lab/`. `start-api.sh` sets
+The API image includes `examples/research/local_lab/` (flat-price **dev fixture**,
+not research-grade Hyperliquid data). `start-api.sh` defaults
 `RESEARCH_REPO_ROOT` / `RESEARCH_ARTIFACTS_ROOT` to `/app` and points
-`RESEARCH_DATASET_CATALOG_PATH` at the shipped catalog when unset. Registry
-artifacts under `/app/artifacts/research` are ephemeral across redeploys unless
-a volume is attached later.
+`RESEARCH_DATASET_CATALOG_PATH` at the shipped fixture catalog when unset.
+
+For production Lab runs against versioned Hyperliquid snapshots (Issue #274):
+
+1. Attach a volume mounted at `/data/research`.
+2. Export once with a pinned end date (no silent “today”):
+
+```bash
+python scripts/export_research_dataset_hyperliquid.py \
+  --end-date YYYY-MM-DD --days 730 \
+  --out-root /data/research \
+  --catalog-path /data/research/catalog.json
+```
+
+Catalog alias defaults to `hl-btc-mainnet-730d` for that invocation (derived from
+symbol/network/days). Snapshots publish atomically (staging → rename). Manifest
+`code_commit` requires a full Git SHA — 40 or 64 hex chars (clean HEAD or
+`--code-commit` / `RESEARCH_GIT_COMMIT`).
+
+3. Set the API service env triple (absolute HL paths in the catalog):
+
+```text
+RESEARCH_REPO_ROOT=/app
+RESEARCH_ARTIFACTS_ROOT=/data/research
+RESEARCH_DATASET_CATALOG_PATH=/data/research/catalog.json
+```
+
+- Catalog alias `hl-btc-mainnet-730d` is only the Lab selector id; `dataset_id`
+  and `/data/research/<dataset_id>/` are the content identity (R-015).
+- Fixture entries may keep relative paths under `/app/examples/...`; HL entries
+  use absolute paths under `/data/research/...`. Both may coexist in one catalog.
+- Re-export with the same inputs is byte-identical; a different window creates a
+  new `dataset_id` directory (existing divergent snapshots are never overwritten).
 
 Never set `NEXT_PUBLIC_PRIVATE_PAPER_API_URL` or expose database URLs to the
 browser bundle.
