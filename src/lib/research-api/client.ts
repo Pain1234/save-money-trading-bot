@@ -459,30 +459,6 @@ export async function fetchResearchCompare(
   );
 }
 
-export type ResearchCompareRunView = Omit<ResearchExperimentDetail, "job">;
-
-export interface ResearchCompareResult {
-  compatible: boolean;
-  run_a: string;
-  run_b: string;
-  diffs: Record<string, [unknown, unknown]>;
-  runs: {
-    a: ResearchCompareRunView;
-    b: ResearchCompareRunView;
-  };
-}
-
-export async function fetchResearchCompare(
-  runA: string,
-  runB: string,
-): Promise<ResearchCompareResult> {
-  const params = new URLSearchParams({ run_a: runA, run_b: runB });
-  return fetchPaperApi<ResearchCompareResult>(
-    `/api/v1/research/experiments/compare?${params.toString()}`,
-    { revalidate: 10 },
-  );
-}
-
 export function displayValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "Nicht verfügbar";
