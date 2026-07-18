@@ -1,4 +1,4 @@
-"""Gate evaluator + append-only gate persistence (Issue #248 / P4.7c).
+"""Gate evaluator + append-only gate persistence (Issue #248 / P4.7c / #286).
 
 Evaluates evidence already produced by the research runner (#141-#147) and
 the robustness orchestrator (#247) against a versioned
@@ -6,6 +6,13 @@ the robustness orchestrator (#247) against a versioned
 engine and performs **no** live/paper promotion: :attr:`GateRunRecord.
 promotion_action` is always ``"none"`` and no code path here calls into
 ``paper_trading`` or any live order surface.
+
+Issue #286 extends the same surface with a Layer-0 integrity profile
+(``VALID`` / ``INVALID`` / ``NOT_VERIFIABLE``), explicit gate outcomes
+(``PASS`` / ``FAIL`` / ``INCONCLUSIVE`` / ``NOT_AVAILABLE``), and critical
+gate categories on policy ``1.1``. Missing evidence must never appear as
+``PASS``. ``quality_scores_permitted`` is false unless integrity is
+``VALID``.
 
 Evidence-binding contract (mandatory, #248) — every persisted
 :class:`GateRunRecord` carries:
@@ -48,6 +55,7 @@ from research.gate_policy import (
     compute_policy_content_hash,
     evaluate_comparator,
     get_policy,
+    is_critical_category,
 )
 from research.metrics_contract import ResearchMetrics, validate_metrics_or_mark_invalid
 from research.registry import ExperimentRegistry, RegistryEntry
@@ -62,9 +70,12 @@ from research.run_manifest import RunManifest, load_run_manifest
 from research.runner import resolve_git_commit
 from research.write_service import load_dataset_catalog
 
-GATE_RUN_RECORD_SCHEMA_VERSION = "1.0"
+GATE_RUN_RECORD_SCHEMA_VERSION = "1.1"
 GateStatus = Literal["active", "invalidated"]
 GateOverallStatus = Literal["pass", "fail"]
+GateOutcome = Literal["PASS", "FAIL", "INCONCLUSIVE", "NOT_AVAILABLE"]
+IntegrityStatus = Literal["VALID", "INVALID", "NOT_VERIFIABLE"]
+IntegrityCheckStatus = Literal["pass", "fail", "not_verifiable"]
 
 
 def _utc_now() -> str:
@@ -80,15 +91,41 @@ class GateEvaluationError(Exception):
 
 
 @dataclass(frozen=True)
+class IntegrityCheckResult:
+    """One Layer-0 integrity check within a :class:`GateRunRecord` (#286)."""
+
+    name: str
+    status: IntegrityCheckStatus
+    reason: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"name": self.name, "status": self.status, "reason": self.reason}
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> IntegrityCheckResult:
+        return cls(
+            name=str(raw["name"]),
+            status=raw["status"],  # type: ignore[arg-type]
+            reason=str(raw["reason"]),
+        )
+
+
+@dataclass(frozen=True)
 class GateEvaluationResult:
-    """One evaluated gate within a :class:`GateRunRecord` (Gate-Name, Grenzwert,
-    gemessener Wert, bestanden/nicht bestanden, Ablehnungsgrund)."""
+    """One evaluated gate within a :class:`GateRunRecord`.
+
+    ``outcome`` is the scorecard Layer-1 result (#286). ``passed`` remains for
+    #248 API compatibility and is ``True`` only when ``outcome == "PASS"``.
+    Missing evidence must use ``NOT_AVAILABLE`` (never coerced to PASS).
+    """
 
     name: str
     threshold: str
     measured_value: str | None
     passed: bool
     reason: str
+    outcome: GateOutcome = "FAIL"
+    category: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -97,17 +134,40 @@ class GateEvaluationResult:
             "measured_value": self.measured_value,
             "passed": self.passed,
             "reason": self.reason,
+            "outcome": self.outcome,
+            "category": self.category,
         }
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> GateEvaluationResult:
+        outcome_raw = raw.get("outcome")
+        legacy_passed = bool(raw.get("passed", False))
+        if outcome_raw in {"PASS", "FAIL", "INCONCLUSIVE", "NOT_AVAILABLE"}:
+            outcome: GateOutcome = outcome_raw  # type: ignore[assignment]
+        elif raw.get("measured_value") is None and not legacy_passed:
+            # Legacy #248 records: missing measure + not passed → NOT_AVAILABLE.
+            outcome = "NOT_AVAILABLE"
+        else:
+            outcome = "PASS" if legacy_passed else "FAIL"
+        # Always derive passed from outcome so clients cannot see contradictions.
         return cls(
             name=str(raw["name"]),
             threshold=str(raw["threshold"]),
             measured_value=raw.get("measured_value"),
-            passed=bool(raw["passed"]),
+            passed=(outcome == "PASS"),
             reason=str(raw["reason"]),
+            outcome=outcome,
+            category=str(raw.get("category") or ""),
         )
+
+    def __post_init__(self) -> None:
+        expected = self.outcome == "PASS"
+        if self.passed != expected:
+            msg = (
+                f"GateEvaluationResult.passed={self.passed!r} contradicts "
+                f"outcome={self.outcome!r} (passed must equal outcome == 'PASS')"
+            )
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -133,6 +193,8 @@ class GateRunRecord:
     promotion_action: Literal["none"] = "none"
     status: GateStatus = "active"
     invalidation_reason: str | None = None
+    integrity_status: IntegrityStatus = "NOT_VERIFIABLE"
+    integrity_checks: tuple[IntegrityCheckResult, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -155,10 +217,18 @@ class GateRunRecord:
             "promotion_action": self.promotion_action,
             "status": self.status,
             "invalidation_reason": self.invalidation_reason,
+            "integrity_status": self.integrity_status,
+            "integrity_checks": [c.to_dict() for c in self.integrity_checks],
         }
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> GateRunRecord:
+        integrity_raw = raw.get("integrity_status")
+        if integrity_raw in {"VALID", "INVALID", "NOT_VERIFIABLE"}:
+            integrity_status: IntegrityStatus = integrity_raw  # type: ignore[assignment]
+        else:
+            # Fail-closed for pre-#286 records: do not treat missing profile as VALID.
+            integrity_status = "NOT_VERIFIABLE"
         return cls(
             schema_version=str(raw["schema_version"]),
             gate_run_id=str(raw["gate_run_id"]),
@@ -181,7 +251,226 @@ class GateRunRecord:
             promotion_action="none",
             status=raw.get("status", "active"),
             invalidation_reason=raw.get("invalidation_reason"),
+            integrity_status=integrity_status,
+            integrity_checks=tuple(
+                IntegrityCheckResult.from_dict(c) for c in raw.get("integrity_checks", [])
+            ),
         )
+
+
+def quality_scores_permitted(record: GateRunRecord) -> bool:
+    """Trusted quality scoring is allowed only when integrity is VALID (#286).
+
+    INVALID / NOT_VERIFIABLE / invalidated records must not feed decision-use
+    quality scores. Human P5 decisions remain separate (#205).
+    """
+    return record.status == "active" and record.integrity_status == "VALID"
+
+
+def _summarize_integrity_status(
+    checks: Sequence[IntegrityCheckResult],
+) -> IntegrityStatus:
+    if any(c.status == "fail" for c in checks):
+        return "INVALID"
+    if not checks or any(c.status == "not_verifiable" for c in checks):
+        return "NOT_VERIFIABLE"
+    return "VALID"
+
+
+def _build_integrity_checks(
+    *,
+    manifest: RunManifest,
+    entry: RegistryEntry,
+    artifact_checksums: dict[str, str],
+    evaluation_code_commit: str,
+    robustness_run_ids: Sequence[str],
+) -> tuple[IntegrityCheckResult, ...]:
+    """Layer-0 checks over evidence already bound by evaluate() (#286).
+
+    Soft profile for the persisted record: hard fail-closed binding errors still
+    raise :class:`GateEvaluationError` before a record is written.
+
+    Mandatory scorecard checks that are not yet automated
+    (look-ahead / leakage, fee-vs-spec accounting identity, regime assignment
+    coverage) are emitted as ``not_verifiable``. That forces
+    ``integrity_status=NOT_VERIFIABLE`` and blocks
+    :func:`quality_scores_permitted` until a later issue implements them —
+    never silent ``VALID``.
+    """
+    checks: list[IntegrityCheckResult] = []
+
+    if (manifest.dataset_id or "").strip() and (manifest.dataset_content_hash or "").strip():
+        checks.append(
+            IntegrityCheckResult(
+                name="dataset_binding",
+                status="pass",
+                reason="sealed RunManifest dataset_id and dataset_content_hash present",
+            )
+        )
+    else:
+        checks.append(
+            IntegrityCheckResult(
+                name="dataset_binding",
+                status="fail",
+                reason="sealed RunManifest missing dataset_id or dataset_content_hash",
+            )
+        )
+
+    run_checksums = {
+        k: v for k, v in artifact_checksums.items() if not k.startswith("robustness/")
+    }
+    if run_checksums and entry.checksums:
+        checks.append(
+            IntegrityCheckResult(
+                name="run_artifact_checksums",
+                status="pass",
+                reason="registry trust-anchor checksums bound for evaluated run",
+            )
+        )
+    else:
+        checks.append(
+            IntegrityCheckResult(
+                name="run_artifact_checksums",
+                status="fail",
+                reason="run artifact_checksums empty or registry checksums missing",
+            )
+        )
+
+    run_commit = (manifest.git_commit or "").strip()
+    eval_commit = (evaluation_code_commit or "").strip()
+    if (
+        run_commit
+        and eval_commit
+        and run_commit.lower() != "unknown"
+        and eval_commit.lower() != "unknown"
+        and len(run_commit) >= 7
+        and len(eval_commit) >= 7
+    ):
+        checks.append(
+            IntegrityCheckResult(
+                name="git_commit_binding",
+                status="pass",
+                reason="run_code_commit and evaluation_code_commit bound",
+            )
+        )
+    else:
+        checks.append(
+            IntegrityCheckResult(
+                name="git_commit_binding",
+                status="fail",
+                reason="run or evaluation git commit missing/unknown",
+            )
+        )
+
+    if entry.status != "complete":
+        checks.append(
+            IntegrityCheckResult(
+                name="run_status",
+                status="fail",
+                reason=f"run status is {entry.status!r}, expected complete",
+            )
+        )
+    else:
+        checks.append(
+            IntegrityCheckResult(
+                name="run_status",
+                status="pass",
+                reason="evaluated run status is complete",
+            )
+        )
+
+    if robustness_run_ids:
+        missing = [
+            rid
+            for rid in robustness_run_ids
+            if f"robustness/{rid}/manifest.json" not in artifact_checksums
+        ]
+        if missing:
+            checks.append(
+                IntegrityCheckResult(
+                    name="robustness_manifest_seals",
+                    status="fail",
+                    reason=f"missing robustness manifest seals: {missing}",
+                )
+            )
+        else:
+            checks.append(
+                IntegrityCheckResult(
+                    name="robustness_manifest_seals",
+                    status="pass",
+                    reason="all referenced robustness manifests sealed in artifact_checksums",
+                )
+            )
+
+    # Mandatory Layer-0 checks without an automated verifier yet (#286 fail-closed).
+    checks.extend(
+        [
+            IntegrityCheckResult(
+                name="look_ahead_leakage",
+                status="not_verifiable",
+                reason=(
+                    "automated look-ahead / future-candle / data-leakage check "
+                    "not yet implemented; fail closed as NOT_VERIFIABLE"
+                ),
+            ),
+            IntegrityCheckResult(
+                name="accounting_fee_spec_identity",
+                status="not_verifiable",
+                reason=(
+                    "automated fee/funding/slippage identity vs Spec not yet "
+                    "implemented; fail closed as NOT_VERIFIABLE"
+                ),
+            ),
+            IntegrityCheckResult(
+                name="regime_assignment_coverage",
+                status="not_verifiable",
+                reason=(
+                    "automated trade→regime assignment coverage check not yet "
+                    "implemented; fail closed as NOT_VERIFIABLE"
+                ),
+            ),
+        ]
+    )
+
+    return tuple(checks)
+
+
+def _gate_result(
+    *,
+    name: str,
+    threshold: str,
+    measured_value: str | None,
+    outcome: GateOutcome,
+    reason: str,
+    category: str = "",
+) -> GateEvaluationResult:
+    return GateEvaluationResult(
+        name=name,
+        threshold=threshold,
+        measured_value=measured_value,
+        outcome=outcome,
+        passed=(outcome == "PASS"),
+        reason=reason,
+        category=category,
+    )
+
+
+def _overall_status_from_gates(
+    gate_results: Sequence[GateEvaluationResult],
+) -> GateOverallStatus:
+    """Overall pass only when every gate is PASS; critical categories included."""
+    if not gate_results:
+        return "fail"
+    categorized = [g for g in gate_results if g.category]
+    if categorized:
+        # Policy 1.1+: any non-PASS on a critical category fails overall;
+        # uncategorized gates (if any) still must PASS.
+        for gate in gate_results:
+            if gate.outcome != "PASS":
+                if not gate.category or is_critical_category(gate.category):
+                    return "fail"
+        return "pass"
+    return "pass" if all(g.passed for g in gate_results) else "fail"
 
 
 def compute_gate_run_id(
@@ -963,17 +1252,22 @@ class GateEvaluator:
             measured = measurements.get(gate.metric)
             if measured is None:
                 gate_results.append(
-                    GateEvaluationResult(
+                    _gate_result(
                         name=gate.name,
                         threshold=gate.threshold,
                         measured_value=None,
-                        passed=False,
-                        reason=f"no evidence available for metric '{gate.metric}'",
+                        outcome="NOT_AVAILABLE",
+                        reason=(
+                            f"no evidence available for metric '{gate.metric}' "
+                            "(NOT_AVAILABLE; never PASS)"
+                        ),
+                        category=gate.category,
                     )
                 )
                 continue
             threshold_decimal = Decimal(gate.threshold)
             passed = evaluate_comparator(gate.comparator, measured, threshold_decimal)
+            outcome: GateOutcome = "PASS" if passed else "FAIL"
             reason = (
                 "pass"
                 if passed
@@ -983,18 +1277,17 @@ class GateEvaluator:
                 )
             )
             gate_results.append(
-                GateEvaluationResult(
+                _gate_result(
                     name=gate.name,
                     threshold=gate.threshold,
                     measured_value=format(measured, "f"),
-                    passed=passed,
+                    outcome=outcome,
                     reason=reason,
+                    category=gate.category,
                 )
             )
 
-        overall_status: GateOverallStatus = (
-            "pass" if all(g.passed for g in gate_results) else "fail"
-        )
+        overall_status = _overall_status_from_gates(gate_results)
 
         try:
             evaluation_code_commit = _resolve_evaluation_code_commit(self.repo_root)
@@ -1006,6 +1299,15 @@ class GateEvaluator:
 
         artifact_checksums = dict(entry.checksums)
         artifact_checksums.update(robustness_checksums)
+
+        integrity_checks = _build_integrity_checks(
+            manifest=manifest,
+            entry=entry,
+            artifact_checksums=artifact_checksums,
+            evaluation_code_commit=evaluation_code_commit,
+            robustness_run_ids=robustness_run_ids,
+        )
+        integrity_status = _summarize_integrity_status(integrity_checks)
 
         sorted_robustness_ids = tuple(sorted(robustness_run_ids))
         gate_run_id = compute_gate_run_id(
@@ -1034,6 +1336,8 @@ class GateEvaluator:
             overall_status=overall_status,
             promotion_action="none",
             status="active",
+            integrity_status=integrity_status,
+            integrity_checks=integrity_checks,
         )
 
         existing = self.store.get(gate_run_id)

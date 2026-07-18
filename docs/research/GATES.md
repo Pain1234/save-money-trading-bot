@@ -82,19 +82,43 @@ decision (#205 for Strategy V1; P6/P8 milestones generally).
 ## Extension path — Regime Evidence Scorecard (P4.9)
 
 Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) /
-contract [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md) extends this surface with:
+contract [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md). Issue
+[#286](https://github.com/Pain1234/save-money-trading-bot/issues/286) lands the
+Layer-0 / Layer-1 extensions on this same surface (no second evaluator or
+registry):
 
-- Layer-0 **Integrity** profile (`VALID` / `INVALID` / `NOT_VERIFIABLE`) that
-  blocks trusted quality scoring when invalid ([#286](https://github.com/Pain1234/save-money-trading-bot/issues/286))
-- Explicit gate outcomes `INCONCLUSIVE` / `NOT_AVAILABLE` (missing evidence must
-  never appear as `PASS`)
-- Critical-gate **categories** (drawdown, OOS net, walk-forward, cost stress,
-  parameter fragility, concentration, bootstrap tail, regime coverage, sample
-  sufficiency, execution realism) — still content-hash bound; still no private
-  Strategy V1 numbers in the generic P4 policy
+- Layer-0 **Integrity** profile on `GateRunRecord`: `integrity_status` ∈
+  `VALID` | `INVALID` | `NOT_VERIFIABLE`, plus `integrity_checks[]`.
+  `research.gate_evaluator.quality_scores_permitted(record)` is true only when
+  `status == "active"` and `integrity_status == "VALID"`. Pre-#286 records
+  without a profile deserialize as `NOT_VERIFIABLE` (fail closed).
+- Gate outcomes on each `GateEvaluationResult`: `outcome` ∈
+  `PASS` | `FAIL` | `INCONCLUSIVE` | `NOT_AVAILABLE`. Missing metric evidence
+  yields `NOT_AVAILABLE` with `passed=false` (never silent `PASS`). Legacy
+  `passed` remains for #248 API compatibility (`passed == (outcome == "PASS")`).
+- Policy **`1.1`**: same generic thresholds as frozen `1.0`, plus Layer-1
+  `category` labels (`sample_sufficiency`, `oos_net`, `drawdown`, `walk_forward`,
+  `cost_stress`, `parameter_fragility`, `bootstrap`). Empty `category` is omitted
+  from canonical policy JSON so `1.0` content hashes stay stable. Categories
+  `concentration`, `regime_coverage`, `execution_realism`, `behaviour` are
+  reserved in the registry for later issues — not hard-coded as private V1
+  thresholds here.
+- Schema version for new records: `GateRunRecord.schema_version = "1.1"`.
+
+**Integrity checks implemented in #286** (over already-bound evidence): dataset
+binding, run artifact checksums, git commit binding, complete run status,
+robustness manifest seals when `robustness_run_ids` are supplied.
+
+**Mandatory checks without an automated verifier yet** (look-ahead / leakage,
+fee-vs-spec accounting identity, regime assignment coverage) are still emitted
+on every evaluate as `integrity_checks[].status = "not_verifiable"`. That forces
+`integrity_status = NOT_VERIFIABLE` and blocks `quality_scores_permitted` —
+never silent `VALID`. Later issues must replace those placeholders with real
+pass/fail verifiers before trusted quality scoring can proceed.
 
 Do **not** create a second gate evaluator or gate registry. Regime quality scores
-must not compensate a critical gate `FAIL`.
+must not compensate a critical gate `FAIL`. Human P5 (`ACCEPT` / `REJECT` /
+`INCONCLUSIVE`) remains separate (#205). `promotion_action` stays `"none"`.
 
 ## API
 

@@ -25,6 +25,7 @@ def test_content_hash_is_deterministic() -> None:
     a = gp.compute_policy_content_hash(policy)
     b = gp.compute_policy_content_hash(policy)
     assert a == b
+    assert a == gp.POLICY_1_0_CONTENT_HASH
     assert len(a) == 64
     int(a, 16)  # must be valid hex
 
@@ -130,11 +131,18 @@ def test_list_policy_versions_contains_1_0() -> None:
     assert "1.0" in gp.list_policy_versions()
 
 
+def test_list_policy_versions_contains_1_1() -> None:
+    assert "1.1" in gp.list_policy_versions()
+
+
 def test_gate_definition_to_dict_round_trip_shape() -> None:
     policy = gp.get_policy("1.0")
     gate = policy.gates[0]
     d = gate.to_dict()
+    # Empty category omitted so policy 1.0 content hash stays frozen (#286).
     assert set(d) == {"name", "metric", "comparator", "threshold", "description"}
+    categorized = gp.get_policy("1.1").gates[0].to_dict()
+    assert "category" in categorized
 
 
 def test_policy_to_dict_shape() -> None:
