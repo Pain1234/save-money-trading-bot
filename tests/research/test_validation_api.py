@@ -108,6 +108,10 @@ def validation_client(
     def _validation() -> ValidationStudyService:
         return ValidationStudyService(tmp_path, repo_root=REPO_ROOT)
 
+    # Gate evaluation fails closed on a dirty working tree unless a deployment
+    # pin is provided — tests pin an explicit evaluation SHA (Issue #248 P2).
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "a" * 40)
+
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
     app.dependency_overrides[get_robustness_service] = _robustness
@@ -157,10 +161,12 @@ def validation_client(
         time.sleep(0.2)
     assert rob_status == "completed", rob_status
 
-    gate_created = client.post(
+    gate_resp = client.post(
         "/api/v1/research/gates/evaluate",
         json={"run_id": run_id, "policy_version": "1.0", "robustness_run_ids": [robustness_id]},
-    ).json()
+    )
+    assert gate_resp.status_code == 200, gate_resp.text
+    gate_created = gate_resp.json()
     gate_run_id = gate_created["gate_run_id"]
 
     ids = {
