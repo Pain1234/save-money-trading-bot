@@ -6,6 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
+from research.gate_service import GateService
 from research.robustness_service import RobustnessOrchestrationService
 from research.service import ResearchReadService, research_root_from_env
 from research.write_service import (
@@ -32,11 +33,16 @@ def get_robustness_service() -> RobustnessOrchestrationService:
     return RobustnessOrchestrationService(research_root_from_env())
 
 
+def get_gate_service() -> GateService:
+    return GateService(research_root_from_env())
+
+
 ResearchSvc = Annotated[ResearchReadService, Depends(get_research_service)]
 ResearchWriteSvc = Annotated[ResearchWriteService, Depends(get_research_write_service)]
 RobustnessSvc = Annotated[
     RobustnessOrchestrationService, Depends(get_robustness_service)
 ]
+GateSvc = Annotated[GateService, Depends(get_gate_service)]
 
 
 @router.get("/overview")
@@ -403,6 +409,85 @@ def research_robustness_detail(
     return {**status, "manifest": manifest}
 
 
+@router.get("/gate-policies")
+def research_list_gate_policies(svc: GateSvc) -> dict[str, Any]:
+    """Registered gate policy versions + content hash (read-only, no secrets)."""
+    items = svc.list_policies()
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/gates")
+def research_list_gates(
+    svc: GateSvc,
+    run_id: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    try:
+        items = svc.list_all(run_id=run_id)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/gates/evaluate")
+def research_evaluate_gate(
+    payload: dict[str, Any],
+    svc: GateSvc,
+) -> dict[str, Any]:
+    """Evaluate a versioned gate policy against an already-completed run.
+
+    Read-only over existing artifacts; append-only persistence; no
+    live/paper promotion (P4.7c / #248).
+    """
+    try:
+        return svc.evaluate(payload)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.get("/gates/{gate_run_id}")
+def research_gate_detail(
+    gate_run_id: str,
+    svc: GateSvc,
+) -> dict[str, Any]:
+    try:
+        return svc.get(gate_run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(status_code=404, detail="gate result not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.post("/gates/{gate_run_id}/invalidate")
+def research_invalidate_gate(
+    gate_run_id: str,
+    payload: dict[str, Any],
+    svc: GateSvc,
+) -> dict[str, Any]:
+    """Append-only invalidation (never mutates the original gate record)."""
+    try:
+        return svc.invalidate(gate_run_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(status_code=404, detail="gate result not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
 def is_research_write_path(path: str) -> bool:
     """POST allow-list for private research write surface on the dashboard API."""
     if path.rstrip("/") == "/api/v1/research/experiments":
@@ -412,5 +497,9 @@ def is_research_write_path(path: str) -> bool:
     if path.rstrip("/") == "/api/v1/research/robustness":
         return True
     if path.startswith("/api/v1/research/robustness/") and path.endswith("/start"):
+        return True
+    if path.rstrip("/") == "/api/v1/research/gates/evaluate":
+        return True
+    if path.startswith("/api/v1/research/gates/") and path.endswith("/invalidate"):
         return True
     return False
