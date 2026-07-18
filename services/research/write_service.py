@@ -135,8 +135,7 @@ def _catalog_item(
         "timeframes": list(entry.required_timeframes),
         "required_timeframes": list(entry.required_timeframes),
         "timeframe_note": (
-            "Trend V1 requires multi-timeframe candles "
-            f"({'/'.join(entry.required_timeframes)})."
+            f"Trend V1 requires multi-timeframe candles ({'/'.join(entry.required_timeframes)})."
         ),
         "symbols": list(entry.supported_symbols),
         "supported_symbols": list(entry.supported_symbols),
@@ -289,8 +288,7 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
     catalog = {e.id: e for e in load_dataset_catalog()}
     if not catalog_id or catalog_id not in catalog:
         field_errors["dataset_catalog_id"] = (
-            "Dataset-Katalog-Eintrag fehlt oder ist unbekannt "
-            "(kein freier Dateipfad erlaubt)"
+            "Dataset-Katalog-Eintrag fehlt oder ist unbekannt (kein freier Dateipfad erlaubt)"
         )
         entry = None
     else:
@@ -368,6 +366,31 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
                     },
                 )
 
+    # Fail closed on Spec window outside DatasetManifest (avoid silent job failure).
+    try:
+        from datetime import datetime
+
+        from research.dataset_binding import load_dataset_manifest
+
+        manifest = load_dataset_manifest(entry.manifest_path, repo_root=repo_root_from_env())
+        start = datetime.fromisoformat(str(tr["start"]).replace("Z", "+00:00"))
+        end = datetime.fromisoformat(str(tr["end"]).replace("Z", "+00:00"))
+        if start < manifest.start_timestamp:
+            field_errors["time_range"] = (
+                "Startdatum liegt vor dem Dataset-Fenster "
+                f"({manifest.start_timestamp.date().isoformat()})"
+            )
+        if end > manifest.end_timestamp:
+            field_errors["time_range"] = (
+                "Enddatum liegt nach dem Dataset-Fenster "
+                f"({manifest.end_timestamp.date().isoformat()})"
+            )
+    except (OSError, ValueError, TypeError, FileNotFoundError) as exc:
+        field_errors["dataset_catalog_id"] = f"DatasetManifest konnte nicht geladen werden: {exc}"
+
+    if field_errors:
+        raise ResearchWriteError("Validierung fehlgeschlagen", field_errors=field_errors)
+
     notes = str(payload.get("notes") or "")
     seed = payload.get("random_seed")
     random_seed = int(seed) if seed is not None and str(seed) != "" else None
@@ -376,11 +399,7 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
         "schema_version": "1.0",
         "hypothesis": name,
         "strategy_version": strategy_version,
-        "parameters": {
-            k: v
-            for k, v in raw_params.items()
-            if k not in {"strategy_version"}
-        },
+        "parameters": {k: v for k, v in raw_params.items() if k not in {"strategy_version"}},
         "dataset_manifest_ref": {
             "dataset_id": entry.dataset_id,
             "content_hash": entry.content_hash,
@@ -406,9 +425,7 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
             "assumed_rate": (payload.get("funding_assumption") or {}).get("assumed_rate"),
             "model_version": "1.0",
         },
-        "benchmark": str(
-            payload.get("benchmark") or f"buy_and_hold_{symbols_raw[0]}"
-        ),
+        "benchmark": str(payload.get("benchmark") or f"buy_and_hold_{symbols_raw[0]}"),
         "random_seed": random_seed,
         "notes": notes,
         "owner": str(payload.get("owner") or "dashboard"),
@@ -546,8 +563,7 @@ class ResearchWriteService:
                     field_errors={"status": "Doppelstart verhindert"},
                 ) from exc
             raise ResearchWriteError(
-                "Nur Experimente im Status created können gestartet werden "
-                "(kein Re-run in V1)",
+                "Nur Experimente im Status created können gestartet werden (kein Re-run in V1)",
                 field_errors={"status": f"Aktueller Status: {current}"},
             ) from exc
 
@@ -606,6 +622,7 @@ class ResearchWriteService:
         from research.jobs import JobTransitionError
 
         try:
+
             def _to_running(job: ResearchJob) -> None:
                 job.status = "running"
                 job.started_at = _utc_now()
@@ -621,9 +638,7 @@ class ResearchWriteService:
                 return
 
             spec = parse_experiment_spec(
-                json.loads(
-                    self.store.pending_spec_path(experiment_id).read_text(encoding="utf-8")
-                )
+                json.loads(self.store.pending_spec_path(experiment_id).read_text(encoding="utf-8"))
             )
             bundle_path = Path(entry.bundle_path)
             if not bundle_path.is_absolute():
