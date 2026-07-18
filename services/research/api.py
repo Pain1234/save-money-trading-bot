@@ -402,7 +402,13 @@ def research_list_gates(
     svc: GateSvc,
     run_id: Annotated[str | None, Query()] = None,
 ) -> dict[str, Any]:
-    items = svc.list_all(run_id=run_id)
+    try:
+        items = svc.list_all(run_id=run_id)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
     return {"items": items, "count": len(items)}
 
 
@@ -436,6 +442,11 @@ def research_gate_detail(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError:
         raise HTTPException(status_code=404, detail="gate result not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
 
 
 @router.post("/gates/{gate_run_id}/invalidate")
@@ -476,8 +487,9 @@ def research_create_validation_study(
     """Aggregate already-produced evidence (#247/#248) into a Validation Study.
 
     No second backtest engine, no re-evaluation, no live/paper promotion —
-    every referenced id must already resolve against the registry /
-    robustness / gate stores (P4.7d / #249).
+    every referenced id must already resolve as complete/active evidence, and
+    create persists an immutable evidence snapshot (pinned run_ids + hashes)
+    rather than re-resolving "latest" on later reads (P4.7d / #249).
     """
     try:
         return svc.create(payload)
@@ -501,6 +513,13 @@ def research_validation_study_detail(
         raise HTTPException(
             status_code=404, detail="validation study not found"
         ) from None
+    except ResearchWriteError as exc:
+        # Decided studies fail closed when the immutable evidence snapshot
+        # can no longer be re-verified (invalidated run, checksum drift, …).
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
 
 
 @router.post("/validation/{study_id}/decision")

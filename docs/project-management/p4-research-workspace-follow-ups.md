@@ -15,11 +15,57 @@
 Combined vertical slice: Strategy Lab UI, write API, filesystem job store,
 in-process worker wrapping `run_experiment`, status polling.
 
-**V1 job limit:** in-process threads do not resume after API process restart;
-stale `running` jobs are failed closed on the next status read.
+**V1 job limit (superseded by #245):** the original #242/#243 slice used
+in-process threads that did not resume after an API process restart; stale
+`running` jobs were failed closed on the next status read. Issue #245
+replaces this with a durable, cross-process-safe ownership contract — see
+below.
 
 **Abnahme:** #242 remains open until manual UI acceptance with a dataset catalog
 (also covered by #250). Local catalog helper tracked separately (#264).
+
+### 1b. P4.6b Durable Research Job Execution und Restart Recovery — #245
+
+Filesystem job store still has no Celery/Redis mandate, but process-local
+locks/CAS alone are not sufficient once more than one API process can touch
+the same job store (e.g. multiple Railway/uvicorn workers). #245 adds an
+explicit cross-process ownership contract on top of the existing
+`ResearchJobStore` / `ResearchWriteService`:
+
+- `worker_id` — stable identity of a process/worker instance (one UUID
+  generated once per process import, not derived from a potentially reused
+  PID).
+- `lease_id` — unique per claim attempt (fresh UUID each time a job is
+  claimed `queued -> running`); kept distinct from the pre-existing
+  `attempt_id` field, which identifies the run-manifest attempt produced by
+  the backtest engine, not job ownership.
+- **Cross-process atomic claim:** `ResearchJobStore.claim()` wraps the
+  `queued -> running` read-modify-write in an interprocess file lock
+  (`msvcrt.locking` on Windows, `fcntl.flock` on POSIX) in addition to the
+  existing process-local `threading.RLock`, so two processes racing to claim
+  the same job get exactly one winner.
+- **Lease renewal:** the owning worker thread renews `lease_expires_at` on a
+  heartbeat interval (`RESEARCH_JOB_LEASE_SECONDS` / `RESEARCH_JOB_LEASE_HEARTBEAT_SECONDS`)
+  while the run is in progress.
+- **Conditional terminal write:** `ResearchJobStore.finish()` only applies a
+  `completed` / `failed` write if the caller still owns the job's current
+  `worker_id` + `lease_id`, and never overwrites an already-terminal job — a
+  stale/former owner cannot resurrect or overwrite a job it no longer owns.
+
+**Restart semantics:**
+
+| Status at restart | Behavior |
+|---|---|
+| `created` | unchanged |
+| `queued`, no live owner | re-dispatched by the startup recovery hook (`ResearchJobStore.recover_orphans` / `ResearchWriteService.recover_orphans`) |
+| `running`, dead lease | failed closed with a clear reason — **no mid-run resume** |
+| `running`, live lease (owned by a still-alive worker, possibly in another process) | left untouched |
+| terminal (`completed` / `failed`) | unchanged |
+
+The recovery hook runs once at API startup (paper-trading read-only API
+lifespan, `services/paper_trading/readonly_api.py`), before the API starts
+serving research-write traffic. No Celery/Redis is introduced; Cancel/Retry/
+Re-run remain out of scope (unchanged, deferred).
 
 ### 2b. P4.6 Make Trend Strategy V1 visible — #265
 

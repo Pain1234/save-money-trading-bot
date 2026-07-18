@@ -312,6 +312,7 @@ export interface ValidationStudyDecision {
   rationale: string;
   decided_by: string;
   decided_at: string;
+  evidence_snapshot_id: string;
 }
 
 export interface ValidationExperimentRef {
@@ -352,7 +353,25 @@ export interface ValidationStudyReproducibility {
   dataset_content_hash: string | null;
   policy_version: string | null;
   policy_content_hash: string | null;
-  source: "gate_run" | "experiment_run";
+  source: "gate_run" | "evidence_snapshot" | "experiment_run";
+  evidence_snapshot_id?: string;
+}
+
+export interface ValidationPinnedRunEvidence {
+  experiment_id: string;
+  run_id: string;
+  checksums_digest: string;
+  dataset_id: string;
+  dataset_content_hash: string;
+  git_commit: string;
+}
+
+export interface ValidationEvidenceSnapshot {
+  snapshot_id: string;
+  primary: ValidationPinnedRunEvidence;
+  additional: ValidationPinnedRunEvidence[];
+  robustness: { robustness_id: string; manifest_hash: string }[];
+  gates: { gate_run_id: string; content_hash: string }[];
 }
 
 export interface ValidationStudySummary {
@@ -365,8 +384,10 @@ export interface ValidationStudySummary {
   experiment_id: string;
   run_id: string | null;
   additional_experiment_ids: string[];
+  additional_run_ids?: string[];
   robustness_ids: string[];
   gate_run_ids: string[];
+  evidence_snapshot?: ValidationEvidenceSnapshot;
   notes: string;
   status: ValidationStudyStatus;
   decision: ValidationStudyDecision | null;
@@ -379,6 +400,11 @@ export interface ValidationStudyDetail extends ValidationStudySummary {
   gates: GateRunRecord[];
   progress: ValidationStudyProgress;
   reproducibility: ValidationStudyReproducibility;
+  evidence_integrity?: {
+    ok: boolean;
+    error: string | null;
+    snapshot_id: string;
+  };
 }
 
 export interface ValidationStudyList {
