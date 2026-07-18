@@ -201,6 +201,7 @@ describe("ValidationStudyDetailView (static render, synthetic fixtures)", () => 
         rationale: "synthetic gates passed under fixture policy",
         decided_by: "reviewer",
         decided_at: "2024-01-02T00:00:00.000000Z",
+        evidence_snapshot_id: "evsnap_synthetic",
       },
     };
     const html = renderToStaticMarkup(<ValidationStudyDetailView study={decided} />);
@@ -220,6 +221,7 @@ describe("ValidationStudyDetailView (static render, synthetic fixtures)", () => 
         rationale: "synthetic",
         decided_by: "reviewer",
         decided_at: "2024-01-02T00:00:00.000000Z",
+        evidence_snapshot_id: "evsnap_synthetic",
       },
     };
     const html = renderToStaticMarkup(<ValidationStudyDetailView study={decided} />);
@@ -285,6 +287,7 @@ describe("ValidationStudyDecisionPanel (static render, synthetic fixtures)", () 
           rationale: "synthetic gate failed",
           decided_by: "reviewer",
           decided_at: "2024-01-02T00:00:00.000000Z",
+          evidence_snapshot_id: "evsnap_synthetic",
         }}
       />,
     );

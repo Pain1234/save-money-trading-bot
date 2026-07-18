@@ -10,6 +10,7 @@ runs no second backtest engine and re-evaluates no gate.
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -204,12 +205,19 @@ def test_create_validation_study_aggregates_evidence(
     assert study["robustness_ids"] == [ids["robustness_id"]]
     assert study["gate_run_ids"] == [ids["gate_run_id"]]
 
-    # Aggregated, resolved evidence — not re-computed.
+    # Aggregated from the immutable evidence snapshot — not re-computed.
     assert study["experiments"][0]["experiment_id"] == ids["base_experiment_id"]
+    assert study["experiments"][0]["run_id"] == ids["run_id"]
     assert study["robustness"][0]["robustness_id"] == ids["robustness_id"]
     assert study["robustness_by_type"]["bootstrap"][0]["robustness_id"] == ids["robustness_id"]
     assert study["gates"][0]["gate_run_id"] == ids["gate_run_id"]
     assert study["gates"][0]["promotion_action"] == "none"
+
+    snapshot = study["evidence_snapshot"]
+    assert snapshot["snapshot_id"].startswith("evsnap_")
+    assert snapshot["primary"]["run_id"] == ids["run_id"]
+    assert len(snapshot["primary"]["checksums_digest"]) == 64
+    assert study["evidence_integrity"]["ok"] is True
 
     progress = study["progress"]
     assert progress["experiments"] == {"total": 1, "complete": 1}
@@ -218,6 +226,7 @@ def test_create_validation_study_aggregates_evidence(
 
     repro = study["reproducibility"]
     assert repro["source"] == "gate_run"
+    assert repro["evidence_snapshot_id"] == snapshot["snapshot_id"]
     assert len(repro["dataset_content_hash"]) == 64
     assert repro["policy_version"] == "1.0"
     assert len(repro["policy_content_hash"]) == 64
@@ -351,6 +360,10 @@ def test_decide_validation_study_records_human_owned_decision(
     assert body["status"] == "decided"
     assert body["decision"]["outcome"] == "accept"
     assert body["decision"]["decided_by"] == "reviewer"
+    assert (
+        body["decision"]["evidence_snapshot_id"]
+        == body["evidence_snapshot"]["snapshot_id"]
+    )
 
     # No promotion trigger anywhere in the response (#249 non-scope: live/paper promotion).
     assert "promotion_action" not in body["decision"]
@@ -419,3 +432,167 @@ def test_validation_post_allowed_paper_post_blocked(
         json={"experiment_id": ids["base_experiment_id"]},
     )
     assert resp.status_code == 200
+
+
+def test_create_pins_run_a_despite_later_complete_run_b(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    """Create pins run A; a later complete run B for the same experiment must
+
+    not change the study's returned evidence (P1 immutable binding)."""
+    client, ids = validation_client
+    created = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": ids["base_experiment_id"],
+            "robustness_ids": [ids["robustness_id"]],
+            "gate_run_ids": [ids["gate_run_id"]],
+        },
+    ).json()
+    study_id = created["study_id"]
+    pinned_run = created["study"]["run_id"]
+    assert pinned_run == ids["run_id"]
+
+    # Simulate a newer complete registry entry for the same experiment
+    # (different run_id). Live experiment_detail would prefer this row;
+    # the study must keep resolving the pinned run A.
+    from research.registry import ExperimentRegistry
+
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    registry = ExperimentRegistry(root)
+    original = registry.show(pinned_run, verify=False)
+    registry._append(  # noqa: SLF001 — intentional drift fixture
+        {
+            "experiment_id": original.experiment_id,
+            "run_id": "run_later_complete_b",
+            "attempt_id": "attempt_later_b",
+            "status": "complete",
+            "strategy_version": original.strategy_version,
+            "dataset_version": original.dataset_version,
+            "cost_model_version": original.cost_model_version,
+            "benchmark_ref": original.benchmark_ref,
+            "created_at": "2099-01-01T00:00:00.000000Z",
+            "artifact_path": original.artifact_path,
+            "checksums": original.checksums,
+        }
+    )
+
+    detail = client.get(f"/api/v1/research/validation/{study_id}")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["run_id"] == pinned_run
+    assert body["experiments"][0]["run_id"] == pinned_run
+    assert body["evidence_snapshot"]["primary"]["run_id"] == pinned_run
+    assert body["evidence_integrity"]["ok"] is True
+
+    # Contrast: live experiment read resolves to the newest registry row.
+    live = client.get(
+        f"/api/v1/research/experiments/{ids['base_experiment_id']}"
+    ).json()
+    assert live["summary"]["run_id"] == "run_later_complete_b"
+
+
+def test_create_rejects_failed_or_invalidated_run(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, ids = validation_client
+    from research.registry import ExperimentRegistry
+
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    registry = ExperimentRegistry(root)
+    registry.invalidate(ids["run_id"], reason="fixture invalidate", actor="test")
+
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={"experiment_id": ids["base_experiment_id"]},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "experiment_id" in resp.json()["detail"]["fields"]
+
+
+def test_decision_bound_to_snapshot_survives_post_decision_latest_drift(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, ids = validation_client
+    created = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": ids["base_experiment_id"],
+            "gate_run_ids": [ids["gate_run_id"]],
+        },
+    ).json()
+    study_id = created["study_id"]
+    snapshot_id = created["study"]["evidence_snapshot"]["snapshot_id"]
+    pinned_run = created["study"]["run_id"]
+
+    decided = client.post(
+        f"/api/v1/research/validation/{study_id}/decision",
+        json={
+            "outcome": "accept",
+            "rationale": "bound to immutable snapshot",
+            "decided_by": "reviewer",
+        },
+    )
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["decision"]["evidence_snapshot_id"] == snapshot_id
+
+    from research.registry import ExperimentRegistry
+
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    registry = ExperimentRegistry(root)
+    original = registry.show(pinned_run, verify=False)
+    registry._append(  # noqa: SLF001 — intentional drift fixture
+        {
+            "experiment_id": original.experiment_id,
+            "run_id": "run_post_decision_drift",
+            "attempt_id": "attempt_post_decision",
+            "status": "complete",
+            "strategy_version": original.strategy_version,
+            "dataset_version": original.dataset_version,
+            "cost_model_version": original.cost_model_version,
+            "benchmark_ref": original.benchmark_ref,
+            "created_at": "2099-06-01T00:00:00.000000Z",
+            "artifact_path": original.artifact_path,
+            "checksums": original.checksums,
+        }
+    )
+
+    detail = client.get(f"/api/v1/research/validation/{study_id}")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["run_id"] == pinned_run
+    assert body["decision"]["evidence_snapshot_id"] == snapshot_id
+    assert body["evidence_snapshot"]["primary"]["run_id"] == pinned_run
+    assert body["evidence_integrity"]["ok"] is True
+
+
+def test_decided_study_fail_closed_when_pinned_run_invalidated(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, ids = validation_client
+    created = client.post(
+        "/api/v1/research/validation",
+        json={"experiment_id": ids["base_experiment_id"]},
+    ).json()
+    study_id = created["study_id"]
+
+    decided = client.post(
+        f"/api/v1/research/validation/{study_id}/decision",
+        json={
+            "outcome": "reject",
+            "rationale": "will invalidate underlying evidence next",
+            "decided_by": "reviewer",
+        },
+    )
+    assert decided.status_code == 200, decided.text
+
+    from research.registry import ExperimentRegistry
+
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    ExperimentRegistry(root).invalidate(
+        ids["run_id"], reason="post-decision invalidate", actor="test"
+    )
+
+    detail = client.get(f"/api/v1/research/validation/{study_id}")
+    assert detail.status_code == 409, detail.text
+    assert "fields" in detail.json()["detail"]
