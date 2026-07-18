@@ -37,6 +37,7 @@ from research.robustness import (
     compute_robustness_id,
     load_robustness_manifest,
     save_robustness_manifest,
+    verify_robustness_manifest_seal,
 )
 from research.robustness_jobs import (
     RobustnessJob,
@@ -483,8 +484,54 @@ class RobustnessOrchestrationService:
         return [j.to_dict() for j in jobs]
 
     def get_manifest(self, robustness_id: str) -> dict[str, Any] | None:
+        """Load a robustness manifest for API/UI, seal-checked when completed.
+
+        Completed jobs must still match ``job.manifest_content_hash``. On
+        mismatch (or missing seal), return a redacted payload with
+        ``manifest_integrity.ok=false`` and **no** measurement fields so a
+        tampered file cannot appear as a trusted completed result.
+        """
         robustness_id = assert_safe_id(robustness_id, field="robustness_id")
-        return load_robustness_manifest(self.root, robustness_id)
+        raw = load_robustness_manifest(self.root, robustness_id)
+        if raw is None:
+            return None
+        job = self.store.get(robustness_id)
+        sealed_hash = (
+            (job.manifest_content_hash or "").strip()
+            if job is not None and job.status == "completed"
+            else ""
+        )
+        if not sealed_hash:
+            return {
+                "robustness_id": robustness_id,
+                "test_type": raw.get("test_type"),
+                "base_experiment_id": raw.get("base_experiment_id"),
+                "base_run_id": raw.get("base_run_id"),
+                "created_at": raw.get("created_at"),
+                "manifest_integrity": {
+                    "ok": False,
+                    "error": (
+                        "completed robustness job with manifest_content_hash "
+                        "required before measurements are trusted"
+                    ),
+                },
+            }
+        try:
+            verify_robustness_manifest_seal(
+                self.root, robustness_id, expected_hash=sealed_hash
+            )
+        except (ValueError, FileNotFoundError, OSError) as exc:
+            return {
+                "robustness_id": robustness_id,
+                "test_type": raw.get("test_type"),
+                "base_experiment_id": raw.get("base_experiment_id"),
+                "base_run_id": raw.get("base_run_id"),
+                "created_at": raw.get("created_at"),
+                "manifest_integrity": {"ok": False, "error": str(exc)},
+            }
+        out = dict(raw)
+        out["manifest_integrity"] = {"ok": True, "error": None}
+        return out
 
     def _load_bundle(self, bundle_path_raw: str) -> HistoricalDataBundle:
         bundle_path = Path(bundle_path_raw)
