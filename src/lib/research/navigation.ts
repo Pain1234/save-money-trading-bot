@@ -12,6 +12,7 @@ export const RESEARCH_NAV: NavItem[] = [
   { label: "Neues Experiment", href: "/dashboard/research/experiments/new" },
   { label: "Vergleich", href: "/dashboard/research/compare" },
   { label: "Robustheit", href: "/dashboard/research/robustness" },
+  { label: "Validierung", href: "/dashboard/research/validation" },
 ];
 
 export function isResearchPath(pathname: string | null): boolean {

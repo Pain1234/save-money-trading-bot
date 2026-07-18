@@ -25,6 +25,7 @@ describe("research navigation", () => {
       "/dashboard/research/experiments/new",
       "/dashboard/research/compare",
       "/dashboard/research/robustness",
+      "/dashboard/research/validation",
     ]);
   });
 });
