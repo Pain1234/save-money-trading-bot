@@ -49,6 +49,15 @@ def test_double_run_semantic_hashes_match(tmp_path: Path) -> None:
     assert "metrics.json" in hashes
     assert "trades.json" in hashes
 
+    regime_a = json.loads(
+        (out_a.artifact_path / "regime_labels.json").read_text(encoding="utf-8")
+    )
+    regime_b = json.loads(
+        (out_b.artifact_path / "regime_labels.json").read_text(encoding="utf-8")
+    )
+    assert regime_a == regime_b
+    assert regime_a["classifier_version"] == "1.0"
+
     m_a = json.loads(
         (out_a.artifact_path / "run_manifest.json").read_text(encoding="utf-8")
     )

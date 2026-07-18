@@ -38,6 +38,7 @@ from research.metrics_contract import (
     compute_gross_pnl,
     save_metrics_and_report,
 )
+from research.regime import PriceBar, classify_regime_series, get_classifier
 from research.run_manifest import build_run_manifest, dumps_run_manifest
 from research.strategy_resolver import resolve_strategy
 
@@ -169,6 +170,42 @@ def _environment_fingerprint() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}-{platform.system()}"
 
 
+def _regime_classifier_symbol(spec: ExperimentSpec) -> str:
+    """Prefer BTC for #199 / P4.9 taxonomy; otherwise first Spec symbol."""
+    symbols = [s.value for s in spec.symbols]
+    if "BTC" in symbols:
+        return "BTC"
+    if not symbols:
+        msg = "experiment Spec has no symbols for regime classification"
+        raise ValueError(msg)
+    return symbols[0]
+
+
+def _regime_labels_payload(
+    *,
+    filtered_bundle: HistoricalDataBundle,
+    spec: ExperimentSpec,
+    dataset_id: str,
+    dataset_content_hash: str,
+) -> dict[str, object]:
+    """Build ``regime_labels.json`` payload (fail-closed on empty series)."""
+    symbol = _regime_classifier_symbol(spec)
+    dailies = filtered_bundle.daily.get(symbol, ())
+    bars = tuple(
+        PriceBar(as_of=c.close_time.astimezone(UTC).date(), close=c.close)
+        for c in dailies
+        if c.is_closed
+    )
+    result = classify_regime_series(
+        classifier=get_classifier("1.0"),
+        bars=bars,
+        dataset_id=dataset_id,
+        dataset_content_hash=dataset_content_hash,
+        reference_symbol=symbol,
+    )
+    return result.artifact
+
+
 @dataclass(frozen=True)
 class RunRequest:
     spec: ExperimentSpec
@@ -275,7 +312,7 @@ def run_experiment(request: RunRequest) -> RunOutcome:
         )
 
     try:
-        _manifest, filtered_bundle, verified_hash = bind_dataset_to_bundle(
+        manifest, filtered_bundle, verified_hash = bind_dataset_to_bundle(
             spec,
             request.bundle,
             repo_root=request.repo_root,
@@ -394,6 +431,14 @@ def run_experiment(request: RunRequest) -> RunOutcome:
                 dataset_content_hash=verified_hash,
             )
             writer.write_json("chart_data.json", chart_payload)
+            regime_payload = _regime_labels_payload(
+                filtered_bundle=filtered_bundle,
+                spec=spec,
+                dataset_id=manifest.dataset_id
+                or spec.dataset_manifest_ref.dataset_id,
+                dataset_content_hash=verified_hash,
+            )
+            writer.write_json("regime_labels.json", regime_payload)
             equity_payload = [json.loads(e.model_dump_json()) for e in result.equity_curve]
             writer.write_json("equity.json", equity_payload)
             events = [

@@ -53,6 +53,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
         "trades.json",
         "equity.json",
         "chart_data.json",
+        "regime_labels.json",
         "events.jsonl",
         "checksums.json",
         "costs.json",
@@ -66,6 +67,12 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     from research.costs import COST_MODEL_VERSION
 
     assert costs["cost_model_version"] == COST_MODEL_VERSION
+    regime = json.loads((run_dir / "regime_labels.json").read_text(encoding="utf-8"))
+    assert regime["classifier_version"] == "1.0"
+    assert len(regime["classifier_content_hash"]) == 64
+    assert regime["reference_symbol"] == "BTC"
+    assert "distribution" in regime
+    assert "period_labels" in regime
     verify_checksums(run_dir)
 
     again = run_experiment(
