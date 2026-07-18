@@ -150,6 +150,13 @@ def is_critical_category(category: str) -> bool:
     return bool(category) and category in CRITICAL_GATE_CATEGORIES
 
 
+# Frozen content hash of registered policy ``1.0`` as of #248 / pre-#286.
+# Must never change: silent edits under the same version are a hard failure.
+POLICY_1_0_CONTENT_HASH = (
+    "a589305b86745cb7ae1e1dde4b8e94e8dc6b6a8fd38a711d44f28415d54070c5"
+)
+
+
 # --- Registered policy versions ---------------------------------------------
 # Content is generic example data, not private research results. Extend by
 # adding a NEW version key below; never mutate an existing version's `gates`

@@ -107,8 +107,10 @@ On integrity failure:
 persisted on `GateRunRecord` as `integrity_status` + `integrity_checks`.
 Trusted quality scoring gate:
 `research.gate_evaluator.quality_scores_permitted(record)` → true only for
-active + `VALID`. See [GATES.md](GATES.md) for which Layer-0 checks are
-automated vs deferred.
+active + `VALID`. Mandatory checks that are not yet automated (look-ahead,
+fee-vs-spec, regime coverage) are recorded as `not_verifiable`, so evaluate
+results stay `NOT_VERIFIABLE` until those verifiers exist — never silent
+`VALID`. See [GATES.md](GATES.md).
 
 ### Layer 1 — Critical Gates
 

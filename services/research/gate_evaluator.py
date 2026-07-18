@@ -140,25 +140,34 @@ class GateEvaluationResult:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> GateEvaluationResult:
-        passed = bool(raw["passed"])
         outcome_raw = raw.get("outcome")
+        legacy_passed = bool(raw.get("passed", False))
         if outcome_raw in {"PASS", "FAIL", "INCONCLUSIVE", "NOT_AVAILABLE"}:
             outcome: GateOutcome = outcome_raw  # type: ignore[assignment]
+        elif raw.get("measured_value") is None and not legacy_passed:
+            # Legacy #248 records: missing measure + not passed → NOT_AVAILABLE.
+            outcome = "NOT_AVAILABLE"
         else:
-            # Legacy #248 records: derive outcome from passed / missing measure.
-            if raw.get("measured_value") is None and not passed:
-                outcome = "NOT_AVAILABLE"
-            else:
-                outcome = "PASS" if passed else "FAIL"
+            outcome = "PASS" if legacy_passed else "FAIL"
+        # Always derive passed from outcome so clients cannot see contradictions.
         return cls(
             name=str(raw["name"]),
             threshold=str(raw["threshold"]),
             measured_value=raw.get("measured_value"),
-            passed=passed,
+            passed=(outcome == "PASS"),
             reason=str(raw["reason"]),
             outcome=outcome,
             category=str(raw.get("category") or ""),
         )
+
+    def __post_init__(self) -> None:
+        expected = self.outcome == "PASS"
+        if self.passed != expected:
+            msg = (
+                f"GateEvaluationResult.passed={self.passed!r} contradicts "
+                f"outcome={self.outcome!r} (passed must equal outcome == 'PASS')"
+            )
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True)
@@ -279,10 +288,14 @@ def _build_integrity_checks(
     """Layer-0 checks over evidence already bound by evaluate() (#286).
 
     Soft profile for the persisted record: hard fail-closed binding errors still
-    raise :class:`GateEvaluationError` before a record is written. Checks that
-    cannot yet be automated (look-ahead, fee-vs-spec identity) are deferred and
-    documented in ``docs/research/GATES.md`` — they are not emitted as
-    ``not_verifiable`` here so a fully bound run can be ``VALID``.
+    raise :class:`GateEvaluationError` before a record is written.
+
+    Mandatory scorecard checks that are not yet automated
+    (look-ahead / leakage, fee-vs-spec accounting identity, regime assignment
+    coverage) are emitted as ``not_verifiable``. That forces
+    ``integrity_status=NOT_VERIFIABLE`` and blocks
+    :func:`quality_scores_permitted` until a later issue implements them —
+    never silent ``VALID``.
     """
     checks: list[IntegrityCheckResult] = []
 
@@ -388,6 +401,36 @@ def _build_integrity_checks(
                     reason="all referenced robustness manifests sealed in artifact_checksums",
                 )
             )
+
+    # Mandatory Layer-0 checks without an automated verifier yet (#286 fail-closed).
+    checks.extend(
+        [
+            IntegrityCheckResult(
+                name="look_ahead_leakage",
+                status="not_verifiable",
+                reason=(
+                    "automated look-ahead / future-candle / data-leakage check "
+                    "not yet implemented; fail closed as NOT_VERIFIABLE"
+                ),
+            ),
+            IntegrityCheckResult(
+                name="accounting_fee_spec_identity",
+                status="not_verifiable",
+                reason=(
+                    "automated fee/funding/slippage identity vs Spec not yet "
+                    "implemented; fail closed as NOT_VERIFIABLE"
+                ),
+            ),
+            IntegrityCheckResult(
+                name="regime_assignment_coverage",
+                status="not_verifiable",
+                reason=(
+                    "automated trade→regime assignment coverage check not yet "
+                    "implemented; fail closed as NOT_VERIFIABLE"
+                ),
+            ),
+        ]
+    )
 
     return tuple(checks)
 

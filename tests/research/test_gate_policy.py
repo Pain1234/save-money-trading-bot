@@ -25,6 +25,7 @@ def test_content_hash_is_deterministic() -> None:
     a = gp.compute_policy_content_hash(policy)
     b = gp.compute_policy_content_hash(policy)
     assert a == b
+    assert a == gp.POLICY_1_0_CONTENT_HASH
     assert len(a) == 64
     int(a, 16)  # must be valid hex
 

@@ -107,10 +107,14 @@ registry):
 
 **Integrity checks implemented in #286** (over already-bound evidence): dataset
 binding, run artifact checksums, git commit binding, complete run status,
-robustness manifest seals when `robustness_run_ids` are supplied. Deferred
-(documented, not emitted as `not_verifiable` placeholders that would block every
-run): automated look-ahead / leakage detectors, fee-vs-spec identity, regime
-assignment coverage — extend via later policy/evaluator versions.
+robustness manifest seals when `robustness_run_ids` are supplied.
+
+**Mandatory checks without an automated verifier yet** (look-ahead / leakage,
+fee-vs-spec accounting identity, regime assignment coverage) are still emitted
+on every evaluate as `integrity_checks[].status = "not_verifiable"`. That forces
+`integrity_status = NOT_VERIFIABLE` and blocks `quality_scores_permitted` —
+never silent `VALID`. Later issues must replace those placeholders with real
+pass/fail verifiers before trusted quality scoring can proceed.
 
 Do **not** create a second gate evaluator or gate registry. Regime quality scores
 must not compensate a critical gate `FAIL`. Human P5 (`ACCEPT` / `REJECT` /
