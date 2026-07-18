@@ -1,10 +1,15 @@
 """Filesystem-backed robustness job status (Issue #247 / P4.7b).
 
-Mirrors ``research.jobs.ResearchJobStore`` (Issue #242 pattern) for
+Mirrors ``research.jobs.ResearchJobStore`` (Issues #242 / #245) for
 orchestrated robustness test suites. V1 uses the same in-process thread
-execution model (no Celery/Redis) and the same fail-closed stale-job
-handling after a process restart: ``queued``/``running`` suites without a
-live thread are marked failed on the next status read.
+execution model (no Celery/Redis) and the same cross-process ownership
+contract: ``worker_id`` / ``lease_id`` / ``lease_expires_at``, interprocess
+file-lock claim, lease renewal, conditional finish, and startup
+``recover_orphans``.
+
+Helpers reused from ``research.jobs`` (Issue #245): ``_JobFileLock``,
+``_lease_expired``, ``get_worker_id``, ``_utc_now``, ``_future_iso``,
+``_parse_utc``, ``lease_seconds_from_env``.
 """
 
 from __future__ import annotations
@@ -12,11 +17,22 @@ from __future__ import annotations
 import json
 import os
 import threading
+import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+
+from research.jobs import (
+    _future_iso,
+    _JobFileLock,
+    _lease_expired,
+    _parse_utc,
+    _utc_now,
+    get_worker_id,
+    lease_seconds_from_env,
+)
 
 RobustnessJobStatus = Literal["created", "queued", "running", "completed", "failed"]
 TERMINAL_ROBUSTNESS_STATUSES = frozenset({"completed", "failed"})
@@ -25,14 +41,6 @@ _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_THREADS: dict[str, threading.Thread] = {}
 _JOB_LOCKS_GUARD = threading.Lock()
 _JOB_LOCKS: dict[str, threading.RLock] = {}
-
-
-def _utc_now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-
-def _parse_utc(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
 
 
 class RobustnessJobTransitionError(Exception):
@@ -47,6 +55,7 @@ class RobustnessJobTransitionError(Exception):
 class RobustnessJob:
     robustness_id: str
     base_experiment_id: str
+    base_run_id: str
     test_type: str
     status: RobustnessJobStatus
     created_at: str
@@ -57,6 +66,10 @@ class RobustnessJob:
     error_detail: str | None = None
     dataset_catalog_id: str | None = None
     config: dict[str, Any] | None = None
+    # Cross-process ownership contract (Issue #245 / #247 P1 follow-up).
+    worker_id: str | None = None
+    lease_id: str | None = None
+    lease_expires_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -66,6 +79,7 @@ class RobustnessJob:
         return cls(
             robustness_id=str(raw["robustness_id"]),
             base_experiment_id=str(raw["base_experiment_id"]),
+            base_run_id=str(raw["base_run_id"]),
             test_type=str(raw["test_type"]),
             status=raw["status"],
             created_at=str(raw["created_at"]),
@@ -76,11 +90,14 @@ class RobustnessJob:
             error_detail=raw.get("error_detail"),
             dataset_catalog_id=raw.get("dataset_catalog_id"),
             config=raw.get("config"),
+            worker_id=raw.get("worker_id"),
+            lease_id=raw.get("lease_id"),
+            lease_expires_at=raw.get("lease_expires_at"),
         )
 
 
 class RobustnessJobStore:
-    """Job file store with per-suite locks and atomic JSON writes."""
+    """Job file store with per-suite locks, atomic JSON writes, and leases."""
 
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
@@ -88,6 +105,9 @@ class RobustnessJobStore:
 
     def _job_path(self, robustness_id: str) -> Path:
         return self.jobs_dir / f"{robustness_id}.json"
+
+    def _lock_path(self, robustness_id: str) -> Path:
+        return self.jobs_dir / f"{robustness_id}.lock"
 
     def lock_for(self, robustness_id: str) -> threading.RLock:
         with _JOB_LOCKS_GUARD:
@@ -178,7 +198,11 @@ class RobustnessJobStore:
             return job
 
     def mark_stale_if_needed(self, job: RobustnessJob) -> RobustnessJob:
-        """Fail closed for orphaned queued/running suites after restart."""
+        """Live-process watchdog for orphaned queued/running suites.
+
+        Defers to a live cross-process lease for ``running`` jobs (Issue #245).
+        Restart-time orphan detection is handled by :meth:`recover_orphans`.
+        """
         if job.status not in {"queued", "running"}:
             return job
         with self.lock_for(job.robustness_id):
@@ -187,6 +211,27 @@ class RobustnessJobStore:
                 return job
             if current.status not in {"queued", "running"}:
                 return current
+
+            if current.status == "running" and current.lease_expires_at is not None:
+                if not _lease_expired(current.lease_expires_at):
+                    return current
+                current.status = "failed"
+                current.finished_at = _utc_now()
+                current.updated_at = current.finished_at
+                current.error = (
+                    "Robustheitstest unterbrochen (Ownership-Lease abgelaufen; "
+                    "kein Wiederaufnahme möglich)."
+                )
+                current.error_detail = (
+                    "V1 limitation: robustness jobs do not resume mid-run once "
+                    "their ownership lease expires (Issue #245/#247 fail-closed "
+                    "contract). Create a new robustness test instead."
+                )
+                self._atomic_write(
+                    self._job_path(current.robustness_id), current.to_dict()
+                )
+                return current
+
             with _ACTIVE_LOCK:
                 thread = _ACTIVE_THREADS.get(current.robustness_id)
                 alive = thread is not None and thread.is_alive()
@@ -241,6 +286,155 @@ class RobustnessJobStore:
             self._atomic_write(self._job_path(current.robustness_id), current.to_dict())
             return current
 
+    def claim(
+        self,
+        robustness_id: str,
+        *,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> RobustnessJob:
+        """Cross-process atomic claim ``queued -> running`` (Issue #245/#247)."""
+        with self.lock_for(robustness_id), _JobFileLock(self._lock_path(robustness_id)):
+            job = self._read_unlocked(robustness_id)
+            if job is None:
+                raise RobustnessJobTransitionError("job not found", current_status=None)
+            if job.status != "queued":
+                raise RobustnessJobTransitionError(
+                    f"expected status 'queued', found {job.status!r}",
+                    current_status=job.status,
+                )
+            if job.lease_expires_at is not None and not _lease_expired(
+                job.lease_expires_at
+            ):
+                raise RobustnessJobTransitionError(
+                    "job already claimed by a live worker lease",
+                    current_status=job.status,
+                )
+            now = _utc_now()
+            job.status = "running"
+            job.worker_id = worker_id
+            job.lease_id = str(uuid.uuid4())
+            job.lease_expires_at = _future_iso(lease_seconds)
+            job.started_at = now
+            job.updated_at = now
+            self._atomic_write(self._job_path(robustness_id), job.to_dict())
+            return job
+
+    def renew_lease(
+        self,
+        robustness_id: str,
+        *,
+        worker_id: str,
+        lease_id: str,
+        lease_seconds: int,
+    ) -> RobustnessJob:
+        """Heartbeat: extend ``lease_expires_at`` while still the current owner."""
+        with self.lock_for(robustness_id), _JobFileLock(self._lock_path(robustness_id)):
+            job = self._read_unlocked(robustness_id)
+            if job is None:
+                raise KeyError(robustness_id)
+            if (
+                job.status != "running"
+                or job.worker_id != worker_id
+                or job.lease_id != lease_id
+            ):
+                raise RobustnessJobTransitionError(
+                    "lease is no longer owned by this worker/attempt",
+                    current_status=job.status,
+                )
+            if _lease_expired(job.lease_expires_at):
+                raise RobustnessJobTransitionError(
+                    "lease expired; refusing renewal",
+                    current_status=job.status,
+                )
+            job.lease_expires_at = _future_iso(lease_seconds)
+            job.updated_at = _utc_now()
+            self._atomic_write(self._job_path(robustness_id), job.to_dict())
+            return job
+
+    def finish(
+        self,
+        robustness_id: str,
+        *,
+        worker_id: str,
+        lease_id: str,
+        mutate: Callable[[RobustnessJob], None],
+    ) -> RobustnessJob:
+        """Conditional terminal write — rejects expired / non-owner leases."""
+        with self.lock_for(robustness_id), _JobFileLock(self._lock_path(robustness_id)):
+            job = self._read_unlocked(robustness_id)
+            if job is None:
+                raise KeyError(robustness_id)
+            if job.status in TERMINAL_ROBUSTNESS_STATUSES:
+                raise RobustnessJobTransitionError(
+                    "job already terminal; refusing overwrite",
+                    current_status=job.status,
+                )
+            if job.worker_id != worker_id or job.lease_id != lease_id:
+                raise RobustnessJobTransitionError(
+                    "stale worker/lease; refusing terminal write",
+                    current_status=job.status,
+                )
+            if _lease_expired(job.lease_expires_at):
+                raise RobustnessJobTransitionError(
+                    "lease expired; refusing terminal write",
+                    current_status=job.status,
+                )
+            mutate(job)
+            self._atomic_write(self._job_path(robustness_id), job.to_dict())
+            return job
+
+    def recover_orphans(self) -> list[RobustnessJob]:
+        """Startup recovery: re-queue orphans; fail-close dead running leases."""
+        changed: list[RobustnessJob] = []
+        for job in self.list_jobs():
+            if job.status not in {"queued", "running"}:
+                continue
+            with self.lock_for(job.robustness_id), _JobFileLock(
+                self._lock_path(job.robustness_id)
+            ):
+                current = self._read_unlocked(job.robustness_id)
+                if current is None or current.status not in {"queued", "running"}:
+                    continue
+
+                if current.status == "queued":
+                    if current.lease_expires_at is not None and not _lease_expired(
+                        current.lease_expires_at
+                    ):
+                        continue
+                    if current.worker_id is not None or current.lease_id is not None:
+                        current.worker_id = None
+                        current.lease_id = None
+                        current.lease_expires_at = None
+                        current.updated_at = _utc_now()
+                        self._atomic_write(
+                            self._job_path(current.robustness_id), current.to_dict()
+                        )
+                    changed.append(current)
+                    continue
+
+                if current.lease_expires_at is not None and not _lease_expired(
+                    current.lease_expires_at
+                ):
+                    continue
+                current.status = "failed"
+                current.finished_at = _utc_now()
+                current.updated_at = current.finished_at
+                current.error = (
+                    "Robustheitstest durch Prozessneustart unterbrochen "
+                    "(verwaister Job, Lease abgelaufen oder fehlend)."
+                )
+                current.error_detail = (
+                    "V1 limitation: running robustness jobs do not resume mid-run "
+                    "after a process restart. Fail-closed by design (Issue #245/#247); "
+                    "create a new robustness test instead."
+                )
+                self._atomic_write(
+                    self._job_path(current.robustness_id), current.to_dict()
+                )
+                changed.append(current)
+        return changed
+
     def register_thread(self, robustness_id: str, thread: threading.Thread) -> None:
         with _ACTIVE_LOCK:
             _ACTIVE_THREADS[robustness_id] = thread
@@ -253,3 +447,14 @@ class RobustnessJobStore:
         with _ACTIVE_LOCK:
             thread = _ACTIVE_THREADS.get(robustness_id)
             return thread is not None and thread.is_alive()
+
+
+__all__ = [
+    "TERMINAL_ROBUSTNESS_STATUSES",
+    "RobustnessJob",
+    "RobustnessJobStore",
+    "RobustnessJobTransitionError",
+    "get_worker_id",
+    "lease_seconds_from_env",
+    "_utc_now",
+]

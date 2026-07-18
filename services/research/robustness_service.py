@@ -11,8 +11,10 @@ an already-completed run's ``equity.json`` artifact (no child runs).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,7 @@ from backtester.models import HistoricalDataBundle
 
 from research.artifacts import load_checksums
 from research.experiment_spec import load_experiment_spec
+from research.jobs import get_worker_id, lease_seconds_from_env
 from research.registry import ExperimentRegistry, RegistryEntry
 from research.robustness import (
     ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
@@ -51,9 +54,15 @@ from research.write_service import (
     repo_root_from_env,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class RobustnessNotFoundError(KeyError):
     """No completed registry entry for the requested base_experiment_id."""
+
+
+class RobustnessBaseRunError(RuntimeError):
+    """Pinned base run missing, incomplete, or checksum-failed (fail-closed)."""
 
 
 def _latest_complete_entry(
@@ -73,6 +82,43 @@ def _latest_complete_entry(
         msg = f"no complete run found for experiment_id={experiment_id!r}"
         raise RobustnessNotFoundError(msg)
     return candidates[-1]
+
+
+def _load_pinned_base_entry(
+    registry: ExperimentRegistry,
+    *,
+    base_experiment_id: str,
+    base_run_id: str,
+) -> RegistryEntry:
+    """Load the exact registry entry pinned on the job; verify checksums.
+
+    Never falls back to ``_latest_complete_entry`` — a newer complete run for
+    the same experiment must not silently replace the pinned base (Issue #247 P1).
+    """
+    try:
+        entry = registry.show(base_run_id, verify=True)
+    except KeyError as exc:
+        msg = f"pinned base run missing: run_id={base_run_id!r}"
+        raise RobustnessBaseRunError(msg) from exc
+    except (OSError, ValueError) as exc:
+        msg = (
+            f"pinned base run checksum verification failed: "
+            f"run_id={base_run_id!r}: {exc}"
+        )
+        raise RobustnessBaseRunError(msg) from exc
+    if entry.experiment_id != base_experiment_id:
+        msg = (
+            f"pinned base run experiment mismatch: "
+            f"expected {base_experiment_id!r}, found {entry.experiment_id!r}"
+        )
+        raise RobustnessBaseRunError(msg)
+    if entry.status != "complete":
+        msg = (
+            f"pinned base run is not complete: "
+            f"run_id={base_run_id!r} status={entry.status!r}"
+        )
+        raise RobustnessBaseRunError(msg)
+    return entry
 
 
 class RobustnessOrchestrationService:
@@ -260,7 +306,7 @@ class RobustnessOrchestrationService:
                         "robustness_id": robustness_id,
                         "status": existing.status,
                         "job": existing.to_dict(),
-                        "base_run_id": entry.run_id,
+                        "base_run_id": existing.base_run_id,
                         "already_exists": True,
                     }
 
@@ -268,6 +314,7 @@ class RobustnessOrchestrationService:
             job = RobustnessJob(
                 robustness_id=robustness_id,
                 base_experiment_id=base_experiment_id,
+                base_run_id=entry.run_id,
                 test_type=test_type,
                 status="created",
                 created_at=existing.created_at if existing else now,
@@ -284,6 +331,71 @@ class RobustnessOrchestrationService:
                 "already_exists": False,
             }
 
+    def _dispatch(self, robustness_id: str) -> None:
+        """Start the in-process worker thread for a ``queued`` robustness job."""
+        thread = threading.Thread(
+            target=self._run_job,
+            args=(robustness_id,),
+            name=f"robustness-job-{robustness_id[:16]}",
+            daemon=True,
+        )
+        self.store.register_thread(robustness_id, thread)
+        thread.start()
+
+    def recover_orphans(self) -> dict[str, list[str]]:
+        """Startup recovery hook (Issue #245/#247).
+
+        Re-dispatches orphaned ``queued`` suites; fails closed dead ``running``
+        leases. If a re-queued suite cannot be re-dispatched (missing catalog
+        for a non-bootstrap test), fail it closed rather than leave it stuck.
+        """
+        changed = self.store.recover_orphans()
+        catalog = {e.id: e for e in load_dataset_catalog()}
+        redispatched: list[str] = []
+        failed_closed: list[str] = [
+            job.robustness_id for job in changed if job.status == "failed"
+        ]
+
+        for job in changed:
+            if job.status != "queued":
+                continue
+            if job.test_type != "bootstrap":
+                if not job.dataset_catalog_id or job.dataset_catalog_id not in catalog:
+                    reason = (
+                        "Dataset-Katalog-Eintrag beim Restart-Recovery nicht auflösbar"
+                    )
+
+                    def _mutate(j: RobustnessJob, _reason: str = reason) -> None:
+                        j.status = "failed"
+                        j.finished_at = _utc_now()
+                        j.updated_at = j.finished_at
+                        j.error = _reason
+                        j.error_detail = (
+                            "V1 limitation: orphaned queued robustness job could not "
+                            "be redispatched after restart."
+                        )
+
+                    try:
+                        self.store.compare_and_set(
+                            job.robustness_id,
+                            expected_status="queued",
+                            mutate=_mutate,
+                        )
+                    except RobustnessJobTransitionError:
+                        pass
+                    failed_closed.append(job.robustness_id)
+                    continue
+            self._dispatch(job.robustness_id)
+            redispatched.append(job.robustness_id)
+
+        if redispatched or failed_closed:
+            logger.info(
+                "robustness_job_recovery redispatched=%s failed_closed=%s",
+                redispatched,
+                failed_closed,
+            )
+        return {"redispatched": redispatched, "failed_closed": failed_closed}
+
     def start(self, robustness_id: str) -> dict[str, Any]:
         robustness_id = assert_safe_id(robustness_id, field="robustness_id")
         job_probe = self.store.get(robustness_id)
@@ -298,6 +410,9 @@ class RobustnessOrchestrationService:
             job.error_detail = None
             job.finished_at = None
             job.started_at = None
+            job.worker_id = None
+            job.lease_id = None
+            job.lease_expires_at = None
 
         try:
             job = self.store.compare_and_set(
@@ -316,14 +431,7 @@ class RobustnessOrchestrationService:
                 field_errors={"status": f"Aktueller Status: {current}"},
             ) from exc
 
-        thread = threading.Thread(
-            target=self._run_job,
-            args=(robustness_id,),
-            name=f"robustness-job-{robustness_id[:16]}",
-            daemon=True,
-        )
-        self.store.register_thread(robustness_id, thread)
-        thread.start()
+        self._dispatch(robustness_id)
 
         refreshed = self.store.get(robustness_id)
         return {
@@ -357,6 +465,7 @@ class RobustnessOrchestrationService:
             "status": job.status,
             "test_type": job.test_type,
             "base_experiment_id": job.base_experiment_id,
+            "base_run_id": job.base_run_id,
             "started_at": job.started_at,
             "finished_at": job.finished_at,
             "elapsed_seconds": elapsed,
@@ -479,25 +588,77 @@ class RobustnessOrchestrationService:
             decimal_relative_steps=config.get("decimal_relative_steps"),
         )
 
-    def _run_job(self, robustness_id: str) -> None:
-        try:
-            def _to_running(job: RobustnessJob) -> None:
-                job.status = "running"
-                job.started_at = _utc_now()
-                job.updated_at = job.started_at
-
+    def _heartbeat_loop(
+        self,
+        robustness_id: str,
+        worker_id: str,
+        lease_id: str,
+        stop_event: threading.Event,
+        lease_seconds: int,
+    ) -> None:
+        """Lease renewal while the worker owns the robustness job."""
+        interval = max(1.0, lease_seconds / 3)
+        while not stop_event.wait(interval):
             try:
-                self.store.compare_and_set(
-                    robustness_id, expected_status="queued", mutate=_to_running
+                self.store.renew_lease(
+                    robustness_id,
+                    worker_id=worker_id,
+                    lease_id=lease_id,
+                    lease_seconds=lease_seconds,
                 )
-            except RobustnessJobTransitionError:
+            except (KeyError, RobustnessJobTransitionError):
                 return
 
+    def _run_job(self, robustness_id: str) -> None:
+        worker_id = get_worker_id()
+        lease_seconds = lease_seconds_from_env()
+        try:
+            job = self.store.claim(
+                robustness_id, worker_id=worker_id, lease_seconds=lease_seconds
+            )
+        except RobustnessJobTransitionError:
+            return
+        lease_id = job.lease_id
+        if lease_id is None:  # defensive; claim() always sets it
+            return
+
+        stop_heartbeat = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(robustness_id, worker_id, lease_id, stop_heartbeat, lease_seconds),
+            name=f"robustness-job-lease-{robustness_id[:16]}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
+
+        def _finish_owned(mutate: Callable[[RobustnessJob], None]) -> None:
+            try:
+                self.store.finish(
+                    robustness_id,
+                    worker_id=worker_id,
+                    lease_id=lease_id,
+                    mutate=mutate,
+                )
+            except (KeyError, RobustnessJobTransitionError):
+                logger.warning(
+                    "robustness_job_terminal_write_rejected robustness_id=%s "
+                    "worker_id=%s lease_id=%s (stale owner; job already "
+                    "reassigned or recovered)",
+                    robustness_id,
+                    worker_id,
+                    lease_id,
+                )
+
+        try:
             job = self.store.get(robustness_id)
             assert job is not None
             config = dict(job.config or {})
 
-            entry = _latest_complete_entry(self.registry, job.base_experiment_id)
+            entry = _load_pinned_base_entry(
+                self.registry,
+                base_experiment_id=job.base_experiment_id,
+                base_run_id=job.base_run_id,
+            )
             base_spec = load_experiment_spec(Path(entry.artifact_path) / "experiment.json")
 
             children: list[RobustnessChildResult] = []
@@ -588,7 +749,7 @@ class RobustnessOrchestrationService:
                     job_.error = None
                     job_.error_detail = None
 
-            self.store.update(robustness_id, _finish)
+            _finish_owned(_finish)
         except Exception as exc:  # noqa: BLE001 — persist structured failure
             err_msg = str(exc)
             err_detail = repr(exc)
@@ -600,9 +761,8 @@ class RobustnessOrchestrationService:
                 job_.error = err_msg
                 job_.error_detail = err_detail
 
-            try:
-                self.store.update(robustness_id, _fail)
-            except KeyError:
-                pass
+            _finish_owned(_fail)
         finally:
+            stop_heartbeat.set()
+            heartbeat_thread.join(timeout=2)
             self.store.clear_thread(robustness_id)
