@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 regime behaviour — #289)
+
+- Deterministic behaviour labels + transition-risk profile under
+  `services/research/regime_behaviour/` (`behavior_profile.json`).
+- Policy `1.0` content-hashed; no LLM as label source; Sideways zero-trades →
+  `DEFENSIVE_INACTIVE` (not failure). Runner + semantic repro updated.
+- Docs: `docs/research/REGIME_BEHAVIOUR.md`.
+
 ### Added (P4.9 regime quality metrics — #287)
 
 - Per-regime raw quality metrics under `services/research/regime_quality/`
