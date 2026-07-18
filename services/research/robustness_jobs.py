@@ -70,6 +70,8 @@ class RobustnessJob:
     worker_id: str | None = None
     lease_id: str | None = None
     lease_expires_at: str | None = None
+    # Trust anchor for the sealed robustness manifest (Issue #247/#248 P1).
+    manifest_content_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -93,6 +95,7 @@ class RobustnessJob:
             worker_id=raw.get("worker_id"),
             lease_id=raw.get("lease_id"),
             lease_expires_at=raw.get("lease_expires_at"),
+            manifest_content_hash=raw.get("manifest_content_hash"),
         )
 
 
