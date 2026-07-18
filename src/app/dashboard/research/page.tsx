@@ -1,5 +1,13 @@
 import { ResearchOverviewView } from "@/components/research/ResearchOverviewView";
-import { selectEvidenceStudy } from "@/lib/research/executive-summary";
+import {
+  selectEvidenceStudy,
+  toEvidenceAnchor,
+} from "@/lib/research/executive-summary";
+import {
+  pinnedRunMatchesDetail,
+  sanitizeDrawdownSeries,
+  sanitizeEquitySeries,
+} from "@/lib/research/analytics-series";
 import {
   fetchGateRuns,
   fetchResearchExperiment,
@@ -23,12 +31,20 @@ export default async function ResearchOverviewPage() {
 
     let pinnedEquity: ResearchSeriesPoint[] | null = null;
     let pinnedDrawdown: ResearchSeriesPoint[] | null = null;
+
     const focus = selectEvidenceStudy(studies.items);
-    if (focus?.experiment_id) {
+    const evidence = focus ? toEvidenceAnchor(focus) : null;
+
+    if (evidence?.experimentId && evidence.runId) {
       try {
-        const detail = await fetchResearchExperiment(focus.experiment_id);
-        pinnedEquity = detail.equity;
-        pinnedDrawdown = detail.drawdown;
+        const detail = await fetchResearchExperiment(evidence.experimentId);
+        if (pinnedRunMatchesDetail(evidence, detail)) {
+          const equity = sanitizeEquitySeries(detail.equity);
+          const drawdown = sanitizeDrawdownSeries(detail.drawdown);
+          pinnedEquity = equity.length > 0 ? equity : null;
+          pinnedDrawdown = drawdown.length > 0 ? drawdown : null;
+        }
+        // Run-Mismatch oder fehlender Pin → Serien bleiben null (Nicht verfügbar).
       } catch {
         // Soft-fail: analytics panels stay Nicht verfügbar for series.
       }

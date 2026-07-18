@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import { AnalyticsPanel } from "@/components/research/analytics/AnalyticsPanel";
+import { sanitizeEquitySeries } from "@/lib/research/analytics-series";
 import type { ResearchSeriesPoint } from "@/lib/research-api/client";
 
 interface EquityVsBenchmarkChartProps {
@@ -31,8 +32,8 @@ export function EquityVsBenchmarkChart({
     setReady(true);
   }, []);
 
-  const equityPts = equity ?? [];
-  const benchPts = benchmark ?? [];
+  const equityPts = sanitizeEquitySeries(equity);
+  const benchPts = sanitizeEquitySeries(benchmark);
   const hasEquity = equityPts.length > 0;
   const hasBench = benchPts.length > 0;
 

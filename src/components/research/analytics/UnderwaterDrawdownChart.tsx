@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import { AnalyticsPanel } from "@/components/research/analytics/AnalyticsPanel";
+import { sanitizeDrawdownSeries } from "@/lib/research/analytics-series";
 import type { ResearchSeriesPoint } from "@/lib/research-api/client";
 
 interface UnderwaterDrawdownChartProps {
@@ -28,7 +29,8 @@ export function UnderwaterDrawdownChart({
     setReady(true);
   }, []);
 
-  const pts = drawdown ?? [];
+  // Omit points without drawdown — never invent 0 via `?? 0`.
+  const pts = sanitizeDrawdownSeries(drawdown);
   if (pts.length === 0) {
     return (
       <AnalyticsPanel
@@ -42,7 +44,7 @@ export function UnderwaterDrawdownChart({
 
   const data = pts.map((p) => ({
     t: p.t,
-    drawdown: (p.drawdown ?? 0) * 100,
+    drawdown: p.drawdown * 100,
   }));
 
   return (
