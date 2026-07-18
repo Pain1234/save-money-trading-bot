@@ -211,8 +211,10 @@ live under `.research-shell` (`--rs-*`) and must not mutate Monitor freeze value
 | `ResearchTicker` | `…/ResearchTicker.tsx` | Universe strip; no fake ticks |
 | `ResearchSidebar` | `…/ResearchSidebar.tsx` | Compact `RESEARCH_NAV` |
 
-Later issues (UI-02+): executive gate strip, regime scorecard, analytics panels,
-forensics — reuse existing research components; restyle, do not fork registry.
+UI-02 (#299): `ExecutiveGateStrip` + `ResearchOverviewView` on
+`/dashboard/research` — gate-first hierarchy; scorecard-only fields stay
+`Nicht verfügbar` until #291/#295. Later (UI-03+): regime scorecard,
+analytics panels, forensics — reuse components; do not fork registry.
 
 ---
 
