@@ -103,6 +103,13 @@ On integrity failure:
 - Do **not** present gate evaluation as trusted promotion evidence
 - Do **not** emit positive summary / promotion affordances
 
+**Implementation ([#286](https://github.com/Pain1234/save-money-trading-bot/issues/286)):**
+persisted on `GateRunRecord` as `integrity_status` + `integrity_checks`.
+Trusted quality scoring gate:
+`research.gate_evaluator.quality_scores_permitted(record)` → true only for
+active + `VALID`. See [GATES.md](GATES.md) for which Layer-0 checks are
+automated vs deferred.
+
 ### Layer 1 — Critical Gates
 
 Versioned, evidence-bound gates (extend [#248](https://github.com/Pain1234/save-money-trading-bot/issues/248) / [GATES.md](GATES.md)).
@@ -116,18 +123,19 @@ Versioned, evidence-bound gates (extend [#248](https://github.com/Pain1234/save-
 
 Minimum gate **categories** (thresholds versioned; generic policy has no private V1 numbers):
 
-- Max drawdown bound
-- OOS net result after costs
-- Walk-forward stability
-- Cost stress
-- Parameter fragility
-- Trade / period / symbol concentration
-- Bootstrap / Monte Carlo tail result
-- Adequate regime coverage
-- Minimum evidence / sample sufficiency
-- Execution realism
+- Max drawdown bound → policy `1.1` category `drawdown`
+- OOS net result after costs → `oos_net`
+- Walk-forward stability → `walk_forward`
+- Cost stress → `cost_stress`
+- Parameter fragility → `parameter_fragility`
+- Trade / period / symbol concentration → reserved (`concentration`)
+- Bootstrap / Monte Carlo tail result → `bootstrap`
+- Adequate regime coverage → reserved (`regime_coverage`)
+- Minimum evidence / sample sufficiency → `sample_sufficiency`
+- Execution realism → reserved (`execution_realism`)
 
 **Rule:** A strong regime quality profile must not compensate a failed critical gate.
+Policy `1.1` labels the shipped generic gates; missing evidence → `NOT_AVAILABLE`.
 
 ### Layer 2 — Regime Quality
 
