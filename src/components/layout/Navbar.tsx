@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { LogoutButton } from "@/components/monitor/LogoutButton";
 import { PRIMARY_NAV } from "@/lib/dashboard/navigation";
-import { RESEARCH_NAV, WORKSPACE_NAV, isResearchPath } from "@/lib/research/navigation";
+import { WORKSPACE_NAV, isResearchPath } from "@/lib/research/navigation";
 import { cn } from "@/lib/utils";
 
 function LogoMark() {
@@ -24,10 +24,9 @@ interface NavbarProps {
   username: string;
 }
 
+/** Monitor-only topbar. Research uses ResearchTopbar via ResearchShell. */
 export function Navbar({ username }: NavbarProps) {
   const pathname = usePathname();
-  const research = isResearchPath(pathname);
-  const sectionNav = research ? RESEARCH_NAV : PRIMARY_NAV;
 
   return (
     <header className="border-b border-border" data-testid="dashboard-navbar">
@@ -48,11 +47,10 @@ export function Navbar({ username }: NavbarProps) {
             {WORKSPACE_NAV.map((item) => {
               const active =
                 item.href === "/dashboard/research"
-                  ? research
-                  : !research &&
-                    (pathname === "/dashboard" ||
-                      (pathname?.startsWith("/dashboard/") === true &&
-                        !isResearchPath(pathname)));
+                  ? isResearchPath(pathname)
+                  : pathname === "/dashboard" ||
+                    (pathname?.startsWith("/dashboard/") === true &&
+                      !isResearchPath(pathname));
               return (
                 <Link
                   key={item.href}
@@ -72,9 +70,9 @@ export function Navbar({ username }: NavbarProps) {
           </nav>
 
           <nav className="hidden items-center gap-4 lg:flex" data-testid="section-nav">
-            {sectionNav.map((item) => {
+            {PRIMARY_NAV.map((item) => {
               const active =
-                item.href === "/dashboard" || item.href === "/dashboard/research"
+                item.href === "/dashboard"
                   ? pathname === item.href
                   : pathname.startsWith(item.href);
               return (

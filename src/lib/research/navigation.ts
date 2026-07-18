@@ -18,3 +18,22 @@ export const RESEARCH_NAV: NavItem[] = [
 export function isResearchPath(pathname: string | null): boolean {
   return Boolean(pathname?.startsWith("/dashboard/research"));
 }
+
+/** Active-state for Research sidebar/top section links (#298). */
+export function isResearchNavActive(
+  pathname: string | null,
+  href: string,
+): boolean {
+  if (!pathname) return false;
+  if (href === "/dashboard/research") {
+    return pathname === href;
+  }
+  if (href === "/dashboard/research/experiments") {
+    return (
+      pathname === href ||
+      (pathname.startsWith(`${href}/`) &&
+        !pathname.startsWith("/dashboard/research/experiments/new"))
+    );
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
