@@ -54,6 +54,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
         "equity.json",
         "chart_data.json",
         "regime_labels.json",
+        "regime_metrics.json",
         "events.jsonl",
         "checksums.json",
         "costs.json",
@@ -69,6 +70,20 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     assert "distribution" in regime
     assert "period_labels" in regime
     assert "calendar_gaps" in regime
+
+    quality = json.loads((run_dir / "regime_metrics.json").read_text(encoding="utf-8"))
+    assert quality["schema_version"] == "1.0"
+    assert quality["run_id"]
+    assert quality["decision_binding"] is False
+    assert quality["auto_promotion"] is False
+    assert "regimes" in quality
+    assert "worst_regime" in quality
+    assert "strongest_regime" in quality
+    assert "coverage" in quality
+    assert "reconciliation" in quality
+    assert quality["reconciliation"]["balanced"] is True
+    assert quality["evidence_status"] in ("OK", "INCONCLUSIVE")
+    assert quality["attribution_rule"]["drawdown"] == "contiguous_episode_rebased"
 
     costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
     assert costs["gross_net_required"] is True

@@ -449,7 +449,7 @@ Studies — **no** second registry, **no** auto-promotion. Contract:
 - [x] [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284) docs: versioned scorecard + anti-overfitting contract
 - [x] [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285) feat: deterministic regime + transition classifier
 - [ ] [#286](https://github.com/Pain1234/save-money-trading-bot/issues/286) feat: integrity profile + critical gate categories
-- [ ] [#287](https://github.com/Pain1234/save-money-trading-bot/issues/287) feat: regime quality metrics + worst-regime profile
+- [x] [#287](https://github.com/Pain1234/save-money-trading-bot/issues/287) feat: regime quality metrics + worst-regime profile
 - [ ] [#288](https://github.com/Pain1234/save-money-trading-bot/issues/288) feat: evidence confidence / sample sufficiency
 - [ ] [#289](https://github.com/Pain1234/save-money-trading-bot/issues/289) feat: behaviour labels + transition risk
 - [ ] [#290](https://github.com/Pain1234/save-money-trading-bot/issues/290) feat: parameter plateau / local stability

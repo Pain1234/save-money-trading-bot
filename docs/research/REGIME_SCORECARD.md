@@ -154,6 +154,11 @@ Runtime classifier (Issue [#285](https://github.com/Pain1234/save-money-trading-
 [`REGIME_CLASSIFIER.md`](REGIME_CLASSIFIER.md), starting version `1.0`
 (content-hashed; sealed `regime_labels.json`).
 
+Per-regime raw quality metrics (Issue [#287](https://github.com/Pain1234/save-money-trading-bot/issues/287)):
+`services/research/regime_quality/`, contract
+[`REGIME_QUALITY.md`](REGIME_QUALITY.md), sealed `regime_metrics.json`
+(worst/strongest from raw net PnL; summary score never sole decision).
+
 Final taxonomy, thresholds, windows, and `classifier_version` must be frozen
 before the final holdout ([#199](https://github.com/Pain1234/save-money-trading-bot/issues/199), [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)).
 **Forbidden:** post-hoc regime selection to hide bad results.
