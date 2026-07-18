@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -35,10 +37,12 @@ from market_data.validation import sort_candles
 
 from research.dataset_binding import hash_research_bundle
 
-DEFAULT_CATALOG_ALIAS = "hl-btc-mainnet-730d"
 DEFAULT_DAYS = 730
 SCHEMA_VERSION = "1.0"
 PROVIDER_VERSION = "hyperliquid_historical/1.0"
+
+# Optional mid-write hook for fail-injection tests (staging Path).
+SnapshotWriteHook = Callable[[Path], None]
 
 
 class HlDatasetExportError(ValueError):
@@ -77,11 +81,25 @@ class ExportResult:
     monthly_count: int
     wrote_snapshot: bool
     catalog_updated: bool
+    code_commit: str
 
 
 def dumps_deterministic(obj: Any) -> str:
     """Stable JSON for byte-identical re-exports."""
     return json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def default_catalog_alias(
+    symbol: MarketSymbol,
+    network: HyperliquidNetwork,
+    days: int,
+) -> str:
+    """Catalog selector id derived from symbol / network / day count."""
+    return f"hl-{symbol.value.lower()}-{network.value}-{days}d"
+
+
+def raw_source_for_network(network: HyperliquidNetwork) -> str:
+    return f"hyperliquid/{network.value}/raw"
 
 
 def parse_as_of(value: str) -> datetime:
@@ -124,6 +142,27 @@ def resolve_export_window(*, as_of: datetime, days: int) -> ExportWindow:
     )
 
 
+def resolve_export_code_commit(
+    *,
+    explicit: str | None,
+    repo_root: Path,
+) -> str:
+    """Real code provenance: ``--code-commit``, env pin, or clean Git HEAD."""
+    if explicit is not None:
+        pinned = explicit.strip()
+        if len(pinned) < 7 or pinned.lower() == "unknown":
+            raise HlDatasetExportError(
+                "code_commit must be a real git SHA (min 7 chars), not unknown"
+            )
+        return pinned
+    try:
+        from research.runner import resolve_git_commit
+
+        return resolve_git_commit(repo_root, allow_dirty=False)
+    except ValueError as exc:
+        raise HlDatasetExportError(str(exc)) from exc
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}")
@@ -145,7 +184,12 @@ def _dir_bytes_fingerprint(root: Path) -> dict[str, str]:
     return out
 
 
-def write_raw_pages(snapshot_dir: Path, pages: tuple[bytes, ...]) -> tuple[str, str]:
+def write_raw_pages(
+    snapshot_dir: Path,
+    pages: tuple[bytes, ...],
+    *,
+    network: HyperliquidNetwork,
+) -> tuple[str, str]:
     """Content-addressed raw pages; returns (raw_content_hash, raw_dataset_id)."""
     raw_root = snapshot_dir / "raw"
     raw_root.mkdir(parents=True, exist_ok=True)
@@ -156,22 +200,42 @@ def write_raw_pages(snapshot_dir: Path, pages: tuple[bytes, ...]) -> tuple[str, 
         target = raw_root / page_hash
         if not target.exists():
             target.write_bytes(page)
-        # Stable index name pointing at content-addressed blob (symlink-like text).
         index_path = raw_root / f"page_{index:04d}.sha256"
         index_path.write_text(page_hash + "\n", encoding="utf-8", newline="\n")
 
-    # Concatenation order matches pagination order (immutable provenance).
     raw_content_hash = hash_raw_bytes(b"".join(pages))
-    raw_dataset_id = derive_dataset_id(raw_content_hash, SCHEMA_VERSION, "hyperliquid/mainnet/raw")
+    raw_dataset_id = derive_dataset_id(
+        raw_content_hash, SCHEMA_VERSION, raw_source_for_network(network)
+    )
     index_doc = {
         "algorithm": "sha256",
         "page_count": len(pages),
         "pages": page_hashes,
         "raw_content_hash": raw_content_hash,
         "raw_dataset_id": raw_dataset_id,
+        "source": raw_source_for_network(network),
     }
     (raw_root / "index.json").write_text(dumps_deterministic(index_doc), encoding="utf-8")
     return raw_content_hash, raw_dataset_id
+
+
+def _materialize_snapshot(
+    target: Path,
+    *,
+    pages: tuple[bytes, ...],
+    bundle: HistoricalDataBundle,
+    manifest: DatasetManifest,
+    network: HyperliquidNetwork,
+    write_hook: SnapshotWriteHook | None = None,
+) -> None:
+    """Write full snapshot layout under ``target`` (callers own atomicity)."""
+    write_raw_pages(target, pages, network=network)
+    if write_hook is not None:
+        write_hook(target)
+    (target / "bundle.json").write_text(_bundle_json_bytes(bundle), encoding="utf-8", newline="\n")
+    (target / "dataset_manifest.json").write_text(
+        _manifest_json_bytes(manifest), encoding="utf-8", newline="\n"
+    )
 
 
 def raw_candles_from_hl_pages(
@@ -312,8 +376,11 @@ def build_export_manifest(
     raw_dataset_id: str,
     import_configuration: dict[str, Any],
     quality_summary: dict[str, Any],
+    code_commit: str,
 ) -> DatasetManifest:
     """Canonical export manifest (not ``build_manifest_dict_for_bundle``)."""
+    if len(code_commit) < 7 or code_commit.lower() == "unknown":
+        raise HlDatasetExportError("code_commit must be a real git SHA (min 7 chars)")
     content_hash = hash_research_bundle(bundle, symbols)
     row_count = sum(
         len(bundle.daily.get(s, ()))
@@ -321,8 +388,7 @@ def build_export_manifest(
         + len(bundle.monthly.get(s, ()))
         for s in symbols
     )
-    # Deterministic provenance pins (same inputs → same bytes).
-    code_commit = f"hlxprt-{raw_content_hash[:10]}"
+    # created_at pinned to as-of so same inputs (+ code_commit) → same bytes.
     created_at = window.as_of
     data = {
         "schema_version": SCHEMA_VERSION,
@@ -365,25 +431,34 @@ def write_snapshot_if_absent(
     pages: tuple[bytes, ...],
     bundle: HistoricalDataBundle,
     manifest: DatasetManifest,
+    network: HyperliquidNetwork,
+    write_hook: SnapshotWriteHook | None = None,
 ) -> bool:
-    """Write snapshot once; identical re-run OK; divergent existing dir fails closed."""
-    bundle_text = _bundle_json_bytes(bundle)
-    manifest_text = _manifest_json_bytes(manifest)
+    """Atomically publish snapshot; identical re-run OK; divergent exists fails closed.
 
-    if snapshot_dir.exists():
-        expected: dict[str, str] = {}
-        # Build expected layout in a temp sibling for comparison without overwrite.
-        staging = snapshot_dir.parent / f".{snapshot_dir.name}.compare.{os.getpid()}"
-        try:
-            if staging.exists():
-                import shutil
+    Materializes under a sibling staging directory, then ``os.replace`` into
+    ``snapshot_dir`` only after the full layout is written. Mid-write failures
+    leave no final directory.
+    """
+    snapshot_dir = snapshot_dir.resolve()
+    parent = snapshot_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = parent / f".{snapshot_dir.name}.write.{os.getpid()}"
 
-                shutil.rmtree(staging)
+    def _cleanup_staging() -> None:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+    try:
+        if snapshot_dir.exists():
+            _cleanup_staging()
             staging.mkdir(parents=True)
-            write_raw_pages(staging, pages)
-            (staging / "bundle.json").write_text(bundle_text, encoding="utf-8", newline="\n")
-            (staging / "dataset_manifest.json").write_text(
-                manifest_text, encoding="utf-8", newline="\n"
+            _materialize_snapshot(
+                staging,
+                pages=pages,
+                bundle=bundle,
+                manifest=manifest,
+                network=network,
             )
             expected = _dir_bytes_fingerprint(staging)
             actual = _dir_bytes_fingerprint(snapshot_dir)
@@ -392,19 +467,26 @@ def write_snapshot_if_absent(
                     f"snapshot directory already exists with different content: {snapshot_dir}"
                 )
             return False
-        finally:
-            if staging.exists():
-                import shutil
 
-                shutil.rmtree(staging, ignore_errors=True)
-
-    snapshot_dir.mkdir(parents=True, exist_ok=False)
-    write_raw_pages(snapshot_dir, pages)
-    (snapshot_dir / "bundle.json").write_text(bundle_text, encoding="utf-8", newline="\n")
-    (snapshot_dir / "dataset_manifest.json").write_text(
-        manifest_text, encoding="utf-8", newline="\n"
-    )
-    return True
+        _cleanup_staging()
+        staging.mkdir(parents=True)
+        _materialize_snapshot(
+            staging,
+            pages=pages,
+            bundle=bundle,
+            manifest=manifest,
+            network=network,
+            write_hook=write_hook,
+        )
+        # Atomic publish: staging → final (dest must not exist).
+        os.replace(staging, snapshot_dir)
+        return True
+    except Exception:
+        _cleanup_staging()
+        raise
+    finally:
+        # Compare path / failed replace: never leave staging behind.
+        _cleanup_staging()
 
 
 def merge_catalog_atomic(
@@ -473,19 +555,21 @@ def export_from_raw_pages(
     out_root: Path,
     catalog_path: Path,
     window: ExportWindow,
+    code_commit: str,
     symbol: MarketSymbol = MarketSymbol.BTC,
     network: HyperliquidNetwork = HyperliquidNetwork.MAINNET,
-    catalog_alias: str = DEFAULT_CATALOG_ALIAS,
+    catalog_alias: str | None = None,
     catalog_label: str | None = None,
     path_style: str = "absolute",
+    write_hook: SnapshotWriteHook | None = None,
 ) -> ExportResult:
     """Offline/online shared path: raw pages → quality → snapshot → catalog."""
     if not pages:
         raise HlDatasetExportError("no raw pages to export")
 
+    alias = catalog_alias or default_catalog_alias(symbol, network, window.days)
     evaluation_time = window.end_close + timedelta(seconds=1)
     raws = raw_candles_from_hl_pages(pages, symbol=symbol, evaluation_time=evaluation_time)
-    # Keep only candles inside the declared daily window (inclusive open times).
     window_raws = tuple(
         r
         for r in raws
@@ -500,9 +584,10 @@ def export_from_raw_pages(
 
     source = f"hyperliquid/{network.value}"
     symbols = (symbol.value,)
-    # provisional raw hashes for manifest (written again into snapshot dir)
     raw_content_hash = hash_raw_bytes(b"".join(pages))
-    raw_dataset_id = derive_dataset_id(raw_content_hash, SCHEMA_VERSION, f"{source}/raw")
+    raw_dataset_id = derive_dataset_id(
+        raw_content_hash, SCHEMA_VERSION, raw_source_for_network(network)
+    )
     import_configuration = {
         "provider": PROVIDER_VERSION,
         "network": network.value,
@@ -525,6 +610,7 @@ def export_from_raw_pages(
         raw_dataset_id=raw_dataset_id,
         import_configuration=import_configuration,
         quality_summary=quality_summary,
+        code_commit=code_commit,
     )
     dataset_id = manifest.dataset_id
     if not dataset_id:
@@ -532,7 +618,21 @@ def export_from_raw_pages(
 
     out_root = out_root.resolve()
     snapshot_dir = out_root / dataset_id
-    wrote = write_snapshot_if_absent(snapshot_dir, pages=pages, bundle=bundle, manifest=manifest)
+    wrote = write_snapshot_if_absent(
+        snapshot_dir,
+        pages=pages,
+        bundle=bundle,
+        manifest=manifest,
+        network=network,
+        write_hook=write_hook,
+    )
+
+    # Verify raw index identity matches manifest (network-aware).
+    index = json.loads((snapshot_dir / "raw" / "index.json").read_text(encoding="utf-8"))
+    if index.get("raw_dataset_id") != raw_dataset_id:
+        raise HlDatasetExportError("raw_dataset_id mismatch between index and manifest")
+    if index.get("source") != raw_source_for_network(network):
+        raise HlDatasetExportError("raw source mismatch between index and network")
 
     manifest_file = snapshot_dir / "dataset_manifest.json"
     bundle_file = snapshot_dir / "bundle.json"
@@ -551,7 +651,7 @@ def export_from_raw_pages(
     )
     merge_catalog_atomic(
         catalog_path.resolve(),
-        alias=catalog_alias,
+        alias=alias,
         label=label,
         dataset_id=dataset_id,
         content_hash=manifest.content_hash,
@@ -570,12 +670,13 @@ def export_from_raw_pages(
         raw_content_hash=raw_content_hash,
         snapshot_dir=snapshot_dir,
         catalog_path=catalog_path.resolve(),
-        catalog_alias=catalog_alias,
+        catalog_alias=alias,
         daily_count=len(bundle.daily.get(symbol.value, ())),
         weekly_count=len(bundle.weekly.get(symbol.value, ())),
         monthly_count=len(bundle.monthly.get(symbol.value, ())),
         wrote_snapshot=wrote,
         catalog_updated=True,
+        code_commit=code_commit,
     )
 
 
@@ -619,7 +720,6 @@ def synthesize_hl_daily_pages(
     for i in range(days):
         open_time = ensure_utc(start_open) + timedelta(days=i)
         close_time = daily_close(open_time)
-        # Deterministic volatility (not flat-100): sine-ish swing via integer math.
         wave = Decimal(i % 17) - Decimal("8")
         drift = Decimal(i) * Decimal("3.5")
         o = (base_price + drift + wave * Decimal("25")).quantize(Decimal("0.01"))
@@ -641,13 +741,11 @@ def synthesize_hl_daily_pages(
                 "n": 100 + i,
             }
         )
-    # Single page; separators fixed for stable raw hash across Python versions.
     payload = json.dumps(rows, separators=(",", ":"), ensure_ascii=False)
     return (payload.encode("utf-8"),)
 
 
 __all__ = [
-    "DEFAULT_CATALOG_ALIAS",
     "DEFAULT_DAYS",
     "ExportResult",
     "ExportWindow",
@@ -655,6 +753,7 @@ __all__ = [
     "assert_daily_window",
     "build_export_manifest",
     "build_research_bundle",
+    "default_catalog_alias",
     "dumps_deterministic",
     "export_from_raw_pages",
     "fetch_raw_pages",
@@ -662,7 +761,9 @@ __all__ = [
     "merge_catalog_atomic",
     "parse_as_of",
     "production_env_snippet",
+    "raw_source_for_network",
     "require_quality_valid",
+    "resolve_export_code_commit",
     "resolve_export_window",
     "synthesize_hl_daily_pages",
     "write_raw_pages",

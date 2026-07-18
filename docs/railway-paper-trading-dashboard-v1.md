@@ -202,6 +202,11 @@ python scripts/export_research_dataset_hyperliquid.py \
   --catalog-path /data/research/catalog.json
 ```
 
+Catalog alias defaults to `hl-btc-mainnet-730d` for that invocation (derived from
+symbol/network/days). Snapshots publish atomically (staging → rename). Manifest
+`code_commit` requires a real Git SHA (clean HEAD or `--code-commit` /
+`RESEARCH_GIT_COMMIT`).
+
 3. Set the API service env triple (absolute HL paths in the catalog):
 
 ```text

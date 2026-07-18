@@ -59,9 +59,15 @@ Offline / CI (no network, volatile synthetic pages):
 ```powershell
 python scripts/export_research_dataset_hyperliquid.py `
   --end-date 2024-01-31 --days 31 --offline-synthetic `
+  --code-commit <git-sha> `
   --out-root .\artifacts\research-datasets `
   --catalog-path .\artifacts\research-datasets\catalog.json
 ```
+
+Default catalog alias is `hl-<symbol>-<network>-<days>d` (e.g. `hl-btc-mainnet-31d`).
+Override with `--catalog-alias` only when intentional. Manifest `code_commit` must be a
+real SHA (`--code-commit`, clean Git HEAD, or `RESEARCH_GIT_COMMIT` /
+`RAILWAY_GIT_COMMIT_SHA`) — fail-closed otherwise.
 
 Production (mainnet public API, pinned end date, absolute catalog paths):
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export Hyperliquid BTC candles into a versioned Research Lab catalog (#274).
+"""Export Hyperliquid candles into a versioned Research Lab catalog (#274).
 
 Fetches via ``fetch_candles`` (not ``fetch_history``), persists immutable raw
 HTTP page bytes, builds D/W/M bundle + DatasetManifest, and atomically updates
@@ -8,7 +8,7 @@ HTTP page bytes, builds D/W/M bundle + DatasetManifest, and atomically updates
 Usage (from repo root, venv active)::
 
     python scripts/export_research_dataset_hyperliquid.py \\
-        --end-date 2024-01-31 --days 31 \\
+        --end-date 2024-01-31 --days 730 \\
         --out-root /data/research \\
         --catalog-path /data/research/catalog.json
 
@@ -16,6 +16,7 @@ Offline / CI (synthetic volatile pages, no network)::
 
     python scripts/export_research_dataset_hyperliquid.py \\
         --end-date 2024-01-31 --days 31 --offline-synthetic \\
+        --code-commit 0123456789abcdef \\
         --out-root ./artifacts/research-datasets \\
         --catalog-path ./artifacts/research-datasets/catalog.json
 """
@@ -50,8 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     pin.add_argument(
         "--as-of",
         help=(
-            "UTC as-of pin (YYYY-MM-DD or ISO datetime). "
-            "Last fully closed UTC day at this instant."
+            "UTC as-of pin (YYYY-MM-DD or ISO datetime). Last fully closed UTC day at this instant."
         ),
     )
     p.add_argument(
@@ -85,8 +85,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--catalog-alias",
-        default="hl-btc-mainnet-730d",
-        help="Catalog id alias (not the content dataset_id).",
+        default=None,
+        help=("Catalog id alias (not dataset_id). Default: hl-<symbol>-<network>-<days>d"),
+    )
+    p.add_argument(
+        "--code-commit",
+        default=None,
+        help=(
+            "Git SHA for manifest code_commit. "
+            "Default: clean HEAD or RESEARCH_GIT_COMMIT / RAILWAY_GIT_COMMIT_SHA."
+        ),
     )
     p.add_argument(
         "--path-style",
@@ -115,7 +123,6 @@ def _load_raw_pages_dir(path: Path) -> tuple[bytes, ...]:
             *path.glob("*.json"),
         ]
     )
-    # Prefer page_* only when present.
     page_files = sorted(path.glob("page_*"))
     if page_files:
         files = page_files
@@ -131,10 +138,12 @@ def main(argv: list[str] | None = None) -> int:
     from research.hl_dataset_export import (
         DEFAULT_DAYS,
         HlDatasetExportError,
+        default_catalog_alias,
         export_from_raw_pages,
         fetch_raw_pages,
         parse_as_of,
         production_env_snippet,
+        resolve_export_code_commit,
         resolve_export_window,
         synthesize_hl_daily_pages,
     )
@@ -143,7 +152,6 @@ def main(argv: list[str] | None = None) -> int:
     pin = args.as_of or args.end_date
     assert pin is not None
     as_of = parse_as_of(pin)
-    # --end-date means that calendar day is the last closed day: pin as end of that day.
     if args.end_date and not args.as_of:
         d = as_of.date()
         as_of = parse_as_of(f"{d.isoformat()}T23:59:59+00:00")
@@ -155,11 +163,16 @@ def main(argv: list[str] | None = None) -> int:
     window = resolve_export_window(as_of=as_of, days=days)
     symbol = MarketSymbol(args.symbol.upper())
     network = HyperliquidNetwork(args.network)
+    alias = args.catalog_alias or default_catalog_alias(symbol, network, days)
 
     if args.offline_synthetic and args.raw_pages_dir:
         raise SystemExit("use only one of --offline-synthetic / --raw-pages-dir")
 
     try:
+        code_commit = resolve_export_code_commit(
+            explicit=args.code_commit,
+            repo_root=REPO_ROOT,
+        )
         if args.offline_synthetic:
             pages = synthesize_hl_daily_pages(
                 start_open=window.start_open, days=window.days, symbol=symbol
@@ -174,9 +187,10 @@ def main(argv: list[str] | None = None) -> int:
             out_root=args.out_root,
             catalog_path=args.catalog_path,
             window=window,
+            code_commit=code_commit,
             symbol=symbol,
             network=network,
-            catalog_alias=args.catalog_alias,
+            catalog_alias=alias,
             path_style=args.path_style,
         )
     except HlDatasetExportError as exc:
@@ -186,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"dataset_id={result.dataset_id}")
     print(f"content_hash={result.content_hash}")
     print(f"raw_content_hash={result.raw_content_hash}")
+    print(f"code_commit={result.code_commit}")
     print(f"snapshot_dir={result.snapshot_dir}")
     print(f"catalog_path={result.catalog_path}")
     print(f"catalog_alias={result.catalog_alias}")
@@ -203,8 +218,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
         end="",
     )
-    if days == DEFAULT_DAYS and args.catalog_alias == "hl-btc-mainnet-730d":
-        print("# Alias hl-btc-mainnet-730d is a catalog id; dataset_id is content identity.")
+    if days == DEFAULT_DAYS and alias == default_catalog_alias(symbol, network, days):
+        print(f"# Alias {alias} is a catalog id; dataset_id is content identity.")
     return 0
 
 
