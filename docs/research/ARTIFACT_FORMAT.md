@@ -13,6 +13,7 @@ artifacts/research/<experiment_id>/<run_id>/
   equity.json
   chart_data.json
   regime_labels.json
+  regime_metrics.json
   events.jsonl
   checksums.json
 ```
@@ -34,6 +35,7 @@ Rules:
 - Retries use a new `attempt_id` but do not replace successful artifacts
 - `checksums.json` covers all files except itself (convenience seal in the run directory)
 - **Trust anchor (#165):** on `register_complete` / `show(verify=True)`, file digests are checked against the **checksum snapshot stored in the registry entry**, not solely by re-reading mutable `checksums.json`. Tamper + reseal of `checksums.json` alone must fail verification.
-- Semantic CI compares (`#146`) hash metrics/trades/equity/costs/experiment/chart_data/regime_labels plus manifest without `attempt_id` / `created_at_utc`
+- Semantic CI compares (`#146`) hash metrics/trades/equity/costs/experiment/chart_data/regime_labels/regime_metrics plus manifest without `attempt_id` / `created_at_utc`
 - Registry CLI `compare` (`#167`) diffs full `semantic_spec_dict` + `semantic_manifest_payload` (see [README.md](README.md))
 - `regime_labels.json` (#285): versioned classifier labels + transitions; see [REGIME_CLASSIFIER.md](REGIME_CLASSIFIER.md)
+- `regime_metrics.json` (#287): per-regime raw quality metrics; see [REGIME_QUALITY.md](REGIME_QUALITY.md)

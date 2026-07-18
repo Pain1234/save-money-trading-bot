@@ -39,6 +39,7 @@ from research.metrics_contract import (
     save_metrics_and_report,
 )
 from research.regime import PriceBar, classify_regime_series, get_classifier
+from research.regime_quality import evaluate_regime_quality
 from research.run_manifest import build_run_manifest, dumps_run_manifest
 from research.strategy_resolver import resolve_strategy
 
@@ -441,6 +442,17 @@ def run_experiment(request: RunRequest) -> RunOutcome:
             writer.write_json("regime_labels.json", regime_payload)
             equity_payload = [json.loads(e.model_dump_json()) for e in result.equity_curve]
             writer.write_json("equity.json", equity_payload)
+            quality = evaluate_regime_quality(
+                regime_labels=regime_payload,
+                trades=trades_payload,
+                equity=equity_payload,
+                run_id=draft.run_id,
+                experiment_id=draft.experiment_id,
+                dataset_id=manifest.dataset_id
+                or spec.dataset_manifest_ref.dataset_id,
+                dataset_content_hash=verified_hash,
+            )
+            writer.write_json("regime_metrics.json", quality.artifact)
             events = [
                 {
                     "type": "evaluation",
