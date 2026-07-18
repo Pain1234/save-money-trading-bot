@@ -10,6 +10,7 @@ export const RESEARCH_NAV: NavItem[] = [
   { label: "Strategien", href: "/dashboard/research/strategies" },
   { label: "Experiments", href: "/dashboard/research/experiments" },
   { label: "Neues Experiment", href: "/dashboard/research/experiments/new" },
+  { label: "Vergleich", href: "/dashboard/research/compare" },
   { label: "Robustheit", href: "/dashboard/research/robustness" },
 ];
 
