@@ -290,9 +290,9 @@ Market Data
 → Eligibility Gates
 → Opportunity Ranking
 → Correlation Clustering
-→ Portfolio Allocation
+→ Portfolio Allocation (sleeve-level desired targets; ADR-018)
 → Global Risk Engine
-→ Target Position Netting
+→ Target Position Netting (account-level net per instrument)
 → Single Execution Owner
 → Venue Adapter
 → Hyperliquid or later venues
@@ -305,7 +305,7 @@ One Trading and Research Platform
 ├── Shared Research Pipeline
 ├── Orthogonal metadata (asset_class × instrument_type × venue profile)
 ├── Asset-Specific Cost and Funding Models
-├── Shared Portfolio Risk Layer (cluster budgets; ADR-018 allocator)
+├── Shared Portfolio Risk Layer (cluster budgets; ADR-018 allocator → netting)
 └── Single Execution Owner → Venue Adapter
 ```
 

@@ -91,11 +91,23 @@ RISK_REGISTER (R-025), CHANGELOG, this audit. GitHub issue body updates for
 #104, #106, #128–#130, #135, #139; new planning #304/#305; comments on #183/#184.
 No runtime.
 
-**Incident note:** An authenticated `github_project_setup.py --apply --skip-project`
-re-created closed P0–P2.5 and P7 seed issues (#306–#332) because closed seeds are
-not treated as satisfied. Those duplicates were closed the same day pointing at
-canonical issues (#2–#16, #95–#103, #104–#106). Prefer `--dry-run` only for
-governance verification unless repairing known duplicates.
+**Incident note (corrected):** On 2026-07-18 an authenticated
+`python scripts/github_project_setup.py --apply --skip-project` re-created
+closed P0–P2.5 and P7 seed issues as #306–#332. Those duplicates were closed
+the same day pointing at canonical issues (#2–#16, #95–#103, #104–#106).
+
+**Root cause (evidenced):** Current `main` (and this PR's base) already loads
+issues with `state=all` via `load_all_issues()` and skips creation when
+`find_seed_issue()` matches a closed or open seed (`SKIP duplicate creation`),
+with regression coverage in `tests/governance/`. The apply that produced
+#306–#332 is therefore **not** explained by “closed seeds are ignored” on the
+current script. The credible cause is an **apply from an outdated local
+worktree/branch** (or otherwise stale checkout) that lacked that closed-seed
+idempotency path. The exact local HEAD of that apply was not recorded at the
+time; governance sync commits on this branch begin at
+`f88eb7b6443d623429b3b6007013b0080b9609c2` (ADR-018 docs). Prefer
+`--dry-run` only for governance verification unless repairing known
+duplicates; record `git rev-parse HEAD` before any authenticated `--apply`.
 
 ### Open PRs (audit-time)
 

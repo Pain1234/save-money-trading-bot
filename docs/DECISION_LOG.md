@@ -427,15 +427,31 @@ subaccounts, or new venue adapters.
    confidence, evidence confidence, or permission to trade. Evidence confidence
    remains a research-only artifact (P4.9 scorecard).
 4. A central **Portfolio Allocator** decides eligibility, relative
-   attractiveness, risk-cluster membership, risk-budget assignment, and net
-   target position per instrument.
-5. A **Global Risk Engine** evaluates the combined portfolio.
-6. Exactly one **Execution Owner** may create, amend, or cancel orders for a
+   attractiveness, risk-cluster membership, and risk-budget assignment, and
+   emits **sleeve-level desired targets** (per strategy/sleeve × instrument).
+   It does **not** emit the final account-level net position.
+5. A **Global Risk Engine** evaluates the combined sleeve portfolio (may scale
+   or clip sleeve targets under portfolio limits).
+6. A separate **Target Position Netting** step collapses sleeve targets into
+   exactly one **account-level net target position per instrument** for the
+   Execution Owner. Netting is not folded into the Allocator.
+7. Exactly one **Execution Owner** may create, amend, or cancel orders for a
    given trading account.
-7. Venue adapters (Hyperliquid now; others later) sit after the Execution
+8. Venue adapters (Hyperliquid now; others later) sit after the Execution
    Owner. Strategies MUST NOT depend on venue-specific symbols, funding
    fields, or order objects.
-8. **Research universe ≠ execution venue** (see ADR-014 amendment).
+9. **Research universe ≠ execution venue** (see ADR-014 amendment).
+
+**Allocator vs netting (binding boundary):**
+
+| Stage | Output |
+|-------|--------|
+| Portfolio Allocator | Sleeve-level desired targets (strategy/sleeve × instrument) plus eligibility / ranking / cluster / budget decisions |
+| Global Risk Engine | Risk-adjusted sleeve targets (scale/clip); still sleeve-scoped |
+| Target Position Netting | Single account-level **net** target position per instrument |
+
+Do not describe the Allocator as emitting the final net instrument position;
+that is exclusively the netting stage before the Single Execution Owner.
 
 **Target pipeline:**
 
