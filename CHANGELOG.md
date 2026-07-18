@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 regime quality metrics — #287)
+
+- Per-regime raw quality metrics under `services/research/regime_quality/`
+  (`regime_metrics.json`: gross/net, costs, worst/strongest, portfolio/symbol views).
+- Optional versioned quality summary (score policy `1.0`); never decision-binding;
+  missing → `NOT_AVAILABLE`; zero-activity regimes are valid.
+- Runner writes `regime_metrics.json`; docs `docs/research/REGIME_QUALITY.md`.
+
+### Fixed (P4.9 regime quality integrity — #287 / PR #340)
+
+- Trade attribution reconciles unlabeled/INSUFFICIENT exits (coverage +
+  source/excluded PnL); incomplete coverage → `evidence_status=INCONCLUSIVE`.
+- Max drawdown uses contiguous regime episodes (rebased), not cross-regime
+  equity chaining.
+- Dataset pins must match `regime_labels.json`; run-dir evaluation verifies
+  checksums. Turnover uses `quantity` × `entry_fill_price`.
+- Optional benchmark closes; downside/tail/subperiod stability metrics added.
+
 ### Added (P4.9 regime classifier — #285)
 
 - Versioned deterministic regime + transition classifier under
