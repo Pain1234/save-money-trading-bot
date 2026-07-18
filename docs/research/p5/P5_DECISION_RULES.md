@@ -80,6 +80,15 @@ Neighbor success still cannot replace a failed frozen candidate (frozen must pas
 
 Until human comments `DECISION RULES FROZEN` on #198, OOS execution remains blocked.
 
+## Relationship to P4.9 scorecard
+
+Generic P4 gate/scorecard infrastructure ([#248](https://github.com/Pain1234/save-money-trading-bot/issues/248),
+Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295)) must **not**
+hard-code these proposed Strategy V1 numbers. Binding of frozen scorecard /
+classifier / behaviour / confidence policy versions to Strategy V1 is
+[#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) after P4.9 lands.
+A scorecard PASS or high regime quality score never auto-emits `ACCEPT_FOR_P6`.
+
 ## Decision record (P5-09 template)
 
 ```text

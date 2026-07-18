@@ -24,6 +24,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   skip). Leading hypothesis: outdated worktree/branch. Record
   `git rev-parse HEAD` before future authenticated applies.
 
+### Added (P4.9 Regime Evidence Scorecard — governance)
+
+- Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) and child
+  issues [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284)–[#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
+  for a layered regime-based strategy evidence scorecard inside milestone P4.
+- Contract `docs/research/REGIME_SCORECARD.md`, ADR-019, risk register rows
+  R-026–R-031; ROADMAP / ARCHITECTURE / research docs updated.
+- Extends existing #247/#248/#249 surfaces; no second registry; no auto-promotion;
+  no private Strategy V1 thresholds frozen in this change.
+
 ### Fixed (Dashboard design ↔ paper API — #238 re-review)
 
 - Kill Switch / Paused show „Nicht verfügbar“ when `runtime` is null (no false AUS/Nein).

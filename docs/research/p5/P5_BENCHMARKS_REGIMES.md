@@ -34,6 +34,17 @@ Classify each **calendar month** in the evaluation window using BTC daily closes
 Each OOS/trade day inherits its month’s (trend, vol) labels.
 **Forbidden:** dropping failed regimes after seeing results; selecting only winning regimes to rescue a failed aggregate.
 
+### Relationship to P4.9 scorecard classifier
+
+P5-03 (#199) remains the **Strategy V1 evaluation contract** for monthly trend/vol
+labels used in private P5 reporting. Generic, versioned Research Engine
+classification (including explicit transitions and content-hashed
+`classifier_version`) is implemented under P4.9 [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285)
+and bound for Strategy V1 freeze via [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294).
+Do **not** maintain a conflicting second taxonomy: extend this contract, keep
+determinism, and freeze before final holdout. See
+[`docs/research/REGIME_SCORECARD.md`](../REGIME_SCORECARD.md).
+
 ## Symbol and portfolio reporting
 
 Always report:

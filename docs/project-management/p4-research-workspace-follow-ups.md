@@ -188,3 +188,13 @@ P4 stays open until strategy is visible/selectable, research runs are possible
 via UI, trade results are inspectable on charts, and full UI acceptance is done
 (or explicitly deferred).
 P5 stays blocked until Engine + Read-API + Workspace are jointly usable enough.
+
+## P4.9 — Regime-Based Strategy Evidence Scorecard
+
+**Epic:** [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295)
+**Contract:** [`docs/research/REGIME_SCORECARD.md`](../research/REGIME_SCORECARD.md) (ADR-019)
+
+Extends Registry → Robustness (#247) → Gates (#248) → Validation Studies (#249) with a
+layered regime evidence profile. **Not** a second research system. Child issues:
+#284 (contract) → #285 classifier → #286 integrity/gates → {#287–#290} → #291 API →
+#292 UI → #293 E2E; P5 bind #294. Final UI acceptance still coordinated with #250.

@@ -56,6 +56,14 @@ Validation Study **infrastructure**: P4.7d [#249](https://github.com/Pain1234/sa
 Strategy V1 study register (public metadata only): [#255](https://github.com/Pain1234/save-money-trading-bot/issues/255).
 Final decision remains [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205).
 
+**P4.9 Regime Evidence Scorecard** (generic framework, then P5 bind):
+Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295), contract
+[`docs/research/REGIME_SCORECARD.md`](../REGIME_SCORECARD.md). After P4.9
+infrastructure, [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
+binds frozen Strategy V1 validation to scorecard/classifier/behaviour/confidence
+policy versions **without** opening the final holdout. Extends #198/#199; does not
+replace them.
+
 Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181).
 
 ## Planning documents (this folder)

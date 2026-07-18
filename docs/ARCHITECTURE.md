@@ -135,12 +135,18 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Strategy definition | `services/strategy_engine/` |
 | Experiment pipeline | Spec, runner, `ExperimentRegistry` (`registry.jsonl`), metrics/artifacts incl. `chart_data.json` (run-bound OHLCV per symbol, written at finalize from the filtered dataset bundle) |
 | Read API | Mounted on readonly app: `/api/v1/research/overview`, `/experiments`, `/experiments/{id}` (+ optional metrics/equity/artifacts); `/experiments/{id}/trades`, `/experiments/{id}/chart-data?symbol=`; `/strategies`, `/strategies/{id}`, `/strategies/{id}/schema` |
-| Workspace UI | `/dashboard/research` overview / list / detail (incl. **Kurs & Trades** price/trade chart on experiment detail); strategy catalog `/dashboard/research/strategies` (+ `/{id}`); Strategy Lab `/dashboard/research/experiments/new` starts `run_experiment` via job store (no cancel/promotion) |
-| Write surface | POST `/api/v1/research/experiments` + `.../start` allow-listed on private dashboard API; dataset catalog only (no free client paths) |
+| Workspace UI | `/dashboard/research` overview / list / detail (incl. **Kurs & Trades** price/trade chart on experiment detail); strategy catalog `/dashboard/research/strategies` (+ `/{id}`); Strategy Lab `/dashboard/research/experiments/new` starts `run_experiment` via job store (no cancel/promotion); compare / robustness / gates / validation study routes (#246–#249); P4.9 scorecard UI planned (#292) |
+| Write surface | POST `/api/v1/research/experiments` + `.../start` allow-listed on private dashboard API; dataset catalog only (no free client paths); robustness/gate/validation evaluate endpoints are evidence-only (no promotion) |
 | Strategy identity | Canonical `trend_v1` (display: Trend Strategy V1); alias `trend_strategy_v1` resolvable for historical specs; `services/research/strategy_resolver.py` is SoT — no second registry |
-| Specs | `docs/strategy-specification.md`, experiment templates |
+| Evidence layers | Run artifacts → robustness manifests (#247) → gate records (#248) → validation study snapshots (#249) → planned regime scorecard profile (#295 / ADR-019) |
+| Specs | `docs/strategy-specification.md`, experiment templates, [`docs/research/REGIME_SCORECARD.md`](research/REGIME_SCORECARD.md) |
 
-**Current Gap:** Compare/robustness UI, gate evaluator, durable multi-process queue, Cancel/Retry (see `docs/project-management/p4-research-workspace-follow-ups.md`). No second registry; no Experiment Postgres tables.
+**Current Gap:** Cancel/Retry deferred. #242/#250 human UI acceptance outstanding.
+P4.9 Regime Evidence Scorecard planned (Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295);
+contract [`docs/research/REGIME_SCORECARD.md`](research/REGIME_SCORECARD.md)) — extends
+Registry / Robustness / Gates / Validation Studies; **no** second registry; **no**
+auto-promotion. Compare/robustness/gate/validation surfaces delivered (#246–#249).
+No Experiment Postgres tables.
 
 ---
 
