@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P7 architecture — centralized intent / single execution owner)
+
+- ADR-018: centralized Strategy Intent allocation and a single execution owner
+  per trading account (architecture/planning only — not runtime activation).
+- ADR-014 amendment: research universe ≠ execution venue; orthogonal
+  `asset_class` × `instrument_type` × venue axes; HIP-3 index/commodity as
+  synthetic perpetuals (not futures); identity scaffolding exception for
+  #128–#130 under golden-fixture economic parity and P5 freeze-window rules.
+- R-025: multiple execution writers / ambiguous order ownership.
+- ROADMAP / ARCHITECTURE / milestone audit sync for P7 planning contracts
+  (#104, #106, #128–#130, #135, #139, #304, #305).
+- Note: accidental re-seed duplicates #306–#332 from governance apply against
+  closed seeds were closed the same day as duplicates of canonical issues.
+
 ### Fixed (Dashboard design ↔ paper API — #238 re-review)
 
 - Kill Switch / Paused show „Nicht verfügbar“ when `runtime` is null (no false AUS/Nein).

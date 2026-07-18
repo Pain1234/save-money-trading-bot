@@ -274,50 +274,82 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 
 ### Multi-asset target architecture
 
-**Target state (P7 planning — not implemented).** ADR-014: one research and paper-trading platform with asset-specific profiles; no automatic separate repository.
+**Target state (P7 planning — not implemented).** ADR-014 (amended) + ADR-018:
+one research and paper-trading platform; research universes are separate from
+execution venues; centralized intent allocation with a single execution owner
+per trading account. No automatic separate repository. Accepting these ADRs is
+**architecture/planning only** — not runtime activation.
+
+```text
+Market Data
+→ Universe Discovery
+→ Asset Profile
+→ Multi-Timeframe Context
+→ Strategy Signals
+→ Normalized Strategy Intents
+→ Eligibility Gates
+→ Opportunity Ranking
+→ Correlation Clustering
+→ Portfolio Allocation
+→ Global Risk Engine
+→ Target Position Netting
+→ Single Execution Owner
+→ Venue Adapter
+→ Hyperliquid or later venues
+```
 
 ```text
 One Trading and Research Platform
-├── Hyperliquid Core Provider
-├── Crypto Perpetual Markets
-├── HIP-3 Equity Perpetual Markets
-├── HIP-3 Index Perpetual Markets
-├── HIP-3 Commodity Perpetual Markets
+├── Research Universes (Crypto, FX, Equity Indices, Commodities, Rates, Equities)
+├── First execution / paper venue path (Hyperliquid core + optional HIP-3)
 ├── Shared Research Pipeline
-├── Asset-Specific Metadata Profiles
+├── Orthogonal metadata (asset_class × instrument_type × venue profile)
 ├── Asset-Specific Cost and Funding Models
-└── Shared Portfolio Risk Layer
+├── Shared Portfolio Risk Layer (cluster budgets; ADR-018 allocator)
+└── Single Execution Owner → Venue Adapter
 ```
 
-**Planned asset profile types:**
+**Orthogonal metadata axes** (single registry — #104; not a second registry):
 
-```text
-CRYPTO_24_7
-HIP3_EQUITY_PERP
-HIP3_INDEX_PERP
-HIP3_COMMODITY_PERP
-```
+| Axis | Values |
+|------|--------|
+| `asset_class` | `CRYPTO`, `FX`, `EQUITY`, `INDEX`, `COMMODITY`, `RATES` |
+| `instrument_type` | `SPOT`, `PERPETUAL`, `FUTURE`, `CASH_EQUITY`, `SYNTHETIC_PERPETUAL` |
+| Venue / execution profile | Hyperliquid core, HIP-3 market, later venues |
+
+Example combinations: `CRYPTO+PERPETUAL`, `EQUITY+SYNTHETIC_PERPETUAL`,
+`INDEX+SYNTHETIC_PERPETUAL`, `COMMODITY+FUTURE`, `COMMODITY+SYNTHETIC_PERPETUAL`,
+`FX+SPOT`, `RATES+FUTURE`. HIP-3 index/commodity markets are
+**synthetic perpetuals**, not futures. Legacy ADR-014 names
+(`CRYPTO_24_7`, `HIP3_*`) map as venue-specific aliases.
 
 Each profile must eventually capture at minimum:
 
 | Dimension | Examples |
 |-----------|----------|
-| Venue / DEX | Hyperliquid core vs HIP-3 market |
-| Symbol metadata | Tick size, lot size, margin asset |
+| Venue / DEX | Hyperliquid core vs HIP-3 market (execution profile) |
+| Trading calendar / timezone / sessions | 24/7 crypto vs FX 24/5 vs equity sessions |
+| Symbol metadata | Tick size, lot size, quote currency, margin asset |
 | Oracle / mark price source | Per-market oracle rules |
-| Funding rules | Interval, caps, asset-specific behavior |
+| Funding / roll costs | Interval, caps, asset-specific behavior |
+| Fees / slippage | Cost model inputs |
 | Available history | Minimum backtest depth |
 | Minimum liquidity | Volume/spread thresholds |
-| Spread and slippage | Cost model inputs |
-| Price gaps | Session open, halts, oracle gaps |
-| Reference market hours | 24/7 crypto vs equity session |
-| Trading interruptions | Halts, maintenance |
-| Corporate actions | Equity perp reference adjustments |
-| Dividend effects | Reference price impact |
+| Price gaps / corporate actions | Session open, halts, dividends, reference adjustments |
+| Benchmark / regime profile | Research evaluation context |
 | Correlation clusters | BTC/ETH/SOL, sector/index clusters |
 | Position limits | Per-asset and per-cluster caps |
 
-**Boundaries today:** Paper worker trades crypto perpetuals only. HIP-3 equity/index/commodity perpetuals are roadmap items (P7A–P7C); live trading for any asset class remains **P8** with human approval.
+**Identity scaffolding (#128–#130):** Additive `InstrumentId` plumbing may merge
+before P5/P6 under ADR-018 parity and freeze-window rules. It is **not**
+multi-asset activation. BTC/ETH/SOL economic behavior must remain equivalent
+under golden fixtures.
+
+**Boundaries today:** Paper worker trades crypto perpetuals only (BTC/ETH/SOL).
+HIP-3 and other research universes are roadmap items (P7 planning). Live trading
+for any asset class remains **P8** with human approval. Subaccounts are P8
+optional isolation — not a P7 runtime deliverable. P4.9 Research Workspace UI
+(#297–#303) provides design system + scorecard; P7 cross-asset views are #139.
 
 ---
 

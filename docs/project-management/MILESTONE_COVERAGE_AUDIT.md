@@ -31,7 +31,7 @@ Milestone titles are resolved by title in GitHub (not hardcoded by number in pro
 | **P4** | Ja (Name drift) | War `P4 – Research Engine` → Zielname Workspace V1 | Engine closed; Workspace #240/#242 zuvor **ohne** Milestone; Follow-ups fehlten als Issues | **technisch umgesetzt, aber noch nicht abgenommen** (Engine + read UI); Lab **in Review** | Durable jobs, Compare, Robustness, Gates, Validation Studies, E2E/UI-Abnahme |
 | **P5** | Ja | `P5 – Honest Validation of Trend Strategy V1` | Planung #196–#203/#181 vorhanden; **Ausführungsissues fehlten** | **geplant** (keine echte V1-Validierung ausgeführt) | #200–#203 ≠ Execution; #204-Deps unvollständig; Validation-Study-Tracking fehlte |
 | **P6** | Ja | `P6 – Paper Trading Soak` | Nur Epic #46 + #182 | **geplant** (Soak nicht gestartet) | Zerlegung P6-00…P6-06 fehlte |
-| **P7** | Ja (Planning only) | `P7 – Multi-Asset and Independent Strategy Candidates` | Planning-Issues vorhanden (10 open) | **geplant** / **bewusst zurückgestellt** bis P5/P6-Gates | Keine neuen Impl-Issues nötig; Zerlegung erst nach Gates |
+| **P7** | Ja (Planning + ADR-018) | `P7 – Multi-Asset and Independent Strategy Candidates` | Planning-Issues + Identity-Scaffolding #128–#130 (Ausnahme) | **geplant** / Aktivierung **bewusst zurückgestellt** bis P5/P6; Scaffolding parity-gated | Runtime-Aktivierung nach Gates; Subaccounts = P8 |
 | **P8** | Ja | `P8 – Separate Micro-Live System` | Boundary-Issue #184 | **blockiert** | Detaillierte Zerlegung erst nach Human Approval |
 | **P9** | Ja | `P9 – Controlled Scaling` | Boundary-Issue #185 | **blockiert** | Detaillierte Zerlegung erst nach P8 + Human Approval |
 
@@ -73,8 +73,29 @@ Milestone titles are resolved by title in GitHub (not hardcoded by number in pro
 
 ### P7–P9
 
-- P7: nur Planning; keine neuen Implementierungsissues in diesem Task.
-- P8/P9: **blockiert**; keine Live-/Wallet-/Order-Issues.
+- P7: Planning + architecture contracts (ADR-014 amended, ADR-018, R-025).
+  Identity scaffolding #128–#130 may merge before P5/P6 under golden-fixture
+  economic parity and freeze-window rules — not runtime activation.
+  Two additional planning issues: [#304](https://github.com/Pain1234/save-money-trading-bot/issues/304)
+  Multi-Timeframe Role Contract; [#305](https://github.com/Pain1234/save-money-trading-bot/issues/305)
+  Normalized Portfolio StrategyIntent Contract. #139 remains P7 cross-asset UI (≠ P4.9
+  #297–#303).
+- P8/P9: **blockiert**; keine Live-/Wallet-/Order-/Subaccount-Implementierung
+  unter P7 (#184 boundary only).
+
+### Sync note — 2026-07-18 (ADR-018 / centralized intent)
+
+Docs-only governance PR on `docs/p7-centralized-intent-architecture`:
+DECISION_LOG (ADR-018 + ADR-014 amendment), ARCHITECTURE, ROADMAP,
+RISK_REGISTER (R-025), CHANGELOG, this audit. GitHub issue body updates for
+#104, #106, #128–#130, #135, #139; new planning #304/#305; comments on #183/#184.
+No runtime.
+
+**Incident note:** An authenticated `github_project_setup.py --apply --skip-project`
+re-created closed P0–P2.5 and P7 seed issues (#306–#332) because closed seeds are
+not treated as satisfied. Those duplicates were closed the same day pointing at
+canonical issues (#2–#16, #95–#103, #104–#106). Prefer `--dry-run` only for
+governance verification unless repairing known duplicates.
 
 ### Open PRs (audit-time)
 

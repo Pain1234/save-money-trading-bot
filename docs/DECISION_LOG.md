@@ -286,6 +286,38 @@ P3 changes must not depend on untested Railway restore behavior.
 
 **Related Issues / PRs:** `ROADMAP.md` § P7, `docs/ARCHITECTURE.md` § Multi-asset target architecture, P7 planning issues (governance setup).
 
+### Amendment 2026-07-18 (ADR-018 alignment)
+
+**Status:** Accepted amendment
+
+1. **Research universe ≠ execution venue.** ADR-014's Hyperliquid / HIP-3
+   focus describes the *first execution and paper venue path*, not the limit of
+   research universes. Research MAY study Crypto, Forex, Equity Indices,
+   Commodities, Rates, and Equities while execution remains Hyperliquid /
+   existing paper only.
+
+2. **Orthogonal metadata axes** (single registry via #104 — no second registry):
+   - `asset_class`: `CRYPTO` | `FX` | `EQUITY` | `INDEX` | `COMMODITY` | `RATES`
+   - `instrument_type`: `SPOT` | `PERPETUAL` | `FUTURE` | `CASH_EQUITY` | `SYNTHETIC_PERPETUAL`
+   - `venue` / execution profile (e.g. Hyperliquid core, HIP-3 market)
+
+   Example combinations: `CRYPTO+PERPETUAL`, `EQUITY+SYNTHETIC_PERPETUAL`,
+   `INDEX+SYNTHETIC_PERPETUAL`, `COMMODITY+FUTURE`, `COMMODITY+SYNTHETIC_PERPETUAL`,
+   `FX+SPOT`, `RATES+FUTURE`.
+
+   HIP-3 index and commodity markets are **synthetic perpetuals**, not futures.
+   Legacy names `CRYPTO_24_7`, `HIP3_EQUITY_PERP`, `HIP3_INDEX_PERP`,
+   `HIP3_COMMODITY_PERP` map into this registry as venue-specific aliases.
+
+3. **Identity scaffolding exception:** InstrumentId and additive plumbing
+   (#128–#130) are cross-cutting architectural scaffolding, **not** P7 runtime
+   activation. Merge before P5/P6 is allowed only under ADR-018 parity and
+   freeze-window rules. Points 5–6 of the original decision (P7
+   research/shadow/paper only; must not bypass P5/P6 for *multi-asset
+   activation*) remain in force. Scaffolding ≠ activation.
+
+**Related:** ADR-018, #104, #128–#130.
+
 ---
 
 ## ADR-015 – Retire Codex review gate
@@ -357,6 +389,142 @@ describe rulesets as the source of truth. Phase 2 may retarget check names per
 **Consequences:** P5 may conclude `INCONCLUSIVE` if the forward window is too short; that is not a promotion. Public PRs carry methodology/framework only.
 
 **Related Issues / PRs:** #47, #181, #196–#205
+
+---
+
+## ADR-018 – Centralized intent allocation and a single execution owner
+
+**Status:** Accepted (architecture / planning — **not** a runtime activation)
+**Date:** 2026-07-18
+
+**Context:**
+The long-term target is a multi-universe, multi-asset, multi-timeframe,
+multi-strategy research platform with optional later execution. Today strategies
+emit `SignalIntent` / `TradeIntent` on a single paper path. Uncoordinated bots
+writing orders to the same account would break accounting, risk, and
+reconciliation (R-025). Hyperliquid subaccounts are a later optional isolation
+tool (P8), not a P7 runtime goal.
+
+This ADR records an **architecture decision**. It does **not** authorize
+multi-asset runtime, multi-strategy live/paper execution, new markets,
+subaccounts, or new venue adapters.
+
+**Decision:**
+
+1. Multiple strategies MAY emit research and shadow signals concurrently.
+2. Strategies MUST NOT independently submit, amend, or cancel orders on the
+   same trading account.
+3. Each strategy emits a normalized **Strategy Intent** (portfolio-level
+   contract; distinct from today's single-path `SignalIntent` / `TradeIntent`).
+   Strategy-produced strength fields use names such as `signal_strength` or
+   `strategy_conviction` (or `model_score`). These are **not** validation
+   confidence, evidence confidence, or permission to trade. Evidence confidence
+   remains a research-only artifact (P4.9 scorecard).
+4. A central **Portfolio Allocator** decides eligibility, relative
+   attractiveness, risk-cluster membership, risk-budget assignment, and net
+   target position per instrument.
+5. A **Global Risk Engine** evaluates the combined portfolio.
+6. Exactly one **Execution Owner** may create, amend, or cancel orders for a
+   given trading account.
+7. Venue adapters (Hyperliquid now; others later) sit after the Execution
+   Owner. Strategies MUST NOT depend on venue-specific symbols, funding
+   fields, or order objects.
+8. **Research universe ≠ execution venue** (see ADR-014 amendment).
+
+**Target pipeline:**
+
+```text
+Strategy Modules
+      │
+      ▼
+Strategy Intents
+      │
+      ▼
+Eligibility Gates
+      │
+      ▼
+Opportunity Ranking
+      │
+      ▼
+Correlation Clustering
+      │
+      ▼
+Portfolio Allocator
+      │
+      ▼
+Global Risk Engine
+      │
+      ▼
+Target Position Netting
+      │
+      ▼
+Single Execution Owner
+      │
+      ▼
+Venue Adapter
+```
+
+Full research-facing chain:
+
+```text
+Market Data → Universe Discovery → Asset Profile → Multi-Timeframe Context
+→ Strategy Signals → Normalized Strategy Intents → Eligibility Gates
+→ Opportunity Ranking → Correlation Clustering → Portfolio Allocation
+→ Global Risk Engine → Target Position Netting → Single Execution Owner
+→ Venue Adapter → Hyperliquid or later venues
+```
+
+**Identity scaffolding exception (cross-cutting, not P7 runtime):**
+
+- Issues #128–#130 (InstrumentId + additive plumbing) MAY merge before P5/P6
+  complete, only as identity scaffolding.
+- Existing BTC/ETH/SOL candles, signals, trade decisions, position sizes,
+  orders, fills, fees and PnL MUST remain **semantically and economically
+  equivalent** under canonical golden fixtures. Additive identity metadata and
+  serialization-only differences are permitted when explicitly documented and
+  excluded from the economic parity comparison. Numeric parity uses clear
+  tolerances or canonical snapshots defined in the issue/PR.
+- Any economic change to candles, signals, trade decisions, position sizes,
+  orders, fills, fees, or PnL blocks the merge.
+- Does **not** activate new markets, strategies, asset-profile runtime,
+  ranking, clustering, allocation, multi-strategy execution, subaccounts, or
+  new venue adapters.
+- Each of #128, #129, #130 uses its own clean branch and PR.
+- Do not use or modify branch `fix/research-symbol-constraints` for this work.
+- **Before the P5 candidate freeze and any actual P5 execution**, #128–#130
+  must either (1) be merged and pass all parity gates, or (2) be explicitly
+  deferred until after P6. No identity migration may occur between candidate
+  freeze and completion of the corresponding validation and soak sequence
+  without creating a new candidate version and a new documented freeze.
+
+**Phase gates:**
+
+- P7 may define contracts, ADRs, and planning issues.
+- Productive multi-asset / multi-strategy activation remains blocked on P4
+  completion, P5 honest validation, P6 paper soak, and required human
+  approvals.
+- Subaccount / multi-process live execution is P8 planning only (#184); not
+  implemented under P7.
+
+**Alternatives rejected:**
+
+| Option | Rejected because |
+|--------|------------------|
+| Independent bots per strategy on one account | Uncoordinated orders; broken risk/reconcile (R-025) |
+| Subaccounts as first isolation for P7 | Premature; belongs to P8; optional later |
+| Strategies emit venue orders directly | Couples research to Hyperliquid; blocks multi-venue |
+
+**Consequences:**
+
+- Extend planning issues #104, #106, #135, #139; keep #128–#130 as scaffolding.
+- Planning issues for Multi-Timeframe Role Contract (#304) and Normalized Portfolio
+  StrategyIntent Contract (#305).
+- R-025 added to the risk register.
+- No runtime multi-strategy allocator is authorized by accepting this ADR.
+
+**Related Issues / PRs:** ADR-014 (amended), #104, #106, #128–#130, #135, #139,
+#183, #184, #304, #305; `ROADMAP.md` § P7/P8; `docs/ARCHITECTURE.md` § Multi-asset target
+architecture.
 
 ---
 
