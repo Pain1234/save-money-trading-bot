@@ -1,6 +1,6 @@
 # Research examples
 
-## Local Strategy Lab catalog (dev)
+## Local Strategy Lab catalog (dev fixture)
 
 Committed under `examples/research/local_lab/`:
 
@@ -9,6 +9,10 @@ Committed under `examples/research/local_lab/`:
 | `catalog.json` | Dataset catalog for the Research write API |
 | `bundle.json` | Fixture `HistoricalDataBundle` (BTC) |
 | `dataset_manifest.json` | Matching P3 `DatasetManifest` |
+
+**Fixture ≠ research:** the local BTC series is intentionally flat (~price 100)
+for pipeline smoke tests. Trend V1 will show ~0 trades / flat equity on it. For
+real Hyperliquid courses use the export CLI below (Issue #274).
 
 Regenerate (deterministic `created_at`; safe to re-run without dirtying provenance metadata):
 
@@ -42,3 +46,38 @@ yet — use **Neues Experiment** after the catalog is available.
 
 Lab day bounds use inclusive whole seconds (`…T23:59:59.000000Z`), matching this
 fixture’s manifest end (not `.999999Z`).
+
+## Hyperliquid → Lab catalog (Issue #274)
+
+Ops CLI writes immutable raw HTTP pages, a versioned snapshot under
+`<out-root>/<dataset_id>/`, and an atomic catalog alias (default
+`hl-btc-mainnet-730d`). Identity is `dataset_id` / content hash — the alias is
+only a Lab selector.
+
+Offline / CI (no network, volatile synthetic pages):
+
+```powershell
+python scripts/export_research_dataset_hyperliquid.py `
+  --end-date 2024-01-31 --days 31 --offline-synthetic `
+  --out-root .\artifacts\research-datasets `
+  --catalog-path .\artifacts\research-datasets\catalog.json
+```
+
+Production (mainnet public API, pinned end date, absolute catalog paths):
+
+```text
+RESEARCH_REPO_ROOT=/app
+RESEARCH_ARTIFACTS_ROOT=/data/research
+RESEARCH_DATASET_CATALOG_PATH=/data/research/catalog.json
+```
+
+```bash
+python scripts/export_research_dataset_hyperliquid.py \
+  --end-date YYYY-MM-DD --days 730 \
+  --out-root /data/research \
+  --catalog-path /data/research/catalog.json
+```
+
+Requires `--end-date` or `--as-of` (no silent “today”). Same inputs →
+byte-identical snapshot; quality gate must be VALID for D/W/M or export aborts
+without catalog update. Postgres import is out of scope for this path.

@@ -61,8 +61,12 @@ class HyperliquidHttpClient:
     def is_closed(self) -> bool:
         return self._client.is_closed
 
-    async def post_info(self, body: dict[str, Any], *, request_id: str | None = None) -> Any:
-        async def _call() -> Any:
+    async def post_info_with_raw(
+        self, body: dict[str, Any], *, request_id: str | None = None
+    ) -> tuple[Any, bytes]:
+        """POST /info and return (parsed JSON, immutable response body bytes)."""
+
+        async def _call() -> tuple[Any, bytes]:
             async with self._limiter.acquire():
                 try:
                     response = await self._client.post("/info", json=body)
@@ -99,8 +103,9 @@ class HyperliquidHttpClient:
                     )
                 if not response.content:
                     raise HyperliquidParseError("Empty HTTP response body")
+                raw = bytes(response.content)
                 try:
-                    return loads_decimal(response.text)
+                    return loads_decimal(response.text), raw
                 except (ValueError, TypeError) as exc:
                     raise HyperliquidParseError(f"Invalid JSON: {exc}") from exc
 
@@ -116,7 +121,7 @@ class HyperliquidHttpClient:
                 return True
             return isinstance(exc, HyperliquidHttpStatusError) and exc.retryable
 
-        async def _with_retry() -> Any:
+        async def _with_retry() -> tuple[Any, bytes]:
             attempt = 0
             delay = self._config.reconnect_initial_delay_seconds
             while True:
@@ -146,3 +151,7 @@ class HyperliquidHttpClient:
             },
         )
         return await _with_retry()
+
+    async def post_info(self, body: dict[str, Any], *, request_id: str | None = None) -> Any:
+        parsed, _raw = await self.post_info_with_raw(body, request_id=request_id)
+        return parsed
