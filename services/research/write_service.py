@@ -1,11 +1,17 @@
-"""Create/start research experiments via existing run_experiment (Issue #242)."""
+"""Create/start research experiments via existing run_experiment (Issue #242).
+
+Restart/orphan recovery and the cross-process job ownership contract (worker
+identity, claim/heartbeat/conditional-finish) are Issue #245 (P4.6b).
+"""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -36,6 +42,8 @@ from research.strategy_resolver import (
 )
 from research.validation import assert_no_secrets
 
+logger = logging.getLogger(__name__)
+
 _SAFE_CATALOG_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _FIELD_ERROR = dict[str, str]
 
@@ -49,6 +57,14 @@ class DatasetCatalogEntry:
     manifest_path: str
     bundle_path: str
     symbols: tuple[str, ...]
+
+
+def _mark_unrunnable(job: ResearchJob, reason: str) -> None:
+    job.status = "failed"
+    job.finished_at = _utc_now()
+    job.updated_at = job.finished_at
+    job.error = reason
+    job.error_detail = reason
 
 
 class ResearchWriteError(Exception):
@@ -551,6 +567,22 @@ class ResearchWriteService:
                 field_errors={"status": f"Aktueller Status: {current}"},
             ) from exc
 
+        self._dispatch(experiment_id, entry)
+
+        refreshed = self.store.get(experiment_id)
+        return {
+            "experiment_id": experiment_id,
+            "status": "queued",
+            "job": (refreshed or job).to_dict(),
+        }
+
+    def _dispatch(self, experiment_id: str, entry: DatasetCatalogEntry) -> None:
+        """Start the in-process worker thread for a ``queued`` job.
+
+        The thread itself performs the cross-process atomic claim (Issue
+        #245); registering it here only tracks same-process liveness for
+        :meth:`ResearchJobStore.mark_stale_if_needed` / ``worker_alive``.
+        """
         thread = threading.Thread(
             target=self._run_job,
             args=(experiment_id, entry),
@@ -560,12 +592,61 @@ class ResearchWriteService:
         self.store.register_thread(experiment_id, thread)
         thread.start()
 
-        refreshed = self.store.get(experiment_id)
-        return {
-            "experiment_id": experiment_id,
-            "status": "queued",
-            "job": (refreshed or job).to_dict(),
-        }
+    def recover_orphans(self) -> dict[str, list[str]]:
+        """Startup recovery hook (Issue #245).
+
+        Call once, before the API starts serving research-write traffic
+        (e.g. from the FastAPI app's lifespan startup):
+
+        - ``queued`` jobs without a live owner are re-dispatched (a fresh
+          claim attempt is started immediately rather than waiting for a
+          status read to notice).
+        - ``running`` jobs with a dead lease are failed closed by the store;
+          if it turns out the job cannot be re-dispatched (its dataset
+          catalog entry no longer resolves), a re-queued job is also failed
+          closed here rather than left stuck forever.
+        """
+        from research.jobs import JobTransitionError
+
+        changed = self.store.recover_orphans()
+        catalog = {e.id: e for e in load_dataset_catalog()}
+        redispatched: list[str] = []
+        failed_closed: list[str] = [job.experiment_id for job in changed if job.status == "failed"]
+
+        for job in changed:
+            if job.status != "queued":
+                continue
+            entry = catalog.get(job.dataset_catalog_id or "")
+            pending = self.store.pending_spec_path(job.experiment_id)
+            if entry is None or not pending.is_file():
+                reason = (
+                    "Dataset-Katalog-Eintrag oder Spec beim Restart-Recovery "
+                    "nicht auflösbar"
+                )
+
+                def _mutate(j: ResearchJob, _reason: str = reason) -> None:
+                    _mark_unrunnable(j, _reason)
+
+                try:
+                    self.store.compare_and_set(
+                        job.experiment_id,
+                        expected_status="queued",
+                        mutate=_mutate,
+                    )
+                except JobTransitionError:
+                    pass
+                failed_closed.append(job.experiment_id)
+                continue
+            self._dispatch(job.experiment_id, entry)
+            redispatched.append(job.experiment_id)
+
+        if redispatched or failed_closed:
+            logger.info(
+                "research_job_recovery redispatched=%s failed_closed=%s",
+                redispatched,
+                failed_closed,
+            )
+        return {"redispatched": redispatched, "failed_closed": failed_closed}
 
     def get_status(self, experiment_id: str) -> dict[str, Any]:
         from research.service import assert_safe_id
@@ -602,24 +683,79 @@ class ResearchWriteService:
             "worker_alive": self.store.is_active(experiment_id),
         }
 
-    def _run_job(self, experiment_id: str, entry: DatasetCatalogEntry) -> None:
+    def _heartbeat_loop(
+        self,
+        experiment_id: str,
+        worker_id: str,
+        lease_id: str,
+        stop_event: threading.Event,
+        lease_seconds: int,
+    ) -> None:
+        """Lease renewal while the worker owns the job (Issue #245 P1)."""
         from research.jobs import JobTransitionError
 
-        try:
-            def _to_running(job: ResearchJob) -> None:
-                job.status = "running"
-                job.started_at = _utc_now()
-                job.updated_at = job.started_at
-
+        interval = max(1.0, lease_seconds / 3)
+        while not stop_event.wait(interval):
             try:
-                self.store.compare_and_set(
+                self.store.renew_lease(
                     experiment_id,
-                    expected_status="queued",
-                    mutate=_to_running,
+                    worker_id=worker_id,
+                    lease_id=lease_id,
+                    lease_seconds=lease_seconds,
                 )
-            except JobTransitionError:
+            except (KeyError, JobTransitionError):
+                # Lease lost (e.g. recovered as orphaned elsewhere); stop
+                # renewing — the conditional finish() below will also reject
+                # a stale terminal write.
                 return
 
+    def _run_job(self, experiment_id: str, entry: DatasetCatalogEntry) -> None:
+        from research.jobs import (
+            JobTransitionError,
+            get_worker_id,
+            lease_seconds_from_env,
+        )
+
+        worker_id = get_worker_id()
+        lease_seconds = lease_seconds_from_env()
+        try:
+            job = self.store.claim(
+                experiment_id, worker_id=worker_id, lease_seconds=lease_seconds
+            )
+        except JobTransitionError:
+            return
+        lease_id = job.lease_id
+        if lease_id is None:  # defensive; claim() always sets it
+            return
+
+        stop_heartbeat = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._heartbeat_loop,
+            args=(experiment_id, worker_id, lease_id, stop_heartbeat, lease_seconds),
+            name=f"research-job-lease-{experiment_id[:16]}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
+
+        def _finish_owned(mutate: Callable[[ResearchJob], None]) -> None:
+            try:
+                self.store.finish(
+                    experiment_id,
+                    worker_id=worker_id,
+                    lease_id=lease_id,
+                    mutate=mutate,
+                )
+            except (KeyError, JobTransitionError):
+                logger.warning(
+                    "research_job_terminal_write_rejected experiment_id=%s "
+                    "worker_id=%s lease_id=%s (stale owner; job already "
+                    "reassigned or recovered)",
+                    experiment_id,
+                    worker_id,
+                    lease_id,
+                )
+
+        try:
             spec = parse_experiment_spec(
                 json.loads(
                     self.store.pending_spec_path(experiment_id).read_text(encoding="utf-8")
@@ -681,7 +817,7 @@ class ResearchWriteService:
                     job.error = outcome.error or f"Run status: {outcome.status}"
                     job.error_detail = outcome.error
 
-            self.store.update(experiment_id, _finish)
+            _finish_owned(_finish)
         except Exception as exc:  # noqa: BLE001 — persist structured failure
             err_msg = str(exc)
             err_detail = repr(exc)
@@ -693,9 +829,8 @@ class ResearchWriteService:
                 job.error = err_msg
                 job.error_detail = err_detail
 
-            try:
-                self.store.update(experiment_id, _fail)
-            except KeyError:
-                pass
+            _finish_owned(_fail)
         finally:
+            stop_heartbeat.set()
+            heartbeat_thread.join(timeout=2)
             self.store.clear_thread(experiment_id)
