@@ -46,9 +46,14 @@ from research.gate_policy import (
 )
 from research.metrics_contract import ResearchMetrics, validate_metrics_or_mark_invalid
 from research.registry import ExperimentRegistry, RegistryEntry
-from research.robustness import robustness_manifest_path
+from research.robustness import (
+    ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+    robustness_manifest_path,
+)
+from research.robustness_jobs import RobustnessJobStore
 from research.run_manifest import RunManifest, load_run_manifest
 from research.runner import resolve_git_commit
+from research.write_service import load_dataset_catalog
 
 GATE_RUN_RECORD_SCHEMA_VERSION = "1.0"
 GateStatus = Literal["active", "invalidated"]
@@ -355,11 +360,204 @@ class GateEvaluator:
             ) from exc
         return entry, manifest, metrics
 
+    def _verify_robustness_job_completed(self, robustness_id: str) -> None:
+        """Fail closed unless the #247 job is ``completed`` (when a job exists).
+
+        Synthetic fixture manifests without a job file are accepted only when
+        the manifest summary itself reports a successful completion
+        (``n_failed == 0``); incomplete children remain fail-closed via
+        :meth:`_verify_robustness_children`.
+        """
+        job = RobustnessJobStore(self.root).get(robustness_id)
+        if job is None:
+            return
+        if job.status != "completed":
+            raise GateEvaluationError(
+                f"robustness job {robustness_id} is not completed "
+                f"(status={job.status})",
+                field_errors={"robustness_run_ids": f"status={job.status}"},
+            )
+
+    def _verify_robustness_dataset_binding(
+        self,
+        manifest: dict[str, Any],
+        *,
+        robustness_id: str,
+        base_manifest: RunManifest,
+    ) -> None:
+        catalog_id = manifest.get("dataset_catalog_id")
+        if catalog_id is None or str(catalog_id).strip() == "":
+            # Bootstrap / fixture path: dataset is the base run's sealed
+            # binding by construction once base_run_id is pinned.
+            return
+        catalog = {e.id: e for e in load_dataset_catalog()}
+        entry = catalog.get(str(catalog_id))
+        if entry is None:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} references unknown "
+                f"dataset_catalog_id={catalog_id!r}",
+                field_errors={"robustness_run_ids": "unknown dataset_catalog_id"},
+            )
+        if entry.dataset_id != base_manifest.dataset_id:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} dataset_id mismatch: "
+                f"catalog={entry.dataset_id!r} base_run={base_manifest.dataset_id!r}",
+                field_errors={"robustness_run_ids": "dataset_id mismatch"},
+            )
+        if entry.content_hash != base_manifest.dataset_content_hash:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} dataset_content_hash mismatch: "
+                f"catalog={entry.content_hash!r} "
+                f"base_run={base_manifest.dataset_content_hash!r}",
+                field_errors={"robustness_run_ids": "dataset_content_hash mismatch"},
+            )
+
+    def _verify_robustness_children(
+        self,
+        manifest: dict[str, Any],
+        *,
+        robustness_id: str,
+        base_manifest: RunManifest,
+    ) -> None:
+        """Fail closed on incomplete children and verify complete child run seals."""
+        children = manifest.get("children") or []
+        if not isinstance(children, list):
+            raise GateEvaluationError(
+                f"robustness {robustness_id} has invalid children payload",
+                field_errors={"robustness_run_ids": "invalid children"},
+            )
+        summary = manifest.get("summary") or {}
+        n_failed = summary.get("n_failed")
+        if n_failed is None:
+            n_failed = sum(1 for c in children if c.get("status") != "complete")
+        if int(n_failed) > 0:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} has incomplete children "
+                f"(n_failed={n_failed}); gate evaluation fails closed",
+                field_errors={"robustness_run_ids": "incomplete children"},
+            )
+        for child in children:
+            if not isinstance(child, dict):
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} has invalid child entry",
+                    field_errors={"robustness_run_ids": "invalid child"},
+                )
+            status = child.get("status")
+            if status != "complete":
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} child "
+                    f"{child.get('child_id')!r} is not complete (status={status})",
+                    field_errors={"robustness_run_ids": "incomplete children"},
+                )
+            child_run_id = child.get("run_id")
+            if not child_run_id:
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} complete child "
+                    f"{child.get('child_id')!r} is missing run_id",
+                    field_errors={"robustness_run_ids": "child run_id missing"},
+                )
+            try:
+                child_entry = self.registry.show(str(child_run_id), verify=True)
+            except KeyError as exc:
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} child run_id not in registry: "
+                    f"{child_run_id}",
+                    field_errors={"robustness_run_ids": "child run missing"},
+                ) from exc
+            except ValueError as exc:
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} child run_id checksum verify "
+                    f"failed: {child_run_id}: {exc}",
+                    field_errors={"robustness_run_ids": "child checksum mismatch"},
+                ) from exc
+            if child_entry.status != "complete":
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} child run_id {child_run_id} "
+                    f"is not complete (status={child_entry.status})",
+                    field_errors={"robustness_run_ids": "child run incomplete"},
+                )
+            child_run_manifest = load_run_manifest(
+                Path(child_entry.artifact_path) / "run_manifest.json"
+            )
+            if child_run_manifest.dataset_id != base_manifest.dataset_id:
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} child {child_run_id} "
+                    f"dataset_id mismatch vs base run",
+                    field_errors={"robustness_run_ids": "child dataset_id mismatch"},
+                )
+            if child_run_manifest.dataset_content_hash != base_manifest.dataset_content_hash:
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} child {child_run_id} "
+                    f"dataset_content_hash mismatch vs base run",
+                    field_errors={
+                        "robustness_run_ids": "child dataset_content_hash mismatch"
+                    },
+                )
+
+    def _validate_robustness_manifest(
+        self,
+        raw: dict[str, Any],
+        *,
+        robustness_id: str,
+        run_id: str,
+        base_manifest: RunManifest,
+    ) -> None:
+        schema_version = str(raw.get("schema_version") or "")
+        if schema_version != ROBUSTNESS_MANIFEST_SCHEMA_VERSION:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} has unsupported schema_version="
+                f"{schema_version!r} (expected {ROBUSTNESS_MANIFEST_SCHEMA_VERSION!r})",
+                field_errors={"robustness_run_ids": "unsupported schema_version"},
+            )
+        manifest_id = str(raw.get("robustness_id") or "")
+        if manifest_id != robustness_id:
+            raise GateEvaluationError(
+                f"robustness manifest id mismatch: path={robustness_id!r} "
+                f"manifest={manifest_id!r}",
+                field_errors={"robustness_run_ids": "robustness_id mismatch"},
+            )
+        base_run_id = raw.get("base_run_id")
+        if base_run_id is None or str(base_run_id) != run_id:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} base_run_id={base_run_id!r} "
+                f"does not match evaluated run_id={run_id!r} "
+                "(cross-run evidence rejected)",
+                field_errors={"robustness_run_ids": "base_run_id mismatch"},
+            )
+        self._verify_robustness_job_completed(robustness_id)
+        self._verify_robustness_dataset_binding(
+            raw, robustness_id=robustness_id, base_manifest=base_manifest
+        )
+        self._verify_robustness_children(
+            raw, robustness_id=robustness_id, base_manifest=base_manifest
+        )
+
     def _load_robustness_evidence(
-        self, robustness_run_ids: Sequence[str]
+        self,
+        robustness_run_ids: Sequence[str],
+        *,
+        run_id: str,
+        base_manifest: RunManifest,
     ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        """Load and fail-closed-validate robustness manifests for ``run_id``.
+
+        Rejects cross-run evidence, duplicate ``test_type`` manifests (no
+        silent overwrite of measured values), incomplete children, and
+        dataset / checksum mismatches. Sorting of ``robustness_run_ids`` for
+        ``gate_run_id`` must not hide duplicate test types — duplicates are
+        detected here before any measurement merge.
+        """
+        if len(set(robustness_run_ids)) != len(list(robustness_run_ids)):
+            raise GateEvaluationError(
+                "duplicate robustness_run_ids are not allowed",
+                field_errors={"robustness_run_ids": "duplicates"},
+            )
+
         manifests: dict[str, dict[str, Any]] = {}
         checksums: dict[str, str] = {}
+        seen_test_types: dict[str, str] = {}
+        # Validate in caller order — do not sort first (sorting must not hide
+        # duplicate test_type collisions).
         for robustness_id in robustness_run_ids:
             path = robustness_manifest_path(self.root, robustness_id)
             if not path.is_file():
@@ -371,7 +569,33 @@ class GateEvaluator:
             checksums[f"robustness/{robustness_id}/manifest.json"] = hashlib.sha256(
                 raw_bytes
             ).hexdigest()
-            manifests[robustness_id] = json.loads(raw_bytes)
+            raw = json.loads(raw_bytes)
+            if not isinstance(raw, dict):
+                raise GateEvaluationError(
+                    f"robustness manifest is not an object: {robustness_id}",
+                    field_errors={"robustness_run_ids": "invalid manifest"},
+                )
+            self._validate_robustness_manifest(
+                raw,
+                robustness_id=robustness_id,
+                run_id=run_id,
+                base_manifest=base_manifest,
+            )
+            test_type = str(raw.get("test_type") or "")
+            if not test_type:
+                raise GateEvaluationError(
+                    f"robustness {robustness_id} is missing test_type",
+                    field_errors={"robustness_run_ids": "missing test_type"},
+                )
+            prior = seen_test_types.get(test_type)
+            if prior is not None:
+                raise GateEvaluationError(
+                    f"duplicate robustness test_type={test_type!r}: "
+                    f"{prior} and {robustness_id} (refusing silent overwrite)",
+                    field_errors={"robustness_run_ids": f"duplicate test_type={test_type}"},
+                )
+            seen_test_types[test_type] = robustness_id
+            manifests[robustness_id] = raw
         return manifests, checksums
 
     def evaluate(
@@ -391,12 +615,21 @@ class GateEvaluator:
 
         entry, manifest, metrics = self._resolve_run(run_id)
         robustness_manifests, robustness_checksums = self._load_robustness_evidence(
-            robustness_run_ids
+            robustness_run_ids,
+            run_id=run_id,
+            base_manifest=manifest,
         )
 
         measurements = _measurements_from_metrics(metrics)
-        for robustness_manifest in robustness_manifests.values():
-            measurements.update(_measurements_from_robustness_manifest(robustness_manifest))
+        # Merge in deterministic test_type order so measurement keys are stable;
+        # duplicate test_types were already rejected above.
+        for robustness_id in sorted(
+            robustness_manifests,
+            key=lambda rid: str(robustness_manifests[rid].get("test_type") or rid),
+        ):
+            measurements.update(
+                _measurements_from_robustness_manifest(robustness_manifests[robustness_id])
+            )
 
         gate_results: list[GateEvaluationResult] = []
         for gate in policy.gates:

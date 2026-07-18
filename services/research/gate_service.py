@@ -18,8 +18,14 @@ from research.gate_evaluator import (
     GateEvaluationError,
     GateEvaluator,
     GateResultStore,
+    GateRunRecord,
 )
-from research.gate_policy import GatePolicy, list_policy_versions
+from research.gate_policy import (
+    GatePolicy,
+    GatePolicyError,
+    list_policy_versions,
+    verify_policy_content_hash,
+)
 from research.gate_policy import get_policy as _get_policy
 from research.service import assert_safe_id
 from research.write_service import ResearchWriteError, repo_root_from_env
@@ -32,6 +38,25 @@ def _policy_to_public_dict(policy: GatePolicy) -> dict[str, Any]:
         **policy.to_dict(),
         "content_hash": compute_policy_content_hash(policy),
     }
+
+
+def _assert_record_policy_trusted(record: GateRunRecord) -> None:
+    """Fail closed if persisted policy content no longer matches the version.
+
+    Same-version silent edits must not be presented as trusted gate evidence
+    via ``get`` / ``list_all``.
+    """
+    try:
+        verify_policy_content_hash(record.policy_version, record.policy_content_hash)
+    except GatePolicyError as exc:
+        raise ResearchWriteError(
+            str(exc),
+            field_errors={
+                "policy_content_hash": (
+                    "mismatch — gate record untrusted under current policy"
+                )
+            },
+        ) from exc
 
 
 class GateService:
@@ -91,16 +116,20 @@ class GateService:
         record = self.store.get(gate_run_id)
         if record is None:
             raise KeyError(gate_run_id)
+        _assert_record_policy_trusted(record)
         return record.to_dict()
 
     def list_all(self, *, run_id: str | None = None) -> list[dict[str, Any]]:
         entries = self.store.list_entries()
         # Most-recent-per-id (append-only log may hold a superseding
         # invalidation record after the original active one).
-        latest: dict[str, dict[str, Any]] = {}
+        latest: dict[str, GateRunRecord] = {}
         for entry in entries:
-            latest[entry.gate_run_id] = entry.to_dict()
-        items = list(latest.values())
+            latest[entry.gate_run_id] = entry
+        items: list[dict[str, Any]] = []
+        for entry in latest.values():
+            _assert_record_policy_trusted(entry)
+            items.append(entry.to_dict())
         if run_id:
             items = [i for i in items if i["run_id"] == run_id]
         items.sort(key=lambda i: i["evaluated_at"], reverse=True)
@@ -124,6 +153,7 @@ class GateService:
             ) from exc
         record = self.store.get(gate_run_id)
         assert record is not None
+        _assert_record_policy_trusted(record)
         return record.to_dict()
 
     def list_policies(self) -> list[dict[str, Any]]:

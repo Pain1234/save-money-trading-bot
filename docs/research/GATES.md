@@ -27,7 +27,14 @@ Every persisted `GateRunRecord` carries:
 `GateEvaluator.evaluate()` fails closed (`GateEvaluationError`) if the run is
 not `complete`, if artifacts were tampered with (registry checksum verify),
 if a referenced robustness manifest is missing, or if `policy_version` is
-unknown.
+unknown. Robustness evidence additionally fails closed unless every loaded
+manifest has a valid schema/version, matching `robustness_id`, exact
+`base_run_id` pin to the evaluated run (no cross-run evidence), matching
+dataset binding, verified complete child runs (registry + checksums), and
+**no duplicate `test_type`** across the requested ids (silent overwrite of
+measured values is rejected). `GateService.get` / `list_all` re-verify
+`policy_content_hash` on read and refuse to present records as trusted after
+a same-version silent policy edit.
 
 ## Policy versioning (content-hash bound)
 

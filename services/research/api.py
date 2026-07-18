@@ -396,7 +396,13 @@ def research_list_gates(
     svc: GateSvc,
     run_id: Annotated[str | None, Query()] = None,
 ) -> dict[str, Any]:
-    items = svc.list_all(run_id=run_id)
+    try:
+        items = svc.list_all(run_id=run_id)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
     return {"items": items, "count": len(items)}
 
 
@@ -430,6 +436,11 @@ def research_gate_detail(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError:
         raise HTTPException(status_code=404, detail="gate result not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
 
 
 @router.post("/gates/{gate_run_id}/invalidate")

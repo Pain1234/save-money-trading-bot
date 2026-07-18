@@ -21,6 +21,7 @@ from research.gate_evaluator import (
     GateRunRecord,
     compute_gate_run_id,
 )
+from research.gate_service import GateService
 from research.registry import ExperimentRegistry
 from research.robustness import (
     ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
@@ -29,6 +30,7 @@ from research.robustness import (
     save_robustness_manifest,
 )
 from research.runner import RunRequest, run_experiment
+from research.write_service import ResearchWriteError
 
 from tests.research.fixtures import REPO_ROOT, align_spec_to_bundle, btc_bundle
 
@@ -239,6 +241,103 @@ def test_evaluate_missing_robustness_manifest_raises(tmp_path: Path) -> None:
         evaluator.evaluate(
             run_id=run_id, policy_version="1.0", robustness_run_ids=["rob_missing"]
         )
+
+
+def test_evaluate_rejects_cross_run_robustness_evidence(tmp_path: Path) -> None:
+    root, experiment_id, run_id = _completed_run(tmp_path)
+    foreign_run_id = "run_foreign_not_under_evaluation"
+    # Manifest under `root` but pinned to a different base_run_id — exact pin required.
+    robustness_id = _save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=foreign_run_id,
+        fold_net_pnls=["10", "20", "30"],
+    )
+    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    with pytest.raises(GateEvaluationError, match="base_run_id|cross-run"):
+        evaluator.evaluate(
+            run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+        )
+
+
+def test_evaluate_rejects_duplicate_test_type_manifests(tmp_path: Path) -> None:
+    root, experiment_id, run_id = _completed_run(tmp_path)
+    first = _save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        fold_net_pnls=["10", "20", "-5"],
+    )
+    # Second walk_forward under a different robustness_id — must not silently overwrite.
+    second_id = "rob_test_walk_forward_dup"
+    children = tuple(
+        RobustnessChildResult(
+            child_id=f"fold_{i:02d}",
+            label=f"fold_{i:02d}",
+            experiment_id=experiment_id,
+            run_id=run_id,
+            status="complete",
+            net_pnl=pnl,
+        )
+        for i, pnl in enumerate(["1", "1", "1"], start=1)
+    )
+    save_robustness_manifest(
+        root,
+        RobustnessManifest(
+            schema_version=ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+            robustness_id=second_id,
+            test_type="walk_forward",
+            base_experiment_id=experiment_id,
+            base_run_id=run_id,
+            dataset_catalog_id=None,
+            config={},
+            created_at="2024-01-01T00:00:00.000000Z",
+            children=children,
+            bootstrap_result=None,
+            summary={"n_children": 3, "n_complete": 3, "n_failed": 0},
+        ),
+    )
+
+    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    with pytest.raises(GateEvaluationError, match="duplicate robustness test_type"):
+        evaluator.evaluate(
+            run_id=run_id,
+            policy_version="1.0",
+            # Deliberately unsorted — sorting for gate_run_id must not hide the collision.
+            robustness_run_ids=[second_id, first],
+        )
+
+
+def test_get_and_list_reject_same_version_policy_content_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _experiment_id, run_id = _completed_run(tmp_path)
+    svc = GateService(root, repo_root=REPO_ROOT)
+    record = svc.evaluate({"run_id": run_id, "policy_version": "1.0"})
+    gate_run_id = record["gate_run_id"]
+
+    # Happy path still works under the unmodified policy.
+    assert svc.get(gate_run_id)["gate_run_id"] == gate_run_id
+    assert any(i["gate_run_id"] == gate_run_id for i in svc.list_all())
+
+    edited_policy = gp.GatePolicy(
+        version="1.0",
+        description=gp.get_policy("1.0").description,
+        gates=(
+            gp.GateDefinition(
+                name="min_closed_trades",
+                metric="closed_trades",
+                comparator="gte",
+                threshold="999999",
+            ),
+        ),
+    )
+    monkeypatch.setitem(gp._POLICY_REGISTRY, "1.0", edited_policy)
+
+    with pytest.raises(ResearchWriteError, match="content hash mismatch"):
+        svc.get(gate_run_id)
+    with pytest.raises(ResearchWriteError, match="content hash mismatch"):
+        svc.list_all()
 
 
 def test_store_append_rejects_duplicate_active_gate_run_id(tmp_path: Path) -> None:
