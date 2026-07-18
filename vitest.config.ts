@@ -12,8 +12,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      // Next.js Link is not required for static markup assertions in unit tests.
+      // Next.js modules are mocked for static markup assertions in unit tests.
       "next/link": path.resolve(__dirname, "./tests/dashboard/mocks/next-link.tsx"),
+      "next/navigation": path.resolve(
+        __dirname,
+        "./tests/dashboard/mocks/next-navigation.ts",
+      ),
     },
   },
 });
