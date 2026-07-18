@@ -45,6 +45,15 @@ Robustheitstests:
   parameter stability:
   bootstrap / Monte Carlo:
 
+Regime Evidence Scorecard (P4.9 — if evaluated; see docs/research/REGIME_SCORECARD.md):
+  scorecard_id / policy_version:
+  integrity: VALID | INVALID | NOT_VERIFIABLE
+  critical_gates: PASS | FAIL | INCONCLUSIVE | NOT_AVAILABLE
+  worst_regime / worst_transition:
+  evidence_confidence:
+  main_weakness:
+  (Do not replace accept/reject with a total score. No auto-promotion.)
+
 bekannte Einschränkungen:
 
 Entscheidung: accept | reject | inconclusive
@@ -65,3 +74,4 @@ Pull Request:
 - Record exact git commit and dataset version **before** viewing OOS results.
 - Invalidated experiments: copy report, set `Status: invalidated`, add `Invalidation reason:` section — do not delete original.
 - Link from `docs/strategies/README.md` index table.
+- Layered scorecard fields (integrity / gates / regime / confidence) must stay separate; never invent missing metrics as zero.

@@ -550,6 +550,50 @@ architecture.
 
 ---
 
+## ADR-019 – Regime-based Strategy Evidence Scorecard as layered P4 extension
+
+**Status:** Accepted (architecture / governance)
+**Date:** 2026-07-18
+
+**Context:** P4 already provides ExperimentRegistry, robustness orchestration (#247),
+versioned gate evaluation (#248), and validation studies (#249). Reviewers still need
+a **structured evidence profile** that answers integrity, critical gates, per-regime
+quality, confidence, behaviour, parameter-area stability, and transition risk
+**separately** — without a second registry or auto-promotion. Collapsing those into
+one compensating score would recreate overfitting and UI greenwashing risks (R-003).
+
+**Decision:**
+
+1. Introduce Epic **P4.9 – Regime-Based Strategy Evidence Scorecard** (#295) inside
+   the existing P4 milestone (no new main milestone).
+2. Bind the scorecard to the fixed layer model in
+   [`docs/research/REGIME_SCORECARD.md`](research/REGIME_SCORECARD.md): Integrity →
+   Critical Gates → Regime Quality → Evidence Confidence → Behaviour → Global Profile.
+3. Extend existing components only; forbid a second scorecard DB, second gate service,
+   separate results register, or automatic paper/live promotion.
+4. Generic P4 gate/scorecard policy must not hard-code private Strategy V1 thresholds;
+   P5 binding/freeze is [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
+   after infrastructure lands, anchored on [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) /
+   [#199](https://github.com/Pain1234/save-money-trading-bot/issues/199).
+5. Missing metrics are `NOT_AVAILABLE` / `INCONCLUSIVE`, never silently `0`. A weighted
+   aggregate score, if any, is sort-aid only and cannot override integrity FAIL or
+   critical gate FAIL.
+
+**Alternatives:**
+
+- Monolithic total score for accept/reject — rejected (compensates failures; overfitting magnet).
+- Parallel scorecard microservice/registry — rejected (duplicates SoT; audit drift).
+- Defer all regime evidence to private P5 notes only — rejected (framework must be
+  reusable for later strategies under P4).
+
+**Consequences:** Implementation follows dependency chain #284→#285→#286→{#287–#290}→#291→#292→#293→#294.
+UI must surface integrity/gate failures and main weakness prominently. Private economic
+results stay out of the public repo (#181).
+
+**Related Issues / PRs:** #295, #284–#294, #247–#250, #198, #199, #181
+
+---
+
 ## Template for new entries
 
 ```text

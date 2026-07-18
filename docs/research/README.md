@@ -114,14 +114,15 @@ Completed `(experiment_id, run_id)` directories are immutable. Keep originals; m
 - [INVALIDATION.md](INVALIDATION.md)
 - [GATES.md](GATES.md)
 - [VALIDATION_STUDIES.md](VALIDATION_STUDIES.md)
+- [REGIME_SCORECARD.md](REGIME_SCORECARD.md) — P4.9 layered evidence scorecard contract (Epic #295 / #284)
 - [P4_ACCEPTANCE.md](P4_ACCEPTANCE.md)
 - [RESEARCH_WORKSPACE_ACCEPTANCE.md](RESEARCH_WORKSPACE_ACCEPTANCE.md) — Workspace E2E + manual UI acceptance (#250)
 - [BACKTESTER_PAPER_PARITY.md](BACKTESTER_PAPER_PARITY.md)
 
 ## Phase boundaries
 
-- **P4:** complete, comparable research artifacts
-- **P5:** Honest validation planning and gates — see [`docs/research/p5/`](p5/README.md) (OOS / walk-forward / cost-stress are P5; not pre-empted by P4)
+- **P4:** complete, comparable research artifacts + Workspace; P4.9 scorecard extends gates/validation without a parallel system
+- **P5:** Honest validation planning and gates — see [`docs/research/p5/`](p5/README.md) (OOS / walk-forward / cost-stress are P5; not pre-empted by P4; scorecard policy bind #294)
 - **P6:** promotion / live readiness (not in P4)
 - **P7:** multi-asset / instrument identity (not in P4)
 

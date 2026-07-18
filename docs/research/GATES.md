@@ -79,6 +79,23 @@ hash (`compute_policy_content_hash`), **not** the version string alone:
 is informational evidence only — promotion remains a separate, human-owned
 decision (#205 for Strategy V1; P6/P8 milestones generally).
 
+## Extension path — Regime Evidence Scorecard (P4.9)
+
+Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) /
+contract [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md) extends this surface with:
+
+- Layer-0 **Integrity** profile (`VALID` / `INVALID` / `NOT_VERIFIABLE`) that
+  blocks trusted quality scoring when invalid ([#286](https://github.com/Pain1234/save-money-trading-bot/issues/286))
+- Explicit gate outcomes `INCONCLUSIVE` / `NOT_AVAILABLE` (missing evidence must
+  never appear as `PASS`)
+- Critical-gate **categories** (drawdown, OOS net, walk-forward, cost stress,
+  parameter fragility, concentration, bootstrap tail, regime coverage, sample
+  sufficiency, execution realism) — still content-hash bound; still no private
+  Strategy V1 numbers in the generic P4 policy
+
+Do **not** create a second gate evaluator or gate registry. Regime quality scores
+must not compensate a critical gate `FAIL`.
+
 ## API
 
 `services/research/api.py` (`/api/v1/research/...`):

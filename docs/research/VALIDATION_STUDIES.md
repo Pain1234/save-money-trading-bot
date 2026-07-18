@@ -83,6 +83,19 @@ Study is never mutated or re-decided — new evidence requires a new Study
   final decision, policy version, reproducibility fields) + decision form
   while the study is still open
 
+## Extension path — Regime Evidence Scorecard (P4.9)
+
+Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) will allow a
+Validation Study to **pin** a versioned scorecard artifact
+([#291](https://github.com/Pain1234/save-money-trading-bot/issues/291)) into the
+immutable evidence snapshot, alongside runs / robustness / gates. UI surfaces the
+layered profile (integrity, gates, worst regime, confidence, behaviour, parameter
+area) on study/experiment detail ([#292](https://github.com/Pain1234/save-money-trading-bot/issues/292)).
+
+Still **no** second study registry, **no** gate re-evaluation inside the study
+create path beyond existing pins, and **no** auto-promotion from scorecard PASS.
+Contract: [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md).
+
 ## Tests
 
 - `tests/research/test_validation_study.py` — deterministic `study_id`,
