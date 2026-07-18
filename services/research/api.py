@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from research.gate_service import GateService
 from research.robustness_service import RobustnessOrchestrationService
 from research.service import ResearchReadService, research_root_from_env
+from research.validation_service import ValidationStudyService
 from research.write_service import (
     ResearchWriteError,
     ResearchWriteService,
@@ -37,12 +38,17 @@ def get_gate_service() -> GateService:
     return GateService(research_root_from_env())
 
 
+def get_validation_service() -> ValidationStudyService:
+    return ValidationStudyService(research_root_from_env())
+
+
 ResearchSvc = Annotated[ResearchReadService, Depends(get_research_service)]
 ResearchWriteSvc = Annotated[ResearchWriteService, Depends(get_research_write_service)]
 RobustnessSvc = Annotated[
     RobustnessOrchestrationService, Depends(get_robustness_service)
 ]
 GateSvc = Annotated[GateService, Depends(get_gate_service)]
+ValidationSvc = Annotated[ValidationStudyService, Depends(get_validation_service)]
 
 
 @router.get("/overview")
@@ -452,6 +458,73 @@ def research_invalidate_gate(
         ) from exc
 
 
+@router.get("/validation")
+def research_list_validation_studies(
+    svc: ValidationSvc,
+    experiment_id: Annotated[str | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    items = svc.list_all(experiment_id=experiment_id, status=status)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/validation")
+def research_create_validation_study(
+    payload: dict[str, Any],
+    svc: ValidationSvc,
+) -> dict[str, Any]:
+    """Aggregate already-produced evidence (#247/#248) into a Validation Study.
+
+    No second backtest engine, no re-evaluation, no live/paper promotion —
+    every referenced id must already resolve against the registry /
+    robustness / gate stores (P4.7d / #249).
+    """
+    try:
+        return svc.create(payload)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.get("/validation/{study_id}")
+def research_validation_study_detail(
+    study_id: str,
+    svc: ValidationSvc,
+) -> dict[str, Any]:
+    try:
+        return svc.get(study_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail="validation study not found"
+        ) from None
+
+
+@router.post("/validation/{study_id}/decision")
+def research_decide_validation_study(
+    study_id: str,
+    payload: dict[str, Any],
+    svc: ValidationSvc,
+) -> dict[str, Any]:
+    """Append-only, human-owned final decision (never automatic promotion)."""
+    try:
+        return svc.decide(study_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail="validation study not found"
+        ) from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
 def is_research_write_path(path: str) -> bool:
     """POST allow-list for private research write surface on the dashboard API."""
     if path.rstrip("/") == "/api/v1/research/experiments":
@@ -465,5 +538,9 @@ def is_research_write_path(path: str) -> bool:
     if path.rstrip("/") == "/api/v1/research/gates/evaluate":
         return True
     if path.startswith("/api/v1/research/gates/") and path.endswith("/invalidate"):
+        return True
+    if path.rstrip("/") == "/api/v1/research/validation":
+        return True
+    if path.startswith("/api/v1/research/validation/") and path.endswith("/decision"):
         return True
     return False

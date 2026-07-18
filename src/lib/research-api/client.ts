@@ -248,6 +248,167 @@ export async function fetchRobustnessJob(
   );
 }
 
+// --- Gates (#248) — read-only types, reused by Validation Studies (#249) ---
+
+export interface GateEvaluationResult {
+  name: string;
+  threshold: string;
+  measured_value: string | null;
+  passed: boolean;
+  reason: string;
+}
+
+export interface GateRunRecord {
+  schema_version: string;
+  gate_run_id: string;
+  policy_version: string;
+  policy_content_hash: string;
+  evaluated_at: string;
+  run_code_commit: string;
+  evaluation_code_commit: string;
+  experiment_id: string;
+  run_id: string;
+  robustness_run_ids: string[];
+  dataset_id: string;
+  dataset_content_hash: string;
+  artifact_checksums: Record<string, string>;
+  measurements: Record<string, string>;
+  gates: GateEvaluationResult[];
+  overall_status: "pass" | "fail";
+  promotion_action: "none";
+  status: "active" | "invalidated";
+  invalidation_reason: string | null;
+}
+
+export interface GateRunList {
+  items: GateRunRecord[];
+  count: number;
+}
+
+export async function fetchGateRuns(params?: {
+  run_id?: string;
+}): Promise<GateRunList> {
+  const search = new URLSearchParams();
+  if (params?.run_id) search.set("run_id", params.run_id);
+  const qs = search.toString();
+  return fetchPaperApi<GateRunList>(
+    `/api/v1/research/gates${qs ? `?${qs}` : ""}`,
+    { revalidate: 5 },
+  );
+}
+
+// --- Validation Studies (#249 / P4.7d) --------------------------------
+//
+// A Study aggregates already-produced evidence (experiments + robustness
+// (#247) + gates (#248)); it runs no second backtest engine and performs no
+// live/paper promotion. The final decision is human-owned (see
+// ``ValidationStudyDecision``).
+
+export type ValidationStudyStatus = "open" | "decided";
+export type ValidationStudyOutcome = "accept" | "reject" | "inconclusive";
+
+export interface ValidationStudyDecision {
+  outcome: ValidationStudyOutcome;
+  rationale: string;
+  decided_by: string;
+  decided_at: string;
+}
+
+export interface ValidationExperimentRef {
+  experiment_id: string;
+  run_id?: string;
+  status: string;
+  strategy_version?: string | null;
+  strategy_id?: string | null;
+  net_pnl?: string | null;
+  max_drawdown?: string | null;
+  closed_trades?: number | null;
+  created_at?: string;
+}
+
+export interface ValidationRobustnessRef {
+  robustness_id: string;
+  status: string;
+  test_type: string;
+  base_experiment_id: string;
+  manifest: RobustnessManifest | null;
+}
+
+export interface ValidationStudyProgress {
+  experiments: { total: number; complete: number };
+  robustness: {
+    total: number;
+    completed: number;
+    failed: number;
+    running: number;
+  };
+  gates: { total: number; pass: number; fail: number };
+}
+
+export interface ValidationStudyReproducibility {
+  git_commit: string | null;
+  evaluation_code_commit: string | null;
+  dataset_id: string | null;
+  dataset_content_hash: string | null;
+  policy_version: string | null;
+  policy_content_hash: string | null;
+  source: "gate_run" | "experiment_run";
+}
+
+export interface ValidationStudySummary {
+  schema_version: string;
+  study_id: string;
+  created_at: string;
+  name: string;
+  strategy_id: string | null;
+  strategy_version: string | null;
+  experiment_id: string;
+  run_id: string | null;
+  additional_experiment_ids: string[];
+  robustness_ids: string[];
+  gate_run_ids: string[];
+  notes: string;
+  status: ValidationStudyStatus;
+  decision: ValidationStudyDecision | null;
+}
+
+export interface ValidationStudyDetail extends ValidationStudySummary {
+  experiments: ValidationExperimentRef[];
+  robustness: ValidationRobustnessRef[];
+  robustness_by_type: Record<string, ValidationRobustnessRef[]>;
+  gates: GateRunRecord[];
+  progress: ValidationStudyProgress;
+  reproducibility: ValidationStudyReproducibility;
+}
+
+export interface ValidationStudyList {
+  items: ValidationStudyDetail[];
+  count: number;
+}
+
+export async function fetchValidationStudies(params?: {
+  experiment_id?: string;
+  status?: ValidationStudyStatus;
+}): Promise<ValidationStudyList> {
+  const search = new URLSearchParams();
+  if (params?.experiment_id) search.set("experiment_id", params.experiment_id);
+  if (params?.status) search.set("status", params.status);
+  const qs = search.toString();
+  return fetchPaperApi<ValidationStudyList>(
+    `/api/v1/research/validation${qs ? `?${qs}` : ""}`,
+    { revalidate: 5 },
+  );
+}
+
+export async function fetchValidationStudy(
+  studyId: string,
+): Promise<ValidationStudyDetail> {
+  return fetchPaperApi<ValidationStudyDetail>(
+    `/api/v1/research/validation/${encodeURIComponent(studyId)}`,
+    { revalidate: 5 },
+  );
+}
+
 export function displayValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "Nicht verfügbar";
