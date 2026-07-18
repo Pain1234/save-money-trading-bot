@@ -34,6 +34,7 @@ Severity: qualitative **Impact** × **Likelihood** → register **Severity** (cr
 | R-022 | More assets create apparent diversification while risk stays correlated | Kapital und Drawdown | Medium | High | High | Cluster drawdown in shadow/paper | P7 correlated exposure model; cluster risk limits | risk / research | open | [#106](https://github.com/Pain1234/save-money-trading-bot/issues/106) |
 | R-023 | HIP-3 equity perps carry distinct funding, oracle, and liquidity risks | Marktdaten | Medium | High | High | Funding/oracle divergence vs crypto | P7B asset profile; HIP-3 validation requirements | research / market_data | open | [#105](https://github.com/Pain1234/save-money-trading-bot/issues/105) |
 | R-024 | Synthetic equity perps misinterpreted as real stock ownership | Governance | Low | Medium | Medium | Documentation review | ADR-014 wording; no "stock holding" claims in UI/docs | governance | open | [#105](https://github.com/Pain1234/save-money-trading-bot/issues/105) |
+| R-025 | Multiple execution writers or ambiguous order ownership cause conflicting orders, duplicate execution, invalid reconciliation, and portfolio risk-limit breaches | Execution / Accounting | Medium | Critical | Critical | Writer lock/lease contention; orders without allocation trace | ADR-018 single execution owner; ownership IDs; idempotent allocation commands; writer lock/lease; restart and duplicate-writer tests | paper_trading / risk / governance | planned | [#135](https://github.com/Pain1234/save-money-trading-bot/issues/135) |
 
 ---
 
@@ -42,6 +43,12 @@ Severity: qualitative **Impact** × **Likelihood** → register **Severity** (cr
 - **P0 exit:** Top 5 risks (R-001–R-005) linked to GitHub issues ([#45](https://github.com/Pain1234/save-money-trading-bot/issues/45)–[#49](https://github.com/Pain1234/save-money-trading-bot/issues/49)); verified 2026-07-13 (Issue #6).
 - **Each phase exit:** Re-score risks; close or downgrade only with evidence.
 - **After S1/S2 incident:** Add or update row; link incident doc.
+
+### R-025 stop criterion
+
+More than one writer can actively mutate orders for the same account, or an
+order cannot be traced to exactly one allocation decision → treat as S1-class
+design failure for multi-strategy execution; do not activate multi-writer paths.
 
 ---
 
