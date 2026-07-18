@@ -147,6 +147,42 @@ def research_experiment_equity(
     }
 
 
+@router.get("/experiments/{experiment_id}/trades")
+def research_experiment_trades(
+    experiment_id: str,
+    svc: ResearchSvc,
+    symbol: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    try:
+        return svc.experiment_trades(experiment_id, symbol=symbol)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="experiment not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/experiments/{experiment_id}/chart-data")
+def research_experiment_chart_data(
+    experiment_id: str,
+    svc: ResearchSvc,
+    symbol: Annotated[str, Query()],
+) -> dict[str, Any]:
+    try:
+        return svc.experiment_chart_data(experiment_id, symbol=symbol)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="experiment not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/experiments/{experiment_id}/artifacts")
 def research_experiment_artifacts(
     experiment_id: str,

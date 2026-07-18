@@ -16,6 +16,7 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "iron-session": "^8.0.4",
+    "lightweight-charts": "^5.2.0",
     "lucide-react": "^0.511.0",
     "next": "^15.3.3",
     "react": "^19.1.0",
@@ -25,8 +26,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
-    "@types/bcryptjs": "^2.4.6",
     "@tailwindcss/postcss": "^4.1.8",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.15.21",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",

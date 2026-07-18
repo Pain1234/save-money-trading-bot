@@ -52,6 +52,7 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
         "report.md",
         "trades.json",
         "equity.json",
+        "chart_data.json",
         "events.jsonl",
         "checksums.json",
         "costs.json",

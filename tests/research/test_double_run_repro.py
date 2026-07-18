@@ -112,6 +112,7 @@ def test_compare_detects_divergence(tmp_path: Path) -> None:
         "costs.json",
         "experiment.json",
         "run_manifest.json",
+        "chart_data.json",
     ):
         (twin / name).write_bytes((out.artifact_path / name).read_bytes())
     metrics = json.loads((twin / "metrics.json").read_text(encoding="utf-8"))

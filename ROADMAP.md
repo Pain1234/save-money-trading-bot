@@ -416,9 +416,9 @@ Workspace that reads those artifacts without introducing a second research syste
 
 #### Research Workspace — Price & trade chart (#266)
 
-- [ ] Depends on #243 (merged) and stable canonical id (#265)
-- [ ] Experiment detail view „Kurs & Trades“ from verified `trades.json` + bound dataset candles
-- [ ] Fail-closed on integrity / dataset mismatch; equity/drawdown charts unchanged
+- [x] Depends on #243 (merged) and stable canonical id (#265)
+- [x] Experiment detail view „Kurs & Trades“ from verified `trades.json` + bound dataset candles
+- [x] Fail-closed on integrity / dataset mismatch; equity/drawdown charts unchanged
 
 #### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
 

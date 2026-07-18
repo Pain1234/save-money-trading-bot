@@ -7,6 +7,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -412,6 +413,8 @@ class ResearchReadService:
                     "has_metrics": False,
                     "has_equity": False,
                     "has_costs": False,
+                    "has_trades": False,
+                    "has_chart_data": False,
                 },
                 "integrity": {
                     "ok": False,
@@ -495,7 +498,353 @@ class ResearchReadService:
                 "has_metrics": isinstance(metrics, dict),
                 "has_equity": isinstance(equity, list),
                 "has_costs": isinstance(costs, dict),
+                "has_trades": (run_dir / "trades.json").is_file(),
+                "has_chart_data": (run_dir / "chart_data.json").is_file(),
             },
+            "integrity": {"ok": True, "error": None},
+        }
+
+    def _require_verified_complete_run_dir(
+        self, experiment_id: str
+    ) -> tuple[RegistryEntry, Path]:
+        """Only complete registry entries with verified checksums may serve trades/charts."""
+        entry = self.get_entry(experiment_id)
+        if entry.status != "complete":
+            msg = (
+                f"experiment {experiment_id!r} status is {entry.status!r}; "
+                "trades/chart-data require status 'complete'"
+            )
+            raise ValueError(msg)
+        run_dir = self._artifact_dir(entry)
+        # Always verify checksums for complete runs (never skip).
+        if not entry.checksums:
+            msg = f"registry entry for {entry.run_id} has empty trusted checksums"
+            raise ValueError(msg)
+        verify_checksums_against(run_dir, entry.checksums)
+        return entry, run_dir
+
+    @staticmethod
+    def _parse_iso_datetime(raw: object, *, field: str) -> datetime:
+        if raw is None or raw == "":
+            msg = f"missing {field}"
+            raise ValueError(msg)
+        text = str(raw).replace("Z", "+00:00")
+        try:
+            value = datetime.fromisoformat(text)
+        except ValueError as exc:
+            msg = f"invalid {field}: {raw!r}"
+            raise ValueError(msg) from exc
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    @staticmethod
+    def _validate_positive_price(raw: object, *, field: str) -> Decimal:
+        if raw is None or raw == "":
+            msg = f"missing {field}"
+            raise ValueError(msg)
+        try:
+            value = Decimal(str(raw))
+        except Exception as exc:
+            msg = f"invalid {field}: {raw!r}"
+            raise ValueError(msg) from exc
+        if not value.is_finite() or value <= 0:
+            msg = f"{field} must be a finite positive price: {raw!r}"
+            raise ValueError(msg)
+        return value
+
+    @classmethod
+    def _validate_candle_ohlcv(cls, row: dict[str, Any], *, index: int) -> None:
+        """Fail-closed: no invented zeros; OHLC must be finite, positive, consistent."""
+        open_px = cls._validate_positive_price(row.get("open"), field=f"candle[{index}].open")
+        high_px = cls._validate_positive_price(row.get("high"), field=f"candle[{index}].high")
+        low_px = cls._validate_positive_price(row.get("low"), field=f"candle[{index}].low")
+        close_px = cls._validate_positive_price(
+            row.get("close"), field=f"candle[{index}].close"
+        )
+        volume_raw = row.get("volume")
+        if volume_raw is None or volume_raw == "":
+            volume = Decimal("0")
+        else:
+            try:
+                volume = Decimal(str(volume_raw))
+            except Exception as exc:
+                msg = f"invalid candle[{index}].volume: {volume_raw!r}"
+                raise ValueError(msg) from exc
+            if not volume.is_finite() or volume < 0:
+                msg = f"candle[{index}].volume must be finite and >= 0"
+                raise ValueError(msg)
+        if high_px < low_px:
+            msg = f"candle[{index}] high < low"
+            raise ValueError(msg)
+        if high_px < max(open_px, close_px) or low_px > min(open_px, close_px):
+            msg = f"candle[{index}] OHLC inconsistent"
+            raise ValueError(msg)
+
+    def _spec_time_range_bounds(
+        self, spec: dict[str, Any]
+    ) -> tuple[datetime, datetime]:
+        tr = spec.get("time_range")
+        if not isinstance(tr, dict):
+            msg = "experiment.json time_range missing"
+            raise ValueError(msg)
+        start = self._parse_iso_datetime(tr.get("start"), field="time_range.start")
+        end = self._parse_iso_datetime(tr.get("end"), field="time_range.end")
+        if start > end:
+            msg = "experiment.json time_range.start is after time_range.end"
+            raise ValueError(msg)
+        return start, end
+
+    def _validate_trade_timestamps(
+        self,
+        trade: dict[str, Any],
+        *,
+        range_start: datetime,
+        range_end: datetime,
+        candle_times: set[datetime] | None = None,
+    ) -> None:
+        """Fail-closed when trade/stop times fall outside the experiment window or candles."""
+
+        def _in_range(ts: datetime, field: str) -> None:
+            if ts < range_start or ts > range_end:
+                msg = f"{field} {ts.isoformat()} outside experiment time_range"
+                raise ValueError(msg)
+
+        def _on_candle_axis(ts: datetime, field: str) -> None:
+            if candle_times is None:
+                return
+            # Allow exact candle open_time or same UTC calendar day as a candle.
+            if ts in candle_times:
+                return
+            days = {t.date() for t in candle_times}
+            if ts.date() in days:
+                return
+            msg = f"{field} {ts.isoformat()} does not match candle time axis"
+            raise ValueError(msg)
+
+        entry_time = self._parse_iso_datetime(
+            trade.get("entry_time"), field="entry_time"
+        )
+        _in_range(entry_time, "entry_time")
+        _on_candle_axis(entry_time, "entry_time")
+
+        signal_raw = trade.get("signal_time")
+        if signal_raw is not None and signal_raw != "":
+            signal_time = self._parse_iso_datetime(signal_raw, field="signal_time")
+            _in_range(signal_time, "signal_time")
+
+        exit_time: datetime | None = None
+        exit_raw = trade.get("exit_time")
+        if exit_raw is not None and exit_raw != "":
+            exit_time = self._parse_iso_datetime(exit_raw, field="exit_time")
+            _in_range(exit_time, "exit_time")
+            _on_candle_axis(exit_time, "exit_time")
+            if exit_time < entry_time:
+                msg = "exit_time is before entry_time"
+                raise ValueError(msg)
+
+        prev_stop_time: datetime | None = None
+        for idx, snap in enumerate(trade.get("trailing_stop_history") or []):
+            if not isinstance(snap, dict):
+                msg = f"trailing_stop_history[{idx}] is invalid"
+                raise ValueError(msg)
+            snap_time = self._parse_iso_datetime(
+                snap.get("time"), field=f"trailing_stop_history[{idx}].time"
+            )
+            _in_range(snap_time, f"trailing_stop_history[{idx}].time")
+            _on_candle_axis(snap_time, f"trailing_stop_history[{idx}].time")
+            if snap_time < entry_time:
+                msg = (
+                    f"trailing_stop_history[{idx}].time is before entry_time"
+                )
+                raise ValueError(msg)
+            if exit_time is not None and snap_time > exit_time:
+                msg = (
+                    f"trailing_stop_history[{idx}].time is after exit_time"
+                )
+                raise ValueError(msg)
+            if prev_stop_time is not None and snap_time < prev_stop_time:
+                msg = (
+                    f"trailing_stop_history[{idx}].time is out of order"
+                )
+                raise ValueError(msg)
+            self._validate_positive_price(
+                snap.get("effective_stop"),
+                field=f"trailing_stop_history[{idx}].effective_stop",
+            )
+            prev_stop_time = snap_time
+
+        initial_stop = trade.get("initial_stop")
+        if initial_stop is not None and initial_stop != "":
+            self._validate_positive_price(
+                initial_stop, field="initial_stop"
+            )
+
+    def experiment_trades(
+        self,
+        experiment_id: str,
+        *,
+        symbol: str | None = None,
+    ) -> dict[str, Any]:
+        """Return trades.json after complete-run integrity verification (fail-closed)."""
+        entry, run_dir = self._require_verified_complete_run_dir(experiment_id)
+        spec = self._load_json(run_dir, "experiment.json")
+        if not isinstance(spec, dict):
+            msg = "experiment.json missing or invalid"
+            raise ValueError(msg)
+        range_start, range_end = self._spec_time_range_bounds(spec)
+        allowed = {
+            str(s)
+            for s in (spec.get("symbols") or [])
+            if s is not None
+        }
+        if symbol is not None:
+            if symbol not in allowed:
+                msg = f"symbol {symbol!r} is not part of this experiment"
+                raise ValueError(msg)
+
+        trades_raw = self._load_json(run_dir, "trades.json")
+        if not isinstance(trades_raw, list):
+            msg = "trades.json missing or invalid"
+            raise FileNotFoundError(msg)
+
+        trades: list[dict[str, Any]] = []
+        for row in trades_raw:
+            if not isinstance(row, dict):
+                continue
+            trade_symbol = str(row.get("symbol") or "")
+            if trade_symbol not in allowed:
+                msg = (
+                    f"trade symbol {trade_symbol!r} not in experiment symbols "
+                    f"{sorted(allowed)}"
+                )
+                raise ValueError(msg)
+            if symbol is not None and trade_symbol != symbol:
+                continue
+            self._validate_trade_timestamps(
+                row,
+                range_start=range_start,
+                range_end=range_end,
+            )
+            trades.append(row)
+
+        return {
+            "experiment_id": entry.experiment_id,
+            "run_id": entry.run_id,
+            "dataset_version": entry.dataset_version,
+            "symbols": sorted(allowed),
+            "trades": trades,
+            "count": len(trades),
+            "integrity": {"ok": True, "error": None},
+        }
+
+    def experiment_chart_data(
+        self,
+        experiment_id: str,
+        *,
+        symbol: str,
+    ) -> dict[str, Any]:
+        """Return run-bound candles + trade markers for one symbol."""
+        from research.chart_data import CHART_DATA_SCHEMA_VERSION
+
+        entry, run_dir = self._require_verified_complete_run_dir(experiment_id)
+        spec = self._load_json(run_dir, "experiment.json")
+        if not isinstance(spec, dict):
+            msg = "experiment.json missing or invalid"
+            raise ValueError(msg)
+        range_start, range_end = self._spec_time_range_bounds(spec)
+        allowed = {
+            str(s)
+            for s in (spec.get("symbols") or [])
+            if s is not None
+        }
+        if symbol not in allowed:
+            msg = f"symbol {symbol!r} is not part of this experiment"
+            raise ValueError(msg)
+
+        chart_raw = self._load_json(run_dir, "chart_data.json")
+        if not isinstance(chart_raw, dict):
+            msg = (
+                "chart_data.json missing — re-run experiment to generate "
+                "bound candle artifact"
+            )
+            raise FileNotFoundError(msg)
+
+        schema_version = str(chart_raw.get("schema_version") or "")
+        if schema_version != CHART_DATA_SCHEMA_VERSION:
+            msg = (
+                f"unsupported chart_data schema_version {schema_version!r}; "
+                f"expected {CHART_DATA_SCHEMA_VERSION!r}"
+            )
+            raise ValueError(msg)
+
+        manifest = self._load_json(run_dir, "run_manifest.json")
+        if not isinstance(manifest, dict):
+            msg = "run_manifest.json missing or invalid"
+            raise ValueError(msg)
+
+        expected_hash = str(manifest.get("dataset_content_hash") or "").strip()
+        chart_hash = str(chart_raw.get("dataset_content_hash") or "").strip()
+        expected_ds = str(manifest.get("dataset_id") or "").strip()
+        chart_ds = str(chart_raw.get("dataset_id") or "").strip()
+        if not expected_hash or not chart_hash:
+            msg = "dataset_content_hash missing on RunManifest or chart_data"
+            raise ValueError(msg)
+        if not expected_ds or not chart_ds:
+            msg = "dataset_id missing on RunManifest or chart_data"
+            raise ValueError(msg)
+        if expected_hash != chart_hash:
+            msg = "chart_data dataset_content_hash does not match RunManifest"
+            raise ValueError(msg)
+        if expected_ds != chart_ds:
+            msg = "chart_data dataset_id does not match RunManifest"
+            raise ValueError(msg)
+
+        symbols_map = chart_raw.get("symbols") or {}
+        if not isinstance(symbols_map, dict) or symbol not in symbols_map:
+            msg = f"no chart candles for symbol {symbol!r}"
+            raise ValueError(msg)
+        candles = symbols_map[symbol]
+        if not isinstance(candles, list):
+            msg = f"invalid candle series for symbol {symbol!r}"
+            raise ValueError(msg)
+
+        candle_times: set[datetime] = set()
+        for idx, row in enumerate(candles):
+            if not isinstance(row, dict):
+                msg = f"candle[{idx}] is invalid"
+                raise ValueError(msg)
+            ts = self._parse_iso_datetime(row.get("time"), field=f"candle[{idx}].time")
+            if ts < range_start or ts > range_end:
+                msg = f"candle[{idx}].time outside experiment time_range"
+                raise ValueError(msg)
+            self._validate_candle_ohlcv(row, index=idx)
+            candle_times.add(ts)
+
+        # Validate trades against range + candle axis (do not reuse trades endpoint
+        # alone — chart must enforce axis alignment).
+        trades_payload = self.experiment_trades(experiment_id, symbol=symbol)
+        validated_trades: list[dict[str, Any]] = []
+        for trade in trades_payload["trades"]:
+            self._validate_trade_timestamps(
+                trade,
+                range_start=range_start,
+                range_end=range_end,
+                candle_times=candle_times,
+            )
+            validated_trades.append(trade)
+
+        return {
+            "experiment_id": entry.experiment_id,
+            "run_id": entry.run_id,
+            "symbol": symbol,
+            "timeframe": chart_raw.get("timeframe", "1D"),
+            "dataset_id": chart_raw.get("dataset_id"),
+            "dataset_content_hash": chart_raw.get("dataset_content_hash"),
+            "dataset_version": entry.dataset_version,
+            "schema_version": schema_version,
+            "candles": candles,
+            "trades": validated_trades,
             "integrity": {"ok": True, "error": None},
         }
 
