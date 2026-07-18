@@ -28,7 +28,7 @@ from research.gate_evaluator import GateResultStore, GateRunRecord
 from research.gate_policy import GatePolicyError, verify_policy_content_hash
 from research.gate_service import GateService
 from research.registry import ExperimentRegistry, RegistryEntry
-from research.robustness import robustness_manifest_path
+from research.robustness import robustness_manifest_path, verify_robustness_manifest_seal
 from research.robustness_jobs import RobustnessJobStore
 from research.robustness_service import RobustnessOrchestrationService
 from research.run_manifest import load_run_manifest
@@ -168,7 +168,9 @@ class ValidationStudyService:
             git_commit=manifest.git_commit,
         )
 
-    def _pin_robustness(self, robustness_id: str) -> PinnedRobustnessEvidence:
+    def _pin_robustness(
+        self, robustness_id: str, *, pinned_run_ids: set[str]
+    ) -> PinnedRobustnessEvidence:
         job = self.robustness_jobs.get(robustness_id)
         if job is None:
             raise ResearchWriteError(
@@ -181,18 +183,37 @@ class ValidationStudyService:
                 f"(status={job.status})",
                 field_errors={"robustness_ids": f"status={job.status}"},
             )
-        path = robustness_manifest_path(self.root, robustness_id)
-        if not path.is_file():
+        if job.base_run_id not in pinned_run_ids:
             raise ResearchWriteError(
-                f"Robustheitstest {robustness_id!r}: Manifest fehlt",
-                field_errors={"robustness_ids": f"missing manifest: {robustness_id}"},
+                f"Robustheitstest {robustness_id!r} gehört zu run_id "
+                f"{job.base_run_id!r}, der nicht in dieser Study gepinnt ist",
+                field_errors={
+                    "robustness_ids": (
+                        f"base_run_id {job.base_run_id} not in study pinned runs"
+                    )
+                },
             )
-        manifest_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        try:
+            manifest_hash = verify_robustness_manifest_seal(
+                self.root,
+                robustness_id,
+                expected_hash=job.manifest_content_hash,
+            )
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            raise ResearchWriteError(
+                f"Robustheitstest {robustness_id!r}: Manifest-Siegel ungültig "
+                f"({exc})",
+                field_errors={
+                    "robustness_ids": f"manifest seal failed: {robustness_id}"
+                },
+            ) from exc
         return PinnedRobustnessEvidence(
             robustness_id=robustness_id, manifest_hash=manifest_hash
         )
 
-    def _pin_gate(self, gate_run_id: str) -> PinnedGateEvidence:
+    def _pin_gate(
+        self, gate_run_id: str, *, pinned_run_ids: set[str]
+    ) -> PinnedGateEvidence:
         record = self.gates.get(gate_run_id)
         if record is None:
             raise ResearchWriteError(
@@ -204,6 +225,16 @@ class ValidationStudyService:
                 f"Gate-Ergebnis {gate_run_id!r} ist nicht active "
                 f"(status={record.status})",
                 field_errors={"gate_run_ids": f"status={record.status}"},
+            )
+        if record.run_id not in pinned_run_ids:
+            raise ResearchWriteError(
+                f"Gate-Ergebnis {gate_run_id!r} gehört zu run_id "
+                f"{record.run_id!r}, der nicht in dieser Study gepinnt ist",
+                field_errors={
+                    "gate_run_ids": (
+                        f"run_id {record.run_id} not in study pinned runs"
+                    )
+                },
             )
         try:
             verify_policy_content_hash(record.policy_version, record.policy_content_hash)
@@ -277,12 +308,18 @@ class ValidationStudyService:
                 self._pin_run_evidence(entry, field="additional_experiment_ids")
             )
         additional_run_ids = [p.run_id for p in additional_pins]
+        pinned_run_ids = {primary_pin.run_id, *additional_run_ids}
 
         robustness_ids = _clean_id_list(payload.get("robustness_ids"), field="robustness_ids")
-        robustness_pins = [self._pin_robustness(rid) for rid in robustness_ids]
+        robustness_pins = [
+            self._pin_robustness(rid, pinned_run_ids=pinned_run_ids)
+            for rid in robustness_ids
+        ]
 
         gate_run_ids = _clean_id_list(payload.get("gate_run_ids"), field="gate_run_ids")
-        gate_pins = [self._pin_gate(gid) for gid in gate_run_ids]
+        gate_pins = [
+            self._pin_gate(gid, pinned_run_ids=pinned_run_ids) for gid in gate_run_ids
+        ]
 
         snapshot = self._build_snapshot(
             primary=primary_pin,

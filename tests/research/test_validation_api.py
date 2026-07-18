@@ -108,6 +108,10 @@ def validation_client(
     def _validation() -> ValidationStudyService:
         return ValidationStudyService(tmp_path, repo_root=REPO_ROOT)
 
+    # Gate evaluation fails closed on a dirty working tree unless a deployment
+    # pin is provided — tests pin an explicit evaluation SHA (Issue #248 P2).
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "a" * 40)
+
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
     app.dependency_overrides[get_robustness_service] = _robustness
@@ -157,10 +161,12 @@ def validation_client(
         time.sleep(0.2)
     assert rob_status == "completed", rob_status
 
-    gate_created = client.post(
+    gate_resp = client.post(
         "/api/v1/research/gates/evaluate",
         json={"run_id": run_id, "policy_version": "1.0", "robustness_run_ids": [robustness_id]},
-    ).json()
+    )
+    assert gate_resp.status_code == 200, gate_resp.text
+    gate_created = gate_resp.json()
     gate_run_id = gate_created["gate_run_id"]
 
     ids = {
@@ -292,6 +298,71 @@ def test_create_validation_study_rejects_unknown_gate_run_id(
     )
     assert resp.status_code == 422
     assert "gate_run_ids" in resp.json()["detail"]["fields"]
+
+
+def _complete_second_experiment(client: TestClient, tmp_path: Path) -> tuple[str, str]:
+    """Create and finish a second experiment (run B) under the same catalog."""
+    _catalog_path, payload = _catalog_and_lab_payload(tmp_path)
+    payload = {**payload, "name": "validation study other experiment", "random_seed": 11}
+    created = client.post("/api/v1/research/experiments", json=payload).json()
+    experiment_id = created["experiment_id"]
+    started = client.post(f"/api/v1/research/experiments/{experiment_id}/start")
+    assert started.status_code == 200, started.text
+    deadline = time.time() + 60
+    status = "queued"
+    while time.time() < deadline:
+        status = client.get(f"/api/v1/research/experiments/{experiment_id}/status").json()[
+            "status"
+        ]
+        if status in {"completed", "failed"}:
+            break
+        time.sleep(0.2)
+    assert status == "completed", status
+    run_id = client.get(f"/api/v1/research/experiments/{experiment_id}").json()["summary"][
+        "run_id"
+    ]
+    assert run_id
+    return experiment_id, run_id
+
+
+def test_create_validation_study_rejects_cross_run_robustness(
+    validation_client: tuple[TestClient, dict[str, str]],
+    tmp_path: Path,
+) -> None:
+    """Study for run B cannot pin robustness whose base_run_id is run A."""
+    client, ids = validation_client
+    other_experiment_id, _other_run_id = _complete_second_experiment(client, tmp_path)
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": other_experiment_id,
+            "robustness_ids": [ids["robustness_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "robustness_ids" in fields
+    assert "not in study pinned runs" in fields["robustness_ids"]
+
+
+def test_create_validation_study_rejects_cross_run_gate(
+    validation_client: tuple[TestClient, dict[str, str]],
+    tmp_path: Path,
+) -> None:
+    """Study for run B cannot pin a gate whose run_id is run A."""
+    client, ids = validation_client
+    other_experiment_id, _other_run_id = _complete_second_experiment(client, tmp_path)
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": other_experiment_id,
+            "gate_run_ids": [ids["gate_run_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "gate_run_ids" in fields
+    assert "not in study pinned runs" in fields["gate_run_ids"]
 
 
 def test_create_validation_study_rejects_missing_experiment_id(

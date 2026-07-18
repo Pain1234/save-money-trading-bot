@@ -84,6 +84,7 @@ def gate_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestCl
     monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
     monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
     monkeypatch.setenv("RESEARCH_ALLOW_DIRTY_GIT", "1")
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "b" * 40)
 
     def _read() -> ResearchReadService:
         return ResearchReadService(tmp_path)

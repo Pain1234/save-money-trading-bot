@@ -19,6 +19,7 @@ from research.gate_evaluator import (
     GateEvaluator,
     GateResultStore,
     GateRunRecord,
+    verify_gate_record_artifact_checksums,
 )
 from research.gate_policy import (
     GatePolicy,
@@ -57,6 +58,36 @@ def _assert_record_policy_trusted(record: GateRunRecord) -> None:
                 )
             },
         ) from exc
+
+
+def _record_to_public_dict(
+    root: Path, record: GateRunRecord, *, fail_closed_active: bool = True
+) -> dict[str, Any]:
+    """Serialize a gate record after policy + artifact integrity checks.
+
+    Active records fail closed on evidence tampering (same posture as policy
+    hash). Invalidated records may still be returned with
+    ``evidence_integrity.ok=false`` so audit history remains readable.
+    """
+    _assert_record_policy_trusted(record)
+    payload = record.to_dict()
+    try:
+        verify_gate_record_artifact_checksums(root, record)
+    except GateEvaluationError as exc:
+        if record.status == "active" and fail_closed_active:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "artifact_checksums": (
+                        "mismatch — gate record evidence untrusted"
+                    ),
+                    **exc.field_errors,
+                },
+            ) from exc
+        payload["evidence_integrity"] = {"ok": False, "error": str(exc)}
+        return payload
+    payload["evidence_integrity"] = {"ok": True, "error": None}
+    return payload
 
 
 class GateService:
@@ -109,15 +140,14 @@ class GateService:
             )
         except GateEvaluationError as exc:
             raise ResearchWriteError(str(exc), field_errors=exc.field_errors) from exc
-        return record.to_dict()
+        return _record_to_public_dict(self.root, record)
 
     def get(self, gate_run_id: str) -> dict[str, Any]:
         gate_run_id = assert_safe_id(gate_run_id, field="gate_run_id")
         record = self.store.get(gate_run_id)
         if record is None:
             raise KeyError(gate_run_id)
-        _assert_record_policy_trusted(record)
-        return record.to_dict()
+        return _record_to_public_dict(self.root, record)
 
     def list_all(self, *, run_id: str | None = None) -> list[dict[str, Any]]:
         entries = self.store.list_entries()
@@ -128,8 +158,7 @@ class GateService:
             latest[entry.gate_run_id] = entry
         items: list[dict[str, Any]] = []
         for entry in latest.values():
-            _assert_record_policy_trusted(entry)
-            items.append(entry.to_dict())
+            items.append(_record_to_public_dict(self.root, entry))
         if run_id:
             items = [i for i in items if i["run_id"] == run_id]
         items.sort(key=lambda i: i["evaluated_at"], reverse=True)
@@ -153,8 +182,8 @@ class GateService:
             ) from exc
         record = self.store.get(gate_run_id)
         assert record is not None
-        _assert_record_policy_trusted(record)
-        return record.to_dict()
+        # Invalidated: return with integrity flag rather than hard-failing.
+        return _record_to_public_dict(self.root, record, fail_closed_active=False)
 
     def list_policies(self) -> list[dict[str, Any]]:
         return [_policy_to_public_dict(_get_policy(v)) for v in list_policy_versions()]
