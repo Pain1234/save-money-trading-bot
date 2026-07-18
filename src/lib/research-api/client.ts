@@ -431,7 +431,31 @@ export async function fetchValidationStudy(
 ): Promise<ValidationStudyDetail> {
   return fetchPaperApi<ValidationStudyDetail>(
     `/api/v1/research/validation/${encodeURIComponent(studyId)}`,
-    { revalidate: 5 },
+    { revalidate: 5 }
+  );
+}
+
+export type ResearchCompareRunView = Omit<ResearchExperimentDetail, "job">;
+
+export interface ResearchCompareResult {
+  compatible: boolean;
+  run_a: string;
+  run_b: string;
+  diffs: Record<string, [unknown, unknown]>;
+  runs: {
+    a: ResearchCompareRunView;
+    b: ResearchCompareRunView;
+  };
+}
+
+export async function fetchResearchCompare(
+  runA: string,
+  runB: string,
+): Promise<ResearchCompareResult> {
+  const params = new URLSearchParams({ run_a: runA, run_b: runB });
+  return fetchPaperApi<ResearchCompareResult>(
+    `/api/v1/research/experiments/compare?${params.toString()}`,
+    { revalidate: 10 }
   );
 }
 
