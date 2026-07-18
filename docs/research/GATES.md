@@ -22,19 +22,23 @@ Every persisted `GateRunRecord` carries:
 | `dataset_id` / `dataset_content_hash` | The run's sealed `RunManifest` (#142) |
 | `policy_version` **and** `policy_content_hash` | `research.gate_policy` — content hash, not version string alone |
 | `run_code_commit` | The run's sealed `RunManifest.git_commit` |
-| `evaluation_code_commit` | `git rev-parse HEAD` at evaluation time (falls back to `run_code_commit` in deploy images without `.git`) |
+| `evaluation_code_commit` | Deploy pin `RESEARCH_EVALUATION_GIT_SHA` / `RAILWAY_GIT_COMMIT_SHA` if set; else clean `git rev-parse HEAD` (dirty tree fails closed). Never falls back to the evaluated run's `git_commit`. |
 
 `GateEvaluator.evaluate()` fails closed (`GateEvaluationError`) if the run is
 not `complete`, if artifacts were tampered with (registry checksum verify),
-if a referenced robustness manifest is missing, or if `policy_version` is
-unknown. Robustness evidence additionally fails closed unless every loaded
-manifest has a valid schema/version, matching `robustness_id`, exact
-`base_run_id` pin to the evaluated run (no cross-run evidence), matching
-dataset binding, verified complete child runs (registry + checksums), and
-**no duplicate `test_type`** across the requested ids (silent overwrite of
-measured values is rejected). `GateService.get` / `list_all` re-verify
-`policy_content_hash` on read and refuse to present records as trusted after
-a same-version silent policy edit.
+if a referenced robustness manifest is missing or its seal
+(`job.manifest_content_hash` / `manifest.json.sha256`) does not match, or if
+`policy_version` is unknown. Robustness gate measurements are taken from
+verified child `metrics.json` / recomputed bootstrap equity — not from
+mutable `children[].net_pnl` / `bootstrap_result` copies alone. Robustness
+evidence additionally fails closed unless every loaded manifest has a valid
+schema/version, matching `robustness_id`, exact `base_run_id` pin to the
+evaluated run (no cross-run evidence), matching dataset binding, verified
+complete child runs (registry + checksums), and **no duplicate `test_type`**
+across the requested ids (silent overwrite of measured values is rejected).
+`GateService.get` / `list_all` re-verify `policy_content_hash` and stored
+`artifact_checksums` on read and refuse to present active records as trusted
+after a same-version silent policy edit or post-evaluation evidence tamper.
 
 ## Policy versioning (content-hash bound)
 

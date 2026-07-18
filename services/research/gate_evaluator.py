@@ -18,7 +18,9 @@ Evidence-binding contract (mandatory, #248) — every persisted
 - ``policy_version`` **and** ``policy_content_hash`` (not version alone —
   see :mod:`research.gate_policy`)
 - ``run_code_commit`` (git SHA pinned at run time) and
-  ``evaluation_code_commit`` (git SHA of the evaluator at evaluation time)
+  ``evaluation_code_commit`` (deploy pin via ``RESEARCH_EVALUATION_GIT_SHA`` /
+  ``RAILWAY_GIT_COMMIT_SHA``, else clean ``git rev-parse HEAD`` — never the
+  evaluated run's commit)
 
 Persistence is append-only, mirroring ``research.registry``
 (:class:`~research.registry.ExperimentRegistry`): gate results are never
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -37,6 +40,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
 
+from research.artifacts import verify_checksums_against
 from research.gate_policy import (
     GatePolicy,
     GatePolicyError,
@@ -48,7 +52,9 @@ from research.metrics_contract import ResearchMetrics, validate_metrics_or_mark_
 from research.registry import ExperimentRegistry, RegistryEntry
 from research.robustness import (
     ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+    compute_bootstrap_from_equity_artifact,
     robustness_manifest_path,
+    verify_robustness_manifest_seal,
 )
 from research.robustness_jobs import RobustnessJobStore
 from research.run_manifest import RunManifest, load_run_manifest
@@ -277,51 +283,293 @@ def _measurements_from_metrics(metrics: ResearchMetrics) -> dict[str, Decimal]:
     return out
 
 
-def _measurements_from_robustness_manifest(manifest: dict[str, Any]) -> dict[str, Decimal]:
+def _resolve_evaluation_code_commit(repo_root: Path) -> str:
+    """Pin the evaluator binary/image commit; dirty trees fail closed.
+
+    Preference order:
+    1. ``RESEARCH_EVALUATION_GIT_SHA`` / ``RAILWAY_GIT_COMMIT_SHA`` (deploy pin)
+    2. ``resolve_git_commit(repo_root, allow_dirty=False)``
+
+    Never falls back to the evaluated run's ``git_commit``.
+    """
+    for key in ("RESEARCH_EVALUATION_GIT_SHA", "RAILWAY_GIT_COMMIT_SHA"):
+        pinned = (os.environ.get(key) or "").strip()
+        if pinned:
+            return pinned
+    return resolve_git_commit(repo_root, allow_dirty=False)
+
+
+def _child_net_pnl_from_verified_run(
+    registry: ExperimentRegistry,
+    *,
+    robustness_id: str,
+    child: dict[str, Any],
+) -> Decimal:
+    """Load ``net_pnl`` from the child's sealed ``metrics.json`` (not the manifest copy)."""
+    child_id = child.get("child_id")
+    child_run_id = child.get("run_id")
+    if not child_run_id:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} child {child_id!r} is missing run_id",
+            field_errors={"robustness_run_ids": "child run_id missing"},
+        )
+    try:
+        entry = registry.show(str(child_run_id), verify=True)
+    except KeyError as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} child run_id not in registry: {child_run_id}",
+            field_errors={"robustness_run_ids": "child run missing"},
+        ) from exc
+    except (ValueError, FileNotFoundError) as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} child run_id checksum verify failed: "
+            f"{child_run_id}: {exc}",
+            field_errors={"robustness_run_ids": "child checksum mismatch"},
+        ) from exc
+    metrics_path = Path(entry.artifact_path) / "metrics.json"
+    try:
+        metrics_raw = json.loads(metrics_path.read_text(encoding="utf-8"))
+        metrics = validate_metrics_or_mark_invalid(metrics_raw)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} child {child_run_id} metrics.json "
+            f"failed validation: {exc}",
+            field_errors={"robustness_run_ids": "child metrics invalid"},
+        ) from exc
+    metrics_pnl = _decimal_measurement(metrics.net_pnl)
+    if metrics_pnl is None:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} child {child_run_id} metrics.json "
+            "is missing net_pnl",
+            field_errors={"robustness_run_ids": "child net_pnl missing"},
+        )
+    manifest_pnl = _decimal_measurement(child.get("net_pnl"))
+    if manifest_pnl is not None and manifest_pnl != metrics_pnl:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} child {child_id!r} manifest net_pnl="
+            f"{manifest_pnl} disagrees with sealed metrics.json net_pnl="
+            f"{metrics_pnl} (fail closed)",
+            field_errors={"robustness_run_ids": "child net_pnl mismatch"},
+        )
+    return metrics_pnl
+
+
+def _measurements_from_robustness_manifest(
+    registry: ExperimentRegistry,
+    manifest: dict[str, Any],
+    *,
+    robustness_id: str,
+    base_run_id: str,
+) -> dict[str, Decimal]:
+    """Derive gate measurements from verified run artifacts, not mutable manifest copies.
+
+    Walk-forward / cost-stress / parameter-stability load ``net_pnl`` from each
+    child's sealed ``metrics.json`` via ``registry.show(..., verify=True)``.
+    Bootstrap recomputes q05 from the sealed base-run ``equity.json``.
+    """
     out: dict[str, Decimal] = {}
     test_type = manifest.get("test_type")
     children = manifest.get("children") or []
 
     if test_type == "walk_forward":
-        complete = [
-            c
-            for c in children
-            if c.get("status") == "complete" and c.get("net_pnl") is not None
-        ]
+        complete = [c for c in children if isinstance(c, dict) and c.get("status") == "complete"]
         if complete:
-            complete_pnls = [_decimal_measurement(c["net_pnl"]) for c in complete]
-            passed = sum(1 for pnl in complete_pnls if pnl is not None and pnl >= 0)
+            complete_pnls = [
+                _child_net_pnl_from_verified_run(
+                    registry, robustness_id=robustness_id, child=c
+                )
+                for c in complete
+            ]
+            passed = sum(1 for pnl in complete_pnls if pnl >= 0)
             out["walk_forward_fold_pass_ratio"] = Decimal(passed) / Decimal(len(complete))
 
     elif test_type == "cost_stress":
         for child in children:
-            if child.get("child_id") == "combined_elevated" and child.get("net_pnl") is not None:
-                value = _decimal_measurement(child["net_pnl"])
-                if value is not None:
-                    out["cost_stress_combined_elevated_net_pnl"] = value
+            if not isinstance(child, dict):
+                continue
+            if child.get("child_id") == "combined_elevated" and child.get("status") == "complete":
+                out["cost_stress_combined_elevated_net_pnl"] = _child_net_pnl_from_verified_run(
+                    registry, robustness_id=robustness_id, child=child
+                )
 
     elif test_type == "parameter_stability":
         neighbors = [
             c
             for c in children
-            if c.get("child_id") != "frozen"
+            if isinstance(c, dict)
+            and c.get("child_id") != "frozen"
             and c.get("status") == "complete"
-            and c.get("net_pnl") is not None
         ]
         if neighbors:
-            neighbor_pnls = [_decimal_measurement(c["net_pnl"]) for c in neighbors]
-            passed = sum(1 for pnl in neighbor_pnls if pnl is not None and pnl >= 0)
+            neighbor_pnls = [
+                _child_net_pnl_from_verified_run(
+                    registry, robustness_id=robustness_id, child=c
+                )
+                for c in neighbors
+            ]
+            passed = sum(1 for pnl in neighbor_pnls if pnl >= 0)
             out["parameter_neighbor_pass_ratio"] = Decimal(passed) / Decimal(len(neighbors))
 
     elif test_type == "bootstrap":
-        bootstrap_result = manifest.get("bootstrap_result") or {}
-        quantiles = bootstrap_result.get("net_pnl_quantiles") or {}
-        q05 = quantiles.get("q05")
-        value = _decimal_measurement(q05)
-        if value is not None:
-            out["bootstrap_q05_net_pnl"] = value
+        out["bootstrap_q05_net_pnl"] = _bootstrap_q05_from_sealed_equity(
+            registry,
+            manifest,
+            robustness_id=robustness_id,
+            base_run_id=base_run_id,
+        )
 
     return out
+
+
+def _bootstrap_q05_from_sealed_equity(
+    registry: ExperimentRegistry,
+    manifest: dict[str, Any],
+    *,
+    robustness_id: str,
+    base_run_id: str,
+) -> Decimal:
+    """Recompute bootstrap q05 from sealed equity; fail closed on sealed-result drift."""
+    config = manifest.get("config") or {}
+    if not isinstance(config, dict):
+        raise GateEvaluationError(
+            f"robustness {robustness_id} bootstrap config is invalid",
+            field_errors={"robustness_run_ids": "invalid bootstrap config"},
+        )
+    try:
+        block_length = int(config["block_length"])
+        n_simulations = int(config["n_simulations"])
+        seed = int(config["seed"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} bootstrap config missing "
+            f"block_length/n_simulations/seed: {exc}",
+            field_errors={"robustness_run_ids": "incomplete bootstrap config"},
+        ) from exc
+    quantiles_raw = config.get("quantiles", (0.05, 0.5, 0.95))
+    try:
+        quantiles = tuple(float(q) for q in quantiles_raw)
+    except (TypeError, ValueError) as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} bootstrap quantiles invalid: {exc}",
+            field_errors={"robustness_run_ids": "invalid bootstrap quantiles"},
+        ) from exc
+
+    try:
+        entry = registry.show(base_run_id, verify=True)
+    except KeyError as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} base_run_id not in registry: {base_run_id}",
+            field_errors={"robustness_run_ids": "base run missing"},
+        ) from exc
+    except (ValueError, FileNotFoundError) as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} base_run_id checksum verify failed: "
+            f"{base_run_id}: {exc}",
+            field_errors={"robustness_run_ids": "base checksum mismatch"},
+        ) from exc
+
+    try:
+        stats = compute_bootstrap_from_equity_artifact(
+            Path(entry.artifact_path),
+            block_length=block_length,
+            n_simulations=n_simulations,
+            seed=seed,
+            quantiles=quantiles,
+        )
+    except (OSError, ValueError, FileNotFoundError) as exc:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} bootstrap recompute from equity.json "
+            f"failed: {exc}",
+            field_errors={"robustness_run_ids": "bootstrap recompute failed"},
+        ) from exc
+
+    recomputed_q05 = _decimal_measurement(stats.net_pnl_quantiles.get("q05"))
+    if recomputed_q05 is None:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} bootstrap recompute missing q05",
+            field_errors={"robustness_run_ids": "bootstrap q05 missing"},
+        )
+
+    sealed = manifest.get("bootstrap_result") or {}
+    sealed_q05 = _decimal_measurement((sealed.get("net_pnl_quantiles") or {}).get("q05"))
+    if sealed_q05 is None:
+        raise GateEvaluationError(
+            f"robustness {robustness_id} sealed bootstrap_result missing q05",
+            field_errors={"robustness_run_ids": "sealed bootstrap q05 missing"},
+        )
+    # Float JSON round-trip can introduce tiny representation drift; reject
+    # meaningful disagreement while tolerating sub-ulp stringification noise.
+    if abs(sealed_q05 - recomputed_q05) > Decimal("1e-9"):
+        raise GateEvaluationError(
+            f"robustness {robustness_id} sealed bootstrap q05={sealed_q05} "
+            f"disagrees with recomputation q05={recomputed_q05} (fail closed)",
+            field_errors={"robustness_run_ids": "bootstrap q05 mismatch"},
+        )
+    return recomputed_q05
+
+
+def verify_gate_record_artifact_checksums(root: Path, record: GateRunRecord) -> None:
+    """Re-verify a persisted record's ``artifact_checksums`` against on-disk seals.
+
+    Raises :class:`GateEvaluationError` on any mismatch (fail closed).
+    """
+    registry = ExperimentRegistry(root.resolve())
+    try:
+        entry = registry.show(record.run_id, verify=True)
+    except KeyError as exc:
+        raise GateEvaluationError(
+            f"gate record run_id not in registry: {record.run_id}",
+            field_errors={"artifact_checksums": "run missing"},
+        ) from exc
+    except (ValueError, FileNotFoundError) as exc:
+        raise GateEvaluationError(
+            f"gate record run artifact seal failed: {exc}",
+            field_errors={"artifact_checksums": "run checksum mismatch"},
+        ) from exc
+
+    run_checksums = {
+        k: v for k, v in record.artifact_checksums.items() if not k.startswith("robustness/")
+    }
+    if not run_checksums:
+        raise GateEvaluationError(
+            "gate record has no run artifact_checksums",
+            field_errors={"artifact_checksums": "empty run checksums"},
+        )
+    try:
+        verify_checksums_against(Path(entry.artifact_path), run_checksums)
+    except (ValueError, FileNotFoundError) as exc:
+        raise GateEvaluationError(
+            f"gate record artifact_checksums mismatch vs current run files: {exc}",
+            field_errors={"artifact_checksums": "run file mismatch"},
+        ) from exc
+
+    for key, digest in record.artifact_checksums.items():
+        if not key.startswith("robustness/") or not key.endswith("/manifest.json"):
+            continue
+        parts = key.split("/")
+        if len(parts) != 3:
+            raise GateEvaluationError(
+                f"gate record has malformed robustness checksum key: {key!r}",
+                field_errors={"artifact_checksums": "malformed robustness key"},
+            )
+        robustness_id = parts[1]
+        try:
+            verify_robustness_manifest_seal(
+                root.resolve(), robustness_id, expected_hash=digest
+            )
+        except (ValueError, FileNotFoundError) as exc:
+            raise GateEvaluationError(
+                f"gate record robustness manifest seal failed for {robustness_id}: {exc}",
+                field_errors={"artifact_checksums": "robustness seal mismatch"},
+            ) from exc
+
+    for robustness_id in record.robustness_run_ids:
+        key = f"robustness/{robustness_id}/manifest.json"
+        if key not in record.artifact_checksums:
+            raise GateEvaluationError(
+                f"gate record missing checksum for robustness {robustness_id}",
+                field_errors={"artifact_checksums": "robustness checksum missing"},
+            )
 
 
 class GateEvaluator:
@@ -377,6 +625,20 @@ class GateEvaluator:
                 f"(status={job.status})",
                 field_errors={"robustness_run_ids": f"status={job.status}"},
             )
+
+    def _verify_robustness_manifest_seal(self, robustness_id: str) -> str:
+        """Fail closed unless the sealed manifest trust anchor still matches."""
+        job = RobustnessJobStore(self.root).get(robustness_id)
+        expected_hash = job.manifest_content_hash if job is not None else None
+        try:
+            return verify_robustness_manifest_seal(
+                self.root, robustness_id, expected_hash=expected_hash
+            )
+        except (ValueError, FileNotFoundError) as exc:
+            raise GateEvaluationError(
+                f"robustness {robustness_id} manifest seal verification failed: {exc}",
+                field_errors={"robustness_run_ids": "manifest seal mismatch"},
+            ) from exc
 
     def _verify_robustness_dataset_binding(
         self,
@@ -565,11 +827,11 @@ class GateEvaluator:
                     f"robustness manifest not found: {robustness_id}",
                     field_errors={"robustness_run_ids": f"missing: {robustness_id}"},
                 )
-            raw_bytes = path.read_bytes()
-            checksums[f"robustness/{robustness_id}/manifest.json"] = hashlib.sha256(
-                raw_bytes
-            ).hexdigest()
-            raw = json.loads(raw_bytes)
+            # Seal first — never trust measurements from an unsealed / tampered
+            # post-completion manifest.
+            digest = self._verify_robustness_manifest_seal(robustness_id)
+            checksums[f"robustness/{robustness_id}/manifest.json"] = digest
+            raw = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 raise GateEvaluationError(
                     f"robustness manifest is not an object: {robustness_id}",
@@ -628,7 +890,12 @@ class GateEvaluator:
             key=lambda rid: str(robustness_manifests[rid].get("test_type") or rid),
         ):
             measurements.update(
-                _measurements_from_robustness_manifest(robustness_manifests[robustness_id])
+                _measurements_from_robustness_manifest(
+                    self.registry,
+                    robustness_manifests[robustness_id],
+                    robustness_id=robustness_id,
+                    base_run_id=run_id,
+                )
             )
 
         gate_results: list[GateEvaluationResult] = []
@@ -670,11 +937,12 @@ class GateEvaluator:
         )
 
         try:
-            evaluation_code_commit = resolve_git_commit(self.repo_root, allow_dirty=True)
-        except ValueError:
-            # Deploy images without .git and without an env pin: fall back to
-            # the run's own sealed commit rather than failing evaluation.
-            evaluation_code_commit = manifest.git_commit
+            evaluation_code_commit = _resolve_evaluation_code_commit(self.repo_root)
+        except ValueError as exc:
+            raise GateEvaluationError(
+                f"evaluation_code_commit could not be resolved: {exc}",
+                field_errors={"evaluation_code_commit": str(exc)},
+            ) from exc
 
         artifact_checksums = dict(entry.checksums)
         artifact_checksums.update(robustness_checksums)
