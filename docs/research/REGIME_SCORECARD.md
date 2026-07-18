@@ -200,6 +200,15 @@ Confidence is derived from measurable inputs (not free manual estimate), e.g.:
 | `INSUFFICIENT` | Below documented floors |
 | `NOT_AVAILABLE` | Required inputs missing |
 
+**Implementation ([#288](https://github.com/Pain1234/save-money-trading-bot/issues/288)):**
+`services/research/confidence/` + contract [`CONFIDENCE.md`](CONFIDENCE.md).
+Versioned policy `1.0` (content-hashed), sealed `confidence_profile.json`,
+visible serial-dependence / multiple-testing limitations, HIGH coverage cap
+when core dimensions or documented multiple-testing are missing, bootstrap
+measured as effective block count. Deeper coverage (symbol, concentration,
+effective-n, true independent segments, PSR/DSR/PBO/MTRL) →
+[#345](https://github.com/Pain1234/save-money-trading-bot/issues/345).
+
 Advanced statistics (PSR, DSR, PBO, MTRL) may be added only when:
 
 - formula and version are documented,

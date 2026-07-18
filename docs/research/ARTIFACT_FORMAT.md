@@ -14,6 +14,7 @@ artifacts/research/<experiment_id>/<run_id>/
   chart_data.json
   regime_labels.json
   regime_metrics.json
+  confidence_profile.json
   events.jsonl
   checksums.json
 ```
@@ -39,3 +40,4 @@ Rules:
 - Registry CLI `compare` (`#167`) diffs full `semantic_spec_dict` + `semantic_manifest_payload` (see [README.md](README.md))
 - `regime_labels.json` (#285): versioned classifier labels + transitions; see [REGIME_CLASSIFIER.md](REGIME_CLASSIFIER.md)
 - `regime_metrics.json` (#287): per-regime raw quality metrics; see [REGIME_QUALITY.md](REGIME_QUALITY.md)
+- `confidence_profile.json` (#288): evidence-confidence profile; see [CONFIDENCE.md](CONFIDENCE.md)
