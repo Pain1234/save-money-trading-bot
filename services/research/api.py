@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -107,65 +108,125 @@ def research_experiment_detail(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError:
-        # May exist only as a pending job (created / running, not yet in registry).
+        # May exist only as a pending/failed job (not yet in registry).
         try:
             status = write_svc.get_status(experiment_id)
         except (KeyError, ValueError):
             raise HTTPException(status_code=404, detail="experiment not found") from None
-        return {
-            "summary": {
-                "experiment_id": experiment_id,
-                "run_id": status.get("run_id"),
-                "status": status["status"],
-                "strategy_version": None,
-                "strategy_id": None,
-                "dataset_version": None,
-                "cost_model_version": None,
-                "benchmark_ref": None,
-                "created_at": status["job"].get("created_at"),
-                "symbols": [],
-                "time_range_start": None,
-                "time_range_end": None,
-                "timeframe": None,
-                "git_commit": None,
-                "duration_seconds": status.get("elapsed_seconds"),
-                "net_pnl": None,
-                "max_drawdown": None,
-                "closed_trades": None,
-                "hit_rate": None,
-                "profit_factor": None,
-                "integrity_ok": True,
-                "integrity_error": None,
-            },
-            "metadata": {
-                "experiment_id": experiment_id,
-                "run_id": status.get("run_id"),
-                "status": status["status"],
-                "strategy_version": None,
-                "git_commit": None,
-                "dataset_version": None,
-                "seed": None,
-                "created_at": status["job"].get("created_at"),
-                "started_at": status.get("started_at"),
-                "finalized_at": status.get("finished_at"),
-                "duration_seconds": status.get("elapsed_seconds"),
-            },
-            "config": {},
-            "metrics": {},
-            "equity": [],
-            "drawdown": [],
-            "artifacts": {},
-            "integrity": {"ok": True, "error": None},
-            "job": status,
-        }
+        detail = _detail_from_job_only(experiment_id, status, write_svc)
     except PermissionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    try:
-        detail["job"] = write_svc.get_status(experiment_id)
-    except (KeyError, ValueError):
-        detail["job"] = None
+    else:
+        try:
+            detail["job"] = write_svc.get_status(experiment_id)
+        except (KeyError, ValueError):
+            detail["job"] = None
     return detail
+
+
+def _detail_from_job_only(
+    experiment_id: str,
+    status: dict[str, Any],
+    write_svc: ResearchWriteSvc,
+) -> dict[str, Any]:
+    """Build a Lab-safe detail payload when registry has no complete run yet."""
+    job_status = str(status.get("status") or "")
+    job_error = status.get("error")
+    spec: dict[str, Any] = {}
+    try:
+        pending = write_svc.store.pending_spec_path(experiment_id)
+        if pending.is_file():
+            raw = json.loads(pending.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                spec = raw
+    except (OSError, json.JSONDecodeError, TypeError):
+        spec = {}
+
+    symbols = [str(s) for s in (spec.get("symbols") or [])]
+    tr = spec.get("time_range") if isinstance(spec.get("time_range"), dict) else {}
+    params = spec.get("parameters") if isinstance(spec.get("parameters"), dict) else {}
+    failed = job_status == "failed"
+
+    return {
+        "summary": {
+            "experiment_id": experiment_id,
+            "run_id": status.get("run_id"),
+            "status": job_status,
+            "strategy_version": spec.get("strategy_version"),
+            "strategy_id": (params or {}).get("strategy_id"),
+            "dataset_version": (spec.get("dataset_manifest_ref") or {}).get("dataset_id"),
+            "cost_model_version": None,
+            "benchmark_ref": spec.get("benchmark"),
+            "created_at": status.get("job", {}).get("created_at")
+            if isinstance(status.get("job"), dict)
+            else status.get("started_at"),
+            "symbols": symbols,
+            "time_range_start": tr.get("start"),
+            "time_range_end": tr.get("end"),
+            "timeframe": None,
+            "git_commit": None,
+            "duration_seconds": status.get("elapsed_seconds"),
+            "net_pnl": None,
+            "max_drawdown": None,
+            "closed_trades": None,
+            "hit_rate": None,
+            "profit_factor": None,
+            "integrity_ok": not failed,
+            "integrity_error": str(job_error) if failed and job_error else None,
+        },
+        "metadata": {
+            "experiment_id": experiment_id,
+            "run_id": status.get("run_id"),
+            "status": job_status,
+            "strategy_version": spec.get("strategy_version"),
+            "git_commit": None,
+            "dataset_version": (spec.get("dataset_manifest_ref") or {}).get("dataset_id"),
+            "seed": spec.get("random_seed"),
+            "created_at": (
+                status.get("job", {}).get("created_at")
+                if isinstance(status.get("job"), dict)
+                else None
+            ),
+            "started_at": status.get("started_at"),
+            "finalized_at": status.get("finished_at"),
+            "duration_seconds": status.get("elapsed_seconds"),
+        },
+        "config": {
+            "symbols": symbols,
+            "time_range_start": tr.get("start"),
+            "time_range_end": tr.get("end"),
+            "timeframe": "1D",
+            "starting_capital": (
+                str(spec["starting_capital"]) if spec.get("starting_capital") is not None else None
+            ),
+            "parameters": params,
+            "fee_assumption": spec.get("fee_assumption"),
+            "slippage_assumption": spec.get("slippage_assumption"),
+            "funding_assumption": spec.get("funding_assumption"),
+            "costs": None,
+            "in_sample_config": "Nicht verfügbar",
+            "out_of_sample_config": "Nicht verfügbar",
+            "benchmark": str(spec.get("benchmark") or "Nicht verfügbar"),
+            "hypothesis": spec.get("hypothesis"),
+        },
+        "metrics": {},
+        "equity": [],
+        "drawdown": [],
+        "artifacts": {
+            "has_experiment_spec": bool(spec),
+            "has_run_manifest": False,
+            "has_metrics": False,
+            "has_equity": False,
+            "has_costs": False,
+            "has_trades": False,
+            "has_chart_data": False,
+        },
+        "integrity": {
+            "ok": not failed,
+            "error": str(job_error) if failed and job_error else None,
+        },
+        "job": status,
+    }
 
 
 @router.get("/experiments/{experiment_id}/metrics")
