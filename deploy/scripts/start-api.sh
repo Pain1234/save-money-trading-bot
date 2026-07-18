@@ -18,4 +18,9 @@ if [ -z "${RESEARCH_DATASET_CATALOG_PATH:-}" ] \
   export RESEARCH_DATASET_CATALOG_PATH=/app/examples/research/local_lab/catalog.json
 fi
 
+# Research Lab (#272): API image has no .git — pin deploy commit from Railway.
+if [ -z "${RESEARCH_GIT_COMMIT:-}" ] && [ -n "${RAILWAY_GIT_COMMIT_SHA:-}" ]; then
+  export RESEARCH_GIT_COMMIT="$RAILWAY_GIT_COMMIT_SHA"
+fi
+
 exec python -m paper_trading.api_runner

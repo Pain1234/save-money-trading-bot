@@ -49,9 +49,11 @@ def test_api_image_ships_research_local_lab_catalog() -> None:
     """Issue #270: production Lab needs examples/ in the API image."""
     dockerfile = (REPO_ROOT / "deploy/Dockerfile.paper-python").read_text(encoding="utf-8")
     assert "COPY examples ./examples" in dockerfile
+    assert "RAILWAY_GIT_COMMIT_SHA" in dockerfile
     start_api = (REPO_ROOT / "deploy/scripts/start-api.sh").read_text(encoding="utf-8")
     assert "RESEARCH_DATASET_CATALOG_PATH" in start_api
     assert "examples/research/local_lab/catalog.json" in start_api
+    assert "RESEARCH_GIT_COMMIT" in start_api
     catalog = REPO_ROOT / "examples/research/local_lab/catalog.json"
     assert catalog.is_file()
 

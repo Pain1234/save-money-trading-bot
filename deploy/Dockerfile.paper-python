@@ -13,6 +13,10 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# Railway injects the triggering commit as a build-arg for GitHub deploys (#272).
+ARG RAILWAY_GIT_COMMIT_SHA=
+ENV RAILWAY_GIT_COMMIT_SHA=${RAILWAY_GIT_COMMIT_SHA}
+
 COPY pyproject.toml alembic.ini ./
 COPY migrations ./migrations
 COPY services ./services
