@@ -1,10 +1,13 @@
 import { ResearchOverviewView } from "@/components/research/ResearchOverviewView";
+import { selectEvidenceStudy } from "@/lib/research/executive-summary";
 import {
   fetchGateRuns,
+  fetchResearchExperiment,
   fetchResearchOverview,
   fetchRobustnessJobs,
   fetchValidationStudies,
   getResearchErrorMessage,
+  type ResearchSeriesPoint,
 } from "@/lib/research-api/client";
 
 export const dynamic = "force-dynamic";
@@ -18,12 +21,27 @@ export default async function ResearchOverviewPage() {
       fetchRobustnessJobs(),
     ]);
 
+    let pinnedEquity: ResearchSeriesPoint[] | null = null;
+    let pinnedDrawdown: ResearchSeriesPoint[] | null = null;
+    const focus = selectEvidenceStudy(studies.items);
+    if (focus?.experiment_id) {
+      try {
+        const detail = await fetchResearchExperiment(focus.experiment_id);
+        pinnedEquity = detail.equity;
+        pinnedDrawdown = detail.drawdown;
+      } catch {
+        // Soft-fail: analytics panels stay Nicht verfügbar for series.
+      }
+    }
+
     return (
       <ResearchOverviewView
         overview={overview}
         gateRuns={gateRuns.items}
         studies={studies.items}
         robustnessJobs={robustnessJobs.items}
+        pinnedEquity={pinnedEquity}
+        pinnedDrawdown={pinnedDrawdown}
       />
     );
   } catch (error) {

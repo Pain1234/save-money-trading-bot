@@ -213,8 +213,11 @@ live under `.research-shell` (`--rs-*`) and must not mutate Monitor freeze value
 
 UI-02 (#299): `ExecutiveGateStrip` + `ResearchOverviewView` on
 `/dashboard/research` — gate-first hierarchy; scorecard-only fields stay
-`Nicht verfügbar` until #291/#295. Later (UI-03+): regime scorecard,
-analytics panels, forensics — reuse components; do not fork registry.
+`Nicht verfügbar` until #291/#295.
+
+UI-03 (#300): reusable `src/components/research/analytics/*` panels
+(Regime table, Equity vs Benchmark, Underwater, Transition, Plateau,
+Cost Stress, Evidence Summary). Empty until #291; detail binding in #292.
 
 ---
 
