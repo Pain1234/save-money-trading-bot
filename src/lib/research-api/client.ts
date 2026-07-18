@@ -145,6 +145,109 @@ export async function fetchResearchExperiment(
   );
 }
 
+export type RobustnessTestType =
+  | "walk_forward"
+  | "cost_stress"
+  | "parameter_stability"
+  | "bootstrap";
+
+export interface RobustnessJobSummary {
+  robustness_id: string;
+  base_experiment_id: string;
+  test_type: RobustnessTestType | string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  error_detail: string | null;
+  dataset_catalog_id: string | null;
+  config: Record<string, unknown> | null;
+}
+
+export interface RobustnessJobList {
+  items: RobustnessJobSummary[];
+  count: number;
+}
+
+export interface RobustnessChildResult {
+  child_id: string;
+  label: string;
+  experiment_id: string | null;
+  run_id: string | null;
+  status: string;
+  net_pnl: string | null;
+  max_drawdown: string | null;
+  closed_trades: number | null;
+  profit_factor: string | null;
+  error: string | null;
+}
+
+export interface RobustnessManifest {
+  schema_version: string;
+  robustness_id: string;
+  test_type: RobustnessTestType | string;
+  base_experiment_id: string;
+  base_run_id: string | null;
+  dataset_catalog_id: string | null;
+  config: Record<string, unknown>;
+  created_at: string;
+  children: RobustnessChildResult[];
+  bootstrap_result: {
+    n_simulations: number;
+    block_length: number;
+    seed: number;
+    net_pnl_quantiles: Record<string, number>;
+    max_drawdown_quantiles: Record<string, number>;
+    mean_net_pnl: number;
+    mean_max_drawdown: number;
+  } | null;
+  summary: {
+    n_children: number;
+    n_complete: number;
+    n_failed: number;
+  };
+}
+
+export interface RobustnessJobDetail {
+  robustness_id: string;
+  status: string;
+  test_type: string;
+  base_experiment_id: string;
+  started_at: string | null;
+  finished_at: string | null;
+  elapsed_seconds: number | null;
+  error: string | null;
+  error_detail: string | null;
+  job: RobustnessJobSummary;
+  worker_alive: boolean;
+  manifest: RobustnessManifest | null;
+}
+
+export async function fetchRobustnessJobs(params?: {
+  base_experiment_id?: string;
+}): Promise<RobustnessJobList> {
+  const search = new URLSearchParams();
+  if (params?.base_experiment_id) {
+    search.set("base_experiment_id", params.base_experiment_id);
+  }
+  const qs = search.toString();
+  return fetchPaperApi<RobustnessJobList>(
+    `/api/v1/research/robustness${qs ? `?${qs}` : ""}`,
+    { revalidate: 5 },
+  );
+}
+
+export async function fetchRobustnessJob(
+  robustnessId: string,
+): Promise<RobustnessJobDetail> {
+  return fetchPaperApi<RobustnessJobDetail>(
+    `/api/v1/research/robustness/${encodeURIComponent(robustnessId)}`,
+    { revalidate: 5 },
+  );
+}
+
 export function displayValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") {
     return "Nicht verfügbar";
