@@ -18,8 +18,9 @@ Evidence-binding contract (mandatory, #248) — every persisted
 - ``policy_version`` **and** ``policy_content_hash`` (not version alone —
   see :mod:`research.gate_policy`)
 - ``run_code_commit`` (git SHA pinned at run time) and
-  ``evaluation_code_commit`` (deploy pin via ``RESEARCH_EVALUATION_GIT_SHA`` /
-  ``RAILWAY_GIT_COMMIT_SHA``, else clean ``git rev-parse HEAD`` — never the
+  ``evaluation_code_commit`` (clean HEAD when ``.git`` exists — env pin must
+  match HEAD; ``.git``-less images require a validated deploy SHA via
+  ``RESEARCH_EVALUATION_GIT_SHA`` / ``RAILWAY_GIT_COMMIT_SHA``; never the
   evaluated run's commit)
 
 Persistence is append-only, mirroring ``research.registry``
@@ -286,17 +287,61 @@ def _measurements_from_metrics(metrics: ResearchMetrics) -> dict[str, Decimal]:
 def _resolve_evaluation_code_commit(repo_root: Path) -> str:
     """Pin the evaluator binary/image commit; dirty trees fail closed.
 
-    Preference order:
-    1. ``RESEARCH_EVALUATION_GIT_SHA`` / ``RAILWAY_GIT_COMMIT_SHA`` (deploy pin)
-    2. ``resolve_git_commit(repo_root, allow_dirty=False)``
+    Rules:
+    - When ``repo_root/.git`` exists: always resolve HEAD with
+      ``allow_dirty=False``. An env pin
+      (``RESEARCH_EVALUATION_GIT_SHA`` / ``RAILWAY_GIT_COMMIT_SHA``) is
+      accepted only when it matches that HEAD (full or unique prefix);
+      it never skips the dirty check.
+    - When ``.git`` is absent (deployed image): require a validated deploy
+      SHA from the same env keys (reject empty / ``unknown`` / short values).
 
     Never falls back to the evaluated run's ``git_commit``.
     """
+    git_dir = repo_root / ".git"
+    if git_dir.exists():
+        try:
+            head = resolve_git_commit(repo_root, allow_dirty=False)
+        except ValueError as exc:
+            raise GateEvaluationError(
+                f"evaluation_code_commit unavailable: {exc}",
+                field_errors={"evaluation_code_commit": "dirty or unresolved"},
+            ) from exc
+        for key in ("RESEARCH_EVALUATION_GIT_SHA", "RAILWAY_GIT_COMMIT_SHA"):
+            pinned = (os.environ.get(key) or "").strip()
+            if not pinned:
+                continue
+            if pinned.lower() == "unknown" or len(pinned) < 7:
+                raise GateEvaluationError(
+                    f"{key} is not a valid evaluation commit pin",
+                    field_errors={"evaluation_code_commit": f"invalid {key}"},
+                )
+            head_l = head.lower()
+            pin_l = pinned.lower()
+            if not (head_l == pin_l or head_l.startswith(pin_l) or pin_l.startswith(head_l)):
+                raise GateEvaluationError(
+                    f"{key}={pinned[:12]}… does not match HEAD={head[:12]}… "
+                    "(fail closed; env pin cannot bypass dirty/tree identity)",
+                    field_errors={"evaluation_code_commit": "env pin mismatch"},
+                )
+            return head
+        return head
+
     for key in ("RESEARCH_EVALUATION_GIT_SHA", "RAILWAY_GIT_COMMIT_SHA"):
         pinned = (os.environ.get(key) or "").strip()
-        if pinned:
-            return pinned
-    return resolve_git_commit(repo_root, allow_dirty=False)
+        if not pinned:
+            continue
+        if pinned.lower() == "unknown" or len(pinned) < 7:
+            raise GateEvaluationError(
+                f"{key} is not a valid evaluation commit pin for a .git-less image",
+                field_errors={"evaluation_code_commit": f"invalid {key}"},
+            )
+        return pinned
+    raise GateEvaluationError(
+        "evaluation_code_commit required: no .git at repo_root and neither "
+        "RESEARCH_EVALUATION_GIT_SHA nor RAILWAY_GIT_COMMIT_SHA is set",
+        field_errors={"evaluation_code_commit": "missing deploy pin"},
+    )
 
 
 def _child_net_pnl_from_verified_run(
@@ -609,30 +654,45 @@ class GateEvaluator:
         return entry, manifest, metrics
 
     def _verify_robustness_job_completed(self, robustness_id: str) -> None:
-        """Fail closed unless the #247 job is ``completed`` (when a job exists).
+        """Fail closed unless a completed job with ``manifest_content_hash`` exists.
 
-        Synthetic fixture manifests without a job file are accepted only when
-        the manifest summary itself reports a successful completion
-        (``n_failed == 0``); incomplete children remain fail-closed via
-        :meth:`_verify_robustness_children`.
+        Unregistered ``manifest.json`` + sidecar pairs are never trusted on the
+        production evaluate path (Issue #248 trust follow-up). Fixture tests must
+        seal a completed :class:`~research.robustness_jobs.RobustnessJob`.
         """
         job = RobustnessJobStore(self.root).get(robustness_id)
         if job is None:
-            return
+            raise GateEvaluationError(
+                f"robustness job {robustness_id} is not registered "
+                "(completed job with sealed manifest required)",
+                field_errors={"robustness_run_ids": "job missing"},
+            )
         if job.status != "completed":
             raise GateEvaluationError(
                 f"robustness job {robustness_id} is not completed "
                 f"(status={job.status})",
                 field_errors={"robustness_run_ids": f"status={job.status}"},
             )
+        if not (job.manifest_content_hash or "").strip():
+            raise GateEvaluationError(
+                f"robustness job {robustness_id} has no manifest_content_hash seal",
+                field_errors={"robustness_run_ids": "manifest_content_hash missing"},
+            )
 
     def _verify_robustness_manifest_seal(self, robustness_id: str) -> str:
-        """Fail closed unless the sealed manifest trust anchor still matches."""
+        """Fail closed unless the job-sealed manifest trust anchor still matches."""
         job = RobustnessJobStore(self.root).get(robustness_id)
-        expected_hash = job.manifest_content_hash if job is not None else None
+        if job is None or not (job.manifest_content_hash or "").strip():
+            raise GateEvaluationError(
+                f"robustness {robustness_id} has no completed job seal "
+                "(manifest_content_hash required; sidecar-only is not enough)",
+                field_errors={"robustness_run_ids": "job seal missing"},
+            )
         try:
             return verify_robustness_manifest_seal(
-                self.root, robustness_id, expected_hash=expected_hash
+                self.root,
+                robustness_id,
+                expected_hash=job.manifest_content_hash,
             )
         except (ValueError, FileNotFoundError) as exc:
             raise GateEvaluationError(
@@ -786,7 +846,6 @@ class GateEvaluator:
                 "(cross-run evidence rejected)",
                 field_errors={"robustness_run_ids": "base_run_id mismatch"},
             )
-        self._verify_robustness_job_completed(robustness_id)
         self._verify_robustness_dataset_binding(
             raw, robustness_id=robustness_id, base_manifest=base_manifest
         )
@@ -827,8 +886,9 @@ class GateEvaluator:
                     f"robustness manifest not found: {robustness_id}",
                     field_errors={"robustness_run_ids": f"missing: {robustness_id}"},
                 )
-            # Seal first — never trust measurements from an unsealed / tampered
-            # post-completion manifest.
+            # Completed job seal first — never trust sidecar-only fixtures on
+            # the production evaluate path.
+            self._verify_robustness_job_completed(robustness_id)
             digest = self._verify_robustness_manifest_seal(robustness_id)
             checksums[f"robustness/{robustness_id}/manifest.json"] = digest
             raw = json.loads(path.read_text(encoding="utf-8"))

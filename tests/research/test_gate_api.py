@@ -85,6 +85,8 @@ def gate_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestCl
     monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
     monkeypatch.setenv("RESEARCH_ALLOW_DIRTY_GIT", "1")
     monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "b" * 40)
+    eval_image_root = tmp_path / ".evaluation_image_root"
+    eval_image_root.mkdir()
 
     def _read() -> ResearchReadService:
         return ResearchReadService(tmp_path)
@@ -96,7 +98,8 @@ def gate_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestCl
         return RobustnessOrchestrationService(tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True)
 
     def _gate() -> GateService:
-        return GateService(tmp_path, repo_root=REPO_ROOT)
+        # Deploy-image path: no .git under eval root; RESEARCH_EVALUATION_GIT_SHA pin.
+        return GateService(tmp_path, repo_root=eval_image_root)
 
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
