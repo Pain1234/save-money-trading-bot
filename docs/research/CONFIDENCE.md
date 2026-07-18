@@ -38,15 +38,40 @@ Extend by adding a **new** version; never mutate `1.0` in place.
 | Dimension | Required | Primary input |
 |-----------|----------|---------------|
 | `trade_sample` | yes | `closed_trades` |
-| `time_coverage` | no | `equity_periods` (`len(equity)-1`) |
+| `time_coverage` | no* | `equity_periods` (`len(equity)-1`) — time-length **proxy** only |
 | `oos_folds` | no | complete walk-forward folds (+ optional pass ratio cap) |
 | `parameter_plateau` | no | complete parameter neighbors (+ optional pass ratio cap) |
-| `bootstrap_uncertainty` | no | bootstrap series length vs `block_length` (serial-dependence proxy) |
+| `bootstrap_uncertainty` | no* | `floor(series_length / block_length)` effective block count |
 | `regime_coverage` | no | trade→regime coverage ratio |
 
-**Aggregation:** `min_present` — worst present (non-`NOT_AVAILABLE`) label.
-Any **required** dimension `NOT_AVAILABLE` → overall `NOT_AVAILABLE`.
-`gate_integrity_status=INVALID` → overall `NOT_AVAILABLE`.
+\*Required for overall **`HIGH`**: `trade_sample`, `time_coverage`, and
+`bootstrap_uncertainty` must not be `NOT_AVAILABLE`. Additionally,
+`multiple_testing` limitation must be `DOCUMENTED`. Otherwise a would-be
+`HIGH` is capped to `MEDIUM` (missing core evidence must not omit into HIGH).
+
+**Bootstrap:** `bootstrap_assessed=True` without both `bootstrap_series_length`
+and `bootstrap_block_length >= 1` → dimension `NOT_AVAILABLE`. Measured value is
+the effective block count, not raw series length.
+
+**Aggregation:** `min_present_with_high_cap` — worst present (non-`NOT_AVAILABLE`)
+label, then apply HIGH coverage cap. Any **required** dimension `NOT_AVAILABLE`
+→ overall `NOT_AVAILABLE`. `gate_integrity_status=INVALID` → overall
+`NOT_AVAILABLE`.
+
+**Identity:** `confidence_id` binds run/dataset/policy pins **and**
+`evidence_content_hash` over the canonical evaluated inputs (different raw
+evidence → different id).
+
+## Deferred to follow-up (#345)
+
+Explicitly out of #288 implementation (still scorecard Layer-3 roadmap):
+
+- Symbol / asset coverage dimension
+- Concentration warnings (trade/period/symbol)
+- Effective sample size with overlap / serial-dependence correction beyond
+  block-count proxy
+- True independent time-segment counting (beyond equity length proxy)
+- PSR / DSR / PBO / MTRL
 
 ## Limitations (always visible)
 

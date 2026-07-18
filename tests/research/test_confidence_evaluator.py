@@ -19,8 +19,14 @@ from research.confidence import (
 )
 from research.confidence.artifacts import ConfidenceArtifactError
 
+# Review-pinned literal (must match CONFIDENCE_POLICY_1_0_CONTENT_HASH exactly).
+_PINNED_POLICY_1_0_HASH = (
+    "22748e176aa64ed36e01ac1911ac73b2314cb9ad22612b2206f80faec190d706"
+)
+
 
 def _base_inputs(**overrides: object) -> ConfidenceEvidenceInputs:
+    # series=400, block=5 → effective_block_count=80 → bootstrap HIGH under policy 1.0
     payload: dict[str, object] = {
         "run_id": "run_x",
         "experiment_id": "exp_x",
@@ -33,7 +39,7 @@ def _base_inputs(**overrides: object) -> ConfidenceEvidenceInputs:
         "walk_forward_fold_pass_ratio": Decimal("0.8"),
         "parameter_neighbors_complete": 8,
         "parameter_neighbor_pass_ratio": Decimal("0.75"),
-        "bootstrap_series_length": 80,
+        "bootstrap_series_length": 400,
         "bootstrap_block_length": 5,
         "bootstrap_assessed": True,
         "regime_coverage_ratio": Decimal("0.97"),
@@ -46,12 +52,13 @@ def _base_inputs(**overrides: object) -> ConfidenceEvidenceInputs:
     return ConfidenceEvidenceInputs(**payload)  # type: ignore[arg-type]
 
 
-def test_policy_1_0_content_hash_is_pinned() -> None:
+def test_policy_1_0_content_hash_is_pinned_literal() -> None:
     policy = get_confidence_policy("1.0")
     digest = compute_confidence_policy_content_hash(policy)
-    assert digest == CONFIDENCE_POLICY_1_0_CONTENT_HASH
+    assert digest == _PINNED_POLICY_1_0_HASH
+    assert CONFIDENCE_POLICY_1_0_CONTENT_HASH == _PINNED_POLICY_1_0_HASH
     assert len(digest) == 64
-    verify_confidence_policy_content_hash("1.0", CONFIDENCE_POLICY_1_0_CONTENT_HASH)
+    verify_confidence_policy_content_hash("1.0", _PINNED_POLICY_1_0_HASH)
 
 
 def test_policy_content_hash_rejects_stale() -> None:
@@ -67,6 +74,8 @@ def test_high_n_synthetic_case_is_high() -> None:
     by_name = {d.name: d for d in result.dimensions}
     assert by_name["trade_sample"].label == "HIGH"
     assert by_name["trade_sample"].measured_value == "120"
+    assert by_name["bootstrap_uncertainty"].measured_value == "80"
+    assert by_name["bootstrap_uncertainty"].raw_inputs["effective_block_count"] == 80
     assert any(lim.code == "serial_dependence" for lim in result.limitations)
     assert any(
         lim.code == "multiple_testing" and lim.status == "DOCUMENTED"
@@ -100,24 +109,57 @@ def test_invalid_integrity_blocks_confidence_label() -> None:
     assert "INVALID" in result.overall_reason
 
 
-def test_missing_bootstrap_marks_limitation_and_dimension_na() -> None:
+def test_missing_bootstrap_caps_high_to_medium() -> None:
     result = evaluate_confidence(
         _base_inputs(
             bootstrap_assessed=False,
             bootstrap_series_length=None,
             bootstrap_block_length=None,
-            multiple_testing_metadata=None,
+            multiple_testing_metadata={"variants_tested": 3},
         )
     )
     by_name = {d.name: d for d in result.dimensions}
     assert by_name["bootstrap_uncertainty"].label == "NOT_AVAILABLE"
+    assert by_name["trade_sample"].label == "HIGH"
+    assert result.overall_label == "MEDIUM"
+    assert "capped" in result.overall_reason
     serial = next(lim for lim in result.limitations if lim.code == "serial_dependence")
     assert serial.status == "LIMITATION"
-    mt = next(lim for lim in result.limitations if lim.code == "multiple_testing")
-    assert mt.status == "LIMITATION"
-    assert mt.raw.get("variants_tested") is None
-    # Optional NA does not force overall NOT_AVAILABLE when required dims present.
-    assert result.overall_label == "HIGH"
+
+
+def test_missing_multiple_testing_docs_caps_high() -> None:
+    result = evaluate_confidence(_base_inputs(multiple_testing_metadata=None))
+    assert result.overall_label == "MEDIUM"
+    assert "multiple_testing" in result.overall_reason
+
+
+def test_bootstrap_uses_effective_block_count_not_raw_series() -> None:
+    # 80/5 → 16 effective blocks → LOW (2<=16<20), not HIGH from raw 80.
+    result = evaluate_confidence(
+        _base_inputs(bootstrap_series_length=80, bootstrap_block_length=5)
+    )
+    boot = next(d for d in result.dimensions if d.name == "bootstrap_uncertainty")
+    assert boot.measured_value == "16"
+    assert boot.label == "LOW"
+    assert boot.raw_inputs["effective_block_count"] == 16
+
+
+def test_bootstrap_assessed_without_block_length_is_not_available() -> None:
+    result = evaluate_confidence(
+        _base_inputs(bootstrap_assessed=True, bootstrap_block_length=None)
+    )
+    boot = next(d for d in result.dimensions if d.name == "bootstrap_uncertainty")
+    assert boot.label == "NOT_AVAILABLE"
+    assert result.overall_label == "MEDIUM"
+
+
+def test_confidence_id_changes_when_inputs_change() -> None:
+    high = evaluate_confidence(_base_inputs(closed_trades=120))
+    low = evaluate_confidence(_base_inputs(closed_trades=3))
+    assert high.confidence_id != low.confidence_id
+    assert high.inputs_summary["evidence_content_hash"] != low.inputs_summary[
+        "evidence_content_hash"
+    ]
 
 
 def test_raw_inputs_visible_on_dimensions() -> None:

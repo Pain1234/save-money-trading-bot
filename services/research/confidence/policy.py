@@ -79,13 +79,24 @@ class ConfidencePolicy:
     version: str
     description: str
     dimensions: tuple[ConfidenceDimensionFloors, ...]
-    aggregation: Literal["min_present"] = "min_present"
+    # Dimensions that must be present (not NOT_AVAILABLE) before overall HIGH.
+    high_requires_dimensions: tuple[str, ...]
+    # Limitation codes that must be status DOCUMENTED before overall HIGH.
+    high_requires_limitations_documented: tuple[str, ...]
+    aggregation: Literal["min_present_with_high_cap"] = "min_present_with_high_cap"
+    # Cap applied when high_requires_* are unmet (never silent HIGH).
+    high_cap_label: ConfidenceLabel = "MEDIUM"
 
     def to_dict(self) -> dict[str, object]:
         return {
             "aggregation": self.aggregation,
             "description": self.description,
             "dimensions": [d.to_dict() for d in self.dimensions],
+            "high_cap_label": self.high_cap_label,
+            "high_requires_dimensions": list(self.high_requires_dimensions),
+            "high_requires_limitations_documented": list(
+                self.high_requires_limitations_documented
+            ),
             "version": self.version,
         }
 
@@ -136,7 +147,10 @@ _POLICY_1_0 = ConfidencePolicy(
     description=(
         "Generic P4.9 evidence-confidence floors (#288). Public example defaults "
         "aligned with gate policy sample floor (min_closed_trades=10). Not private "
-        "Strategy V1 / P5 thresholds. PSR/DSR/PBO/MTRL deferred to a follow-up."
+        "Strategy V1 / P5 thresholds. HIGH requires trade_sample, time_coverage, "
+        "bootstrap_uncertainty present plus documented multiple_testing metadata. "
+        "bootstrap_uncertainty measures floor(series_length/block_length). "
+        "PSR/DSR/PBO/MTRL and symbol/concentration/effective-n deferred (#345)."
     ),
     dimensions=(
         ConfidenceDimensionFloors(
@@ -149,7 +163,10 @@ _POLICY_1_0 = ConfidencePolicy(
         ),
         ConfidenceDimensionFloors(
             name="time_coverage",
-            description="Equity period count (len(equity)-1) as independent time segments proxy.",
+            description=(
+                "Equity period count (len(equity)-1) as a time-length proxy "
+                "(not a claim of independent segments; see #345)."
+            ),
             low_floor="10",
             medium_floor="60",
             high_floor="252",
@@ -174,8 +191,8 @@ _POLICY_1_0 = ConfidencePolicy(
         ConfidenceDimensionFloors(
             name="bootstrap_uncertainty",
             description=(
-                "Usable bootstrap series length relative to block_length "
-                "(proxy for serial-dependence-aware resampling)."
+                "Effective block count floor(series_length / block_length) from "
+                "block bootstrap (serial-dependence-aware proxy)."
             ),
             low_floor="2",
             medium_floor="20",
@@ -191,13 +208,22 @@ _POLICY_1_0 = ConfidencePolicy(
             required=False,
         ),
     ),
+    high_requires_dimensions=(
+        "trade_sample",
+        "time_coverage",
+        "bootstrap_uncertainty",
+    ),
+    high_requires_limitations_documented=("multiple_testing",),
+    high_cap_label="MEDIUM",
 )
 
 _POLICY_REGISTRY: dict[str, ConfidencePolicy] = {"1.0": _POLICY_1_0}
 
-# Frozen content hash of confidence policy 1.0 at first publish (#288).
+# Frozen content hash of confidence policy 1.0 (review-pinned literal).
+# Recompute via compute_confidence_policy_content_hash(get_confidence_policy("1.0"))
+# if policy 1.0 content changes before merge; never silently edit after publish.
 CONFIDENCE_POLICY_1_0_CONTENT_HASH = (
-    "3fe99d5cb785ba55d0209e93ed4262f10066bea957db53cacdbce7869dc7113f"
+    "22748e176aa64ed36e01ac1911ac73b2314cb9ad22612b2206f80faec190d706"
 )
 
 

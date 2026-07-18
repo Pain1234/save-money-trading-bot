@@ -18,6 +18,7 @@ from research.confidence.evaluator import (
     ConfidenceResult,
     DimensionResult,
     compute_confidence_id,
+    compute_evidence_content_hash,
     evaluate_confidence,
 )
 from research.confidence.inputs import (
@@ -54,6 +55,7 @@ __all__ = [
     "build_limitations",
     "compute_confidence_id",
     "compute_confidence_policy_content_hash",
+    "compute_evidence_content_hash",
     "evaluate_confidence",
     "get_confidence_policy",
     "list_confidence_policy_versions",

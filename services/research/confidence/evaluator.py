@@ -87,6 +87,14 @@ class ConfidenceResult:
         }
 
 
+def compute_evidence_content_hash(inputs_summary: dict[str, Any]) -> str:
+    """SHA-256 over canonical evaluated evidence inputs (binds confidence_id)."""
+    text = json.dumps(
+        inputs_summary, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def compute_confidence_id(
     *,
     run_id: str,
@@ -94,12 +102,14 @@ def compute_confidence_id(
     dataset_content_hash: str,
     policy_version: str,
     policy_content_hash: str,
+    evidence_content_hash: str,
     robustness_run_ids: tuple[str, ...] = (),
     gate_run_id: str | None = None,
 ) -> str:
     payload = {
         "dataset_content_hash": dataset_content_hash,
         "dataset_id": dataset_id,
+        "evidence_content_hash": evidence_content_hash,
         "gate_run_id": gate_run_id,
         "policy_content_hash": policy_content_hash,
         "policy_version": policy_version,
@@ -292,9 +302,9 @@ def _evaluate_dimensions(
             )
         )
 
-    # bootstrap_uncertainty (optional; serial-dependence proxy)
+    # bootstrap_uncertainty — effective block count = floor(series/block)
     boot = floors["bootstrap_uncertainty"]
-    if not inputs.bootstrap_assessed or inputs.bootstrap_series_length is None:
+    if not inputs.bootstrap_assessed:
         results.append(
             _dim(
                 boot,
@@ -302,38 +312,87 @@ def _evaluate_dimensions(
                 measured=None,
                 reason="bootstrap serial-dependence assessment not available",
                 raw={
-                    "bootstrap_assessed": inputs.bootstrap_assessed,
+                    "bootstrap_assessed": False,
                     "bootstrap_block_length": inputs.bootstrap_block_length,
                     "bootstrap_series_length": inputs.bootstrap_series_length,
+                    "effective_block_count": None,
+                },
+            )
+        )
+    elif inputs.bootstrap_series_length is None or inputs.bootstrap_block_length is None:
+        results.append(
+            _dim(
+                boot,
+                label="NOT_AVAILABLE",
+                measured=None,
+                reason=(
+                    "bootstrap_assessed=True but series_length or block_length "
+                    "missing (fail closed)"
+                ),
+                raw={
+                    "bootstrap_assessed": True,
+                    "bootstrap_block_length": inputs.bootstrap_block_length,
+                    "bootstrap_series_length": inputs.bootstrap_series_length,
+                    "effective_block_count": None,
                 },
             )
         )
     else:
-        # Effective length after requiring block_length < series (else INSUFFICIENT).
-        series = inputs.bootstrap_series_length
-        block = inputs.bootstrap_block_length
-        if block is not None and block >= series:
-            label = "INSUFFICIENT"
-            reason = (
-                f"bootstrap block_length={block} >= series_length={series} "
-                "(cannot assess serial dependence)"
+        series = int(inputs.bootstrap_series_length)
+        block = int(inputs.bootstrap_block_length)
+        if block < 1:
+            results.append(
+                _dim(
+                    boot,
+                    label="NOT_AVAILABLE",
+                    measured=None,
+                    reason=f"bootstrap block_length={block} is invalid (must be >= 1)",
+                    raw={
+                        "bootstrap_assessed": True,
+                        "bootstrap_block_length": block,
+                        "bootstrap_series_length": series,
+                        "effective_block_count": None,
+                    },
+                )
+            )
+        elif block >= series:
+            results.append(
+                _dim(
+                    boot,
+                    label="INSUFFICIENT",
+                    measured=0,
+                    reason=(
+                        f"bootstrap block_length={block} >= series_length={series} "
+                        "(cannot form blocks)"
+                    ),
+                    raw={
+                        "bootstrap_assessed": True,
+                        "bootstrap_block_length": block,
+                        "bootstrap_series_length": series,
+                        "effective_block_count": 0,
+                    },
+                )
             )
         else:
-            label = label_from_count(series, boot)
-            reason = f"bootstrap_series_length={series} → {label}"
-        results.append(
-            _dim(
-                boot,
-                label=label,
-                measured=series,
-                reason=reason,
-                raw={
-                    "bootstrap_assessed": True,
-                    "bootstrap_block_length": block,
-                    "bootstrap_series_length": series,
-                },
+            effective_blocks = series // block
+            label = label_from_count(effective_blocks, boot)
+            results.append(
+                _dim(
+                    boot,
+                    label=label,
+                    measured=effective_blocks,
+                    reason=(
+                        f"effective_block_count=floor({series}/{block})="
+                        f"{effective_blocks} → {label}"
+                    ),
+                    raw={
+                        "bootstrap_assessed": True,
+                        "bootstrap_block_length": block,
+                        "bootstrap_series_length": series,
+                        "effective_block_count": effective_blocks,
+                    },
+                )
             )
-        )
 
     # regime_coverage (optional)
     rc = floors["regime_coverage"]
@@ -379,6 +438,8 @@ def _aggregate(
     dimensions: tuple[DimensionResult, ...],
     *,
     integrity_status: str | None,
+    policy: ConfidencePolicy,
+    limitations: tuple[ConfidenceLimitation, ...],
 ) -> tuple[ConfidenceLabel, str]:
     if integrity_status == "INVALID":
         return (
@@ -401,38 +462,39 @@ def _aggregate(
     overall: ConfidenceLabel = present[0].label
     for dim in present[1:]:
         overall = worse_label(overall, dim.label)
-    return (
-        overall,
-        f"min_present over {[d.name for d in present]} → {overall}",
-    )
+    reason = f"min_present over {[d.name for d in present]} → {overall}"
+
+    by_name = {d.name: d for d in dimensions}
+    missing_high_core = [
+        name
+        for name in policy.high_requires_dimensions
+        if name not in by_name or by_name[name].label == "NOT_AVAILABLE"
+    ]
+    lim_by_code = {lim.code: lim for lim in limitations}
+    missing_documented = [
+        code
+        for code in policy.high_requires_limitations_documented
+        if lim_by_code.get(code) is None or lim_by_code[code].status != "DOCUMENTED"
+    ]
+
+    if overall == "HIGH" and (missing_high_core or missing_documented):
+        cap = policy.high_cap_label
+        parts: list[str] = []
+        if missing_high_core:
+            parts.append(f"missing high-requires dims={missing_high_core}")
+        if missing_documented:
+            parts.append(f"undocumented limitations={missing_documented}")
+        reason = (
+            f"{reason}; capped {overall}→{cap} ({'; '.join(parts)}; "
+            "missing core evidence must not omit into HIGH)"
+        )
+        overall = cap
+
+    return overall, reason
 
 
-def evaluate_confidence(
-    inputs: ConfidenceEvidenceInputs,
-    *,
-    policy_version: str = "1.0",
-) -> ConfidenceResult:
-    try:
-        policy = get_confidence_policy(policy_version)
-    except ConfidencePolicyError as exc:
-        raise ConfidenceEvaluationError(str(exc)) from exc
-
-    policy_hash = compute_confidence_policy_content_hash(policy)
-    dimensions = _evaluate_dimensions(inputs, policy)
-    overall_label, overall_reason = _aggregate(
-        dimensions, integrity_status=inputs.gate_integrity_status
-    )
-    limitations = build_limitations(inputs)
-    confidence_id = compute_confidence_id(
-        run_id=inputs.run_id,
-        dataset_id=inputs.dataset_id,
-        dataset_content_hash=inputs.dataset_content_hash,
-        policy_version=policy.version,
-        policy_content_hash=policy_hash,
-        robustness_run_ids=inputs.robustness_run_ids,
-        gate_run_id=inputs.gate_run_id,
-    )
-    inputs_summary = {
+def _inputs_summary(inputs: ConfidenceEvidenceInputs) -> dict[str, Any]:
+    return {
         "bootstrap_assessed": inputs.bootstrap_assessed,
         "bootstrap_block_length": inputs.bootstrap_block_length,
         "bootstrap_series_length": inputs.bootstrap_series_length,
@@ -443,6 +505,11 @@ def evaluate_confidence(
         "experiment_id": inputs.experiment_id,
         "gate_integrity_status": inputs.gate_integrity_status,
         "gate_run_id": inputs.gate_run_id,
+        "multiple_testing_metadata": (
+            None
+            if inputs.multiple_testing_metadata is None
+            else dict(sorted(inputs.multiple_testing_metadata.items()))
+        ),
         "parameter_neighbor_pass_ratio": (
             None
             if inputs.parameter_neighbor_pass_ratio is None
@@ -465,6 +532,41 @@ def evaluate_confidence(
         ),
         "walk_forward_folds_complete": inputs.walk_forward_folds_complete,
     }
+
+
+def evaluate_confidence(
+    inputs: ConfidenceEvidenceInputs,
+    *,
+    policy_version: str = "1.0",
+) -> ConfidenceResult:
+    try:
+        policy = get_confidence_policy(policy_version)
+    except ConfidencePolicyError as exc:
+        raise ConfidenceEvaluationError(str(exc)) from exc
+
+    policy_hash = compute_confidence_policy_content_hash(policy)
+    dimensions = _evaluate_dimensions(inputs, policy)
+    limitations = build_limitations(inputs)
+    overall_label, overall_reason = _aggregate(
+        dimensions,
+        integrity_status=inputs.gate_integrity_status,
+        policy=policy,
+        limitations=limitations,
+    )
+    inputs_summary = _inputs_summary(inputs)
+    evidence_hash = compute_evidence_content_hash(inputs_summary)
+    confidence_id = compute_confidence_id(
+        run_id=inputs.run_id,
+        dataset_id=inputs.dataset_id,
+        dataset_content_hash=inputs.dataset_content_hash,
+        policy_version=policy.version,
+        policy_content_hash=policy_hash,
+        evidence_content_hash=evidence_hash,
+        robustness_run_ids=inputs.robustness_run_ids,
+        gate_run_id=inputs.gate_run_id,
+    )
+    # Expose evidence hash in the artifact inputs for audit.
+    inputs_summary = {**inputs_summary, "evidence_content_hash": evidence_hash}
     return ConfidenceResult(
         confidence_id=confidence_id,
         schema_version=CONFIDENCE_PROFILE_SCHEMA_VERSION,
