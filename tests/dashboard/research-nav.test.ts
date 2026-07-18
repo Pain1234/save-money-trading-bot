@@ -20,6 +20,7 @@ describe("research navigation", () => {
   it("exposes research section nav", () => {
     expect(RESEARCH_NAV.map((n) => n.href)).toEqual([
       "/dashboard/research",
+      "/dashboard/research/strategies",
       "/dashboard/research/experiments",
       "/dashboard/research/experiments/new",
     ]);

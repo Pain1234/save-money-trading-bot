@@ -107,6 +107,12 @@ export default async function ResearchOverviewPage() {
               Neues Experiment
             </Link>
             <Link
+              href="/dashboard/research/strategies"
+              className="text-sm text-mint hover:underline"
+            >
+              Strategien →
+            </Link>
+            <Link
               href="/dashboard/research/experiments"
               className="text-sm text-mint hover:underline"
             >

@@ -7,6 +7,7 @@ export const WORKSPACE_NAV: NavItem[] = [
 
 export const RESEARCH_NAV: NavItem[] = [
   { label: "Overview", href: "/dashboard/research" },
+  { label: "Strategien", href: "/dashboard/research/strategies" },
   { label: "Experiments", href: "/dashboard/research/experiments" },
   { label: "Neues Experiment", href: "/dashboard/research/experiments/new" },
 ];

@@ -14,6 +14,8 @@ export interface StrategyOption {
   strategy_id: string;
   strategy_version: string;
   label: string;
+  display_name?: string;
+  description?: string;
   timeframes: string[];
   timeframe_note: string;
   symbols: string[];
@@ -28,8 +30,11 @@ export interface DatasetOption {
 
 export interface StrategySchemaPayload {
   strategy_id: string;
+  display_name?: string;
+  description?: string;
   strategy_version: string;
   parameter_defaults: Record<string, unknown>;
+  parameter_descriptions?: Record<string, string>;
   parameters_schema: {
     properties?: Record<string, { type?: string | string[]; default?: unknown }>;
   };
@@ -41,6 +46,8 @@ interface StrategyLabFormProps {
   strategies: StrategyOption[];
   datasets: DatasetOption[];
   initialSchema: StrategySchemaPayload | null;
+  initialStrategyId?: string;
+  baselineMode?: boolean;
 }
 
 type Step = "form" | "summary";
@@ -49,15 +56,25 @@ export function StrategyLabForm({
   strategies,
   datasets,
   initialSchema,
+  initialStrategyId,
+  baselineMode = false,
 }: StrategyLabFormProps) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("form");
-  const [strategyId, setStrategyId] = useState(
-    strategies[0]?.strategy_id ?? "trend_v1",
-  );
+  const defaultStrategy =
+    strategies.find((s) => s.strategy_id === initialStrategyId)?.strategy_id ??
+    strategies[0]?.strategy_id ??
+    "trend_v1";
+  const [strategyId, setStrategyId] = useState(defaultStrategy);
   const [schema, setSchema] = useState<StrategySchemaPayload | null>(initialSchema);
-  const [name, setName] = useState("");
-  const [notes, setNotes] = useState("");
+  const [name, setName] = useState(
+    baselineMode ? "Trend Strategy V1 Baseline" : "",
+  );
+  const [notes, setNotes] = useState(
+    baselineMode
+      ? "Baseline mit eingefrorenen Standardparametern. Start nur nach Bestätigung."
+      : "",
+  );
   const [symbols, setSymbols] = useState<string[]>(
     datasets[0]?.symbols?.length ? [datasets[0].symbols[0]] : ["BTC"],
   );
@@ -248,8 +265,15 @@ export function StrategyLabForm({
         <div>
           <h1 className="text-2xl font-semibold">Neues Experiment</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Strategy Lab — konfiguriert denselben ExperimentSpec / Runner wie die CLI.
+            Strategy Lab — konfiguriert denselben ExperimentSpec / Runner wie die
+            CLI.
+            {baselineMode
+              ? " Baseline-Modus: eingefrorene Standardparameter vorausgefüllt; Start erst nach Bestätigung."
+              : ""}
           </p>
+          {strategy?.description ? (
+            <p className="mt-2 text-sm text-text-muted">{strategy.description}</p>
+          ) : null}
         </div>
       </div>
 
@@ -274,7 +298,7 @@ export function StrategyLabForm({
             >
               {strategies.map((s) => (
                 <option key={s.strategy_id} value={s.strategy_id}>
-                  {s.label} ({s.strategy_version})
+                  {s.display_name ?? s.label} ({s.strategy_version})
                 </option>
               ))}
             </select>
@@ -457,6 +481,11 @@ export function StrategyLabForm({
                       setParameters((prev) => ({ ...prev, [key]: e.target.value }))
                     }
                   />
+                  {schema?.parameter_descriptions?.[key] ? (
+                    <span className="mt-1 block text-xs text-text-secondary">
+                      {schema.parameter_descriptions[key]}
+                    </span>
+                  ) : null}
                   {fieldErrors[`parameters.${key}`] && (
                     <span className="text-xs text-red-300">
                       {fieldErrors[`parameters.${key}`]}
@@ -482,8 +511,11 @@ export function StrategyLabForm({
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-text-muted">Strategie</dt>
-              <dd className="font-mono">
-                {strategyId} @ {strategy?.strategy_version}
+              <dd>
+                {strategy?.display_name ?? strategy?.label ?? strategyId}{" "}
+                <span className="font-mono text-xs text-text-muted">
+                  ({strategyId} @ {strategy?.strategy_version})
+                </span>
               </dd>
             </div>
             <div>

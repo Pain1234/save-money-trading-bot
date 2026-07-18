@@ -32,6 +32,7 @@ function sample(
     run_id: "run-1",
     status: "complete",
     strategy_version: "trend-v1.0.0",
+    strategy_id: "trend_v1",
     dataset_version: "ds-1",
     cost_model_version: "1.0",
     benchmark_ref: "bh",

@@ -7,6 +7,7 @@ export interface ResearchExperimentSummary {
   run_id: string;
   status: string;
   strategy_version: string;
+  strategy_id?: string | null;
   dataset_version: string;
   cost_model_version: string;
   benchmark_ref: string;

@@ -12,6 +12,7 @@ from research.write_service import (
     ResearchWriteService,
     list_strategies,
     load_dataset_catalog,
+    strategy_detail,
     strategy_schema,
 )
 
@@ -72,6 +73,7 @@ def research_experiment_detail(
                 "run_id": status.get("run_id"),
                 "status": status["status"],
                 "strategy_version": None,
+                "strategy_id": None,
                 "dataset_version": None,
                 "cost_model_version": None,
                 "benchmark_ref": None,
@@ -156,8 +158,36 @@ def research_experiment_artifacts(
 
 
 @router.get("/strategies")
-def research_strategies() -> dict[str, Any]:
-    return {"items": list_strategies()}
+def research_strategies(svc: ResearchSvc) -> dict[str, Any]:
+    experiments = svc.list_experiments()
+    items = []
+    for base in list_strategies():
+        detail = strategy_detail(
+            str(base["strategy_id"]),
+            experiments=experiments,
+        )
+        items.append(
+            {
+                **base,
+                "experiment_count": detail["experiment_count"],
+                "last_run": detail["last_run"],
+            }
+        )
+    return {"items": items}
+
+
+@router.get("/strategies/{strategy_id}")
+def research_strategy_detail(strategy_id: str, svc: ResearchSvc) -> dict[str, Any]:
+    try:
+        return strategy_detail(
+            strategy_id,
+            experiments=svc.list_experiments(),
+        )
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
 
 
 @router.get("/strategies/{strategy_id}/schema")

@@ -13,7 +13,7 @@ from typing import Any
 
 from research.artifacts import verify_checksums_against
 from research.registry import ExperimentRegistry, RegistryEntry
-from research.strategy_resolver import known_strategy_ids
+from research.strategy_resolver import catalog_strategy_ids, known_strategy_ids
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _UNAVAILABLE = "Nicht verfügbar"
@@ -49,6 +49,7 @@ class ExperimentSummary:
     run_id: str
     status: str
     strategy_version: str
+    strategy_id: str | None
     dataset_version: str
     cost_model_version: str
     benchmark_ref: str
@@ -79,6 +80,7 @@ def _empty_summary(
         run_id=entry.run_id,
         status=entry.status,
         strategy_version=entry.strategy_version,
+        strategy_id=None,
         dataset_version=entry.dataset_version,
         cost_model_version=entry.cost_model_version,
         benchmark_ref=entry.benchmark_ref,
@@ -174,6 +176,7 @@ class ResearchReadService:
         closed: int | None = None
         hit_rate: str | None = None
         pf: str | None = None
+        strategy_id: str | None = None
 
         spec = self._load_json(run_dir, "experiment.json")
         if isinstance(spec, dict):
@@ -184,6 +187,9 @@ class ResearchReadService:
             if isinstance(tr, dict):
                 tr_start = str(tr["start"]) if tr.get("start") else None
                 tr_end = str(tr["end"]) if tr.get("end") else None
+            params = spec.get("parameters") or {}
+            if isinstance(params, dict) and params.get("strategy_id") is not None:
+                strategy_id = str(params["strategy_id"])
 
         manifest = self._load_json(run_dir, "run_manifest.json")
         if isinstance(manifest, dict):
@@ -210,6 +216,7 @@ class ResearchReadService:
             run_id=entry.run_id,
             status=entry.status,
             strategy_version=entry.strategy_version,
+            strategy_id=strategy_id,
             dataset_version=entry.dataset_version,
             cost_model_version=entry.cost_model_version,
             benchmark_ref=entry.benchmark_ref,
@@ -243,7 +250,7 @@ class ResearchReadService:
                 if row.get("strategy_version")
             }
         )
-        known = sorted(known_strategy_ids())
+        known = sorted(catalog_strategy_ids())
         running = status_counts.get("running", 0) + status_counts.get("queued", 0)
         return {
             "experiment_count": len(items),
@@ -255,6 +262,7 @@ class ResearchReadService:
             "running_available": True,
             "strategy_version_count": len(strategies),
             "known_strategy_ids": known,
+            "resolvable_strategy_ids": sorted(known_strategy_ids()),
             "status_distribution": status_counts,
             "recent_experiments": recent,
             "unavailable": {
@@ -324,6 +332,7 @@ class ResearchReadService:
                         "complete" if job.status == "completed" else job.status
                     ),
                     strategy_version="",
+                    strategy_id=None,
                     dataset_version="",
                     cost_model_version="",
                     benchmark_ref="",
