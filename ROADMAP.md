@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Planned (seed issues closed; exit criteria **not** met — do not treat as complete) | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine und Research Workspace V1 | **In flight** (Lab #242/#243; catalog #265; chart #266; #245–#250 open) | No |
+| P4 | Research Engine und Research Workspace V1 | **In flight** (Lab #242/#243; catalog #265 and chart #266 delivered via PR #267/#268; #245–#250 open) | No |
 | P5 | Honest Validation of Trend Strategy V1 | **Planning** (helpers #200–#203 ≠ execution; #251–#254 open; no OOS opened) | No |
 | P6 | Paper Trading Soak | **Not started** (Epic #46; sub-issues #256–#262; clock not started) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Planning only (no new impl split until P5/P6 gates) | No |
@@ -37,7 +37,7 @@ Central project goal:
 - **P1 complete** (2026-07-14): tag `baseline-paper-v1.0.0` at `daacb627` (PR #62 merge). Post-tag doc/lock/CI improvements tracked in PR #63 (optional `baseline-paper-v1.0.1` after merge).
 - **P3 complete** (2026-07-14): versioned historical market data pipeline implemented (`services/market_data/`, migration `010_market_data_datasets`, issues #76–#84); reproducibility audit in `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md`.
 - Dashboard UI locally usable with real paper data (login, wallet, PnL, positions, fills, equity); **not** yet classified as production-accepted performant monitoring (`docs/railway-paper-trading-dashboard-v1.md` maturity levels).
-- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **reopened** until manual UI acceptance with a valid dataset catalog is documented. Catalog visibility #265 and price/trade chart #266 opened. Also open: #245 (durable jobs), #246–#249 (compare/robustness/gates/validation studies), #250 (E2E/UI-Abnahme). Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`. Governance sync: #244.
+- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **reopened** until manual UI acceptance with a valid dataset catalog is documented. Catalog visibility #265 (PR #267) and price/trade chart #266 (PR #268) **delivered and closed** — both merged on `main`. Still open: #245 (durable jobs), #246–#249 (compare/robustness/gates/validation studies), #250 (E2E/UI-Abnahme). Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`. Governance sync: #244.
 - **P5** planning/helpers (#197–#203, #181) ≠ actual Strategy V1 validation. Execution issues: #251–#254; study register #255; final OOS #204 still blocked. See `docs/research/p5/README.md`.
 - **P6** soak **not started**. Epic #46 decomposed into #256–#262; private telemetry boundary #182.
 - **P2.5** seed issues are closed but ROADMAP exit criteria remain open — status drift documented in the coverage audit; not marked complete.
@@ -420,10 +420,13 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] Experiment detail view „Kurs & Trades“ from verified `trades.json` + bound dataset candles
 - [x] Fail-closed on integrity / dataset mismatch; equity/drawdown charts unchanged
 
+#### Delivered (closed — merged on `main`)
+
+- [x] [#265](https://github.com/Pain1234/save-money-trading-bot/issues/265) P4.6 Make Trend Strategy V1 visible and selectable in Research (PR #267)
+- [x] [#266](https://github.com/Pain1234/save-money-trading-bot/issues/266) P4.7 Add price and trade chart to research experiment details (PR #268)
+
 #### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
 
-- [ ] [#265](https://github.com/Pain1234/save-money-trading-bot/issues/265) P4.6 Make Trend Strategy V1 visible and selectable in Research
-- [ ] [#266](https://github.com/Pain1234/save-money-trading-bot/issues/266) P4.7 Add price and trade chart to research experiment details
 - [ ] [#245](https://github.com/Pain1234/save-money-trading-bot/issues/245) P4.6b Durable Research Job Execution und Restart Recovery
 - [ ] [#246](https://github.com/Pain1234/save-money-trading-bot/issues/246) P4.7a Experiment- und Strategie-Vergleich
 - [ ] [#247](https://github.com/Pain1234/save-money-trading-bot/issues/247) P4.7b Robustness-Orchestrierung
@@ -436,7 +439,7 @@ Workspace that reads those artifacts without introducing a second research syste
 
 ```
 P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → engine done
-→ #240 read-only → #242 Lab/start (Abnahme offen) → #265 catalog → #266 chart
+→ #240 read-only → #242 Lab/start (Abnahme offen) → #265 catalog (delivered) → #266 chart (delivered)
 → #245 → {#246…#249} → #250 → P4 done → P5
 ```
 
@@ -449,7 +452,8 @@ Docs preparation may run in parallel from #142.
 - [x] Old results immutable; invalidation via registry and/or append-only sidecar only (`invalidated` status, reason, provenance, replacement run; original RunManifest unchanged)
 - [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
 - [x] Research Workspace usable for browsing real experiments (API + UI) without a parallel system
-- [ ] Strategy visible/selectable without prior runs; Lab usable; trade chart on completed runs; Lab UI-Abnahme + durable jobs / compare / robustness / gates / validation studies / E2E delivered or explicitly deferred with issues
+- [x] Strategy visible/selectable without prior runs (#265); trade chart on completed runs (#266)
+- [ ] Lab usable; Lab UI-Abnahme + durable jobs / compare / robustness / gates / validation studies / E2E delivered or explicitly deferred with issues
 
 ### Stop criteria
 
@@ -459,7 +463,7 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism; UI inventing metrics not produced by the engine
 
-**Current gap:** Engine + read-only workspace + Lab code on `main`. Strategy catalog (#265) and price/trade chart (#266) required before P4 workspace exit. #242 not fully accepted. #245–#250 open. **P4 not complete.** P5 economic execution remains gated on usable workspace + P5 execution chain.
+**Current gap:** Engine + read-only workspace + Lab code on `main`. Strategy catalog (#265) and price/trade chart (#266) **delivered** (PR #267/#268). #242 not fully accepted. #245–#250 still open. **P4 not complete.** P5 economic execution remains gated on usable workspace + P5 execution chain.
 
 ---
 

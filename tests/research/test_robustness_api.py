@@ -277,6 +277,93 @@ def test_create_rejects_missing_base_experiment(
     assert "base_experiment_id" in resp.json()["detail"]["fields"]
 
 
+def test_create_persists_base_run_id_on_job(
+    robustness_client: tuple[TestClient, str],
+) -> None:
+    client, base_experiment_id = robustness_client
+    status = client.get(f"/api/v1/research/experiments/{base_experiment_id}/status").json()
+    run_a = status["run_id"]
+    assert run_a
+
+    created = client.post(
+        "/api/v1/research/robustness",
+        json={
+            "base_experiment_id": base_experiment_id,
+            "test_type": "bootstrap",
+            "config": {"block_length": 2, "n_simulations": 10, "seed": 9},
+        },
+    ).json()
+    assert created["base_run_id"] == run_a
+    assert created["job"]["base_run_id"] == run_a
+
+    status_body = client.get(
+        f"/api/v1/research/robustness/{created['robustness_id']}/status"
+    ).json()
+    assert status_body["base_run_id"] == run_a
+    assert status_body["job"]["base_run_id"] == run_a
+
+
+def test_job_honors_pinned_base_run_despite_newer_complete_run(
+    robustness_client: tuple[TestClient, str],
+    tmp_path: Path,
+) -> None:
+    """Create with run A, register newer complete run B, start → still uses A."""
+    import shutil
+
+    from research.artifacts import load_checksums
+    from research.registry import ExperimentRegistry
+
+    client, base_experiment_id = robustness_client
+    status = client.get(f"/api/v1/research/experiments/{base_experiment_id}/status").json()
+    run_a = status["run_id"]
+    assert run_a
+
+    created = client.post(
+        "/api/v1/research/robustness",
+        json={
+            "base_experiment_id": base_experiment_id,
+            "test_type": "bootstrap",
+            "config": {"block_length": 2, "n_simulations": 25, "seed": 11},
+        },
+    ).json()
+    robustness_id = created["robustness_id"]
+    assert created["base_run_id"] == run_a
+    assert created["job"]["base_run_id"] == run_a
+
+    # Register a newer complete run B for the same experiment (would win
+    # ``_latest_complete_entry`` without a pin).
+    registry = ExperimentRegistry(tmp_path)
+    entry_a = registry.show(run_a, verify=True)
+    run_b = "run_newer_than_pinned_base"
+    attempt_b = "att_newer_than_pinned_base"
+    artifact_b = Path(entry_a.artifact_path).parent / run_b
+    shutil.copytree(entry_a.artifact_path, artifact_b)
+    registry.register_complete(
+        experiment_id=base_experiment_id,
+        run_id=run_b,
+        attempt_id=attempt_b,
+        strategy_version=entry_a.strategy_version,
+        dataset_version=entry_a.dataset_version,
+        cost_model_version=entry_a.cost_model_version,
+        benchmark_ref=entry_a.benchmark_ref,
+        artifact_path=artifact_b,
+        checksums=load_checksums(artifact_b),
+    )
+    latest = [
+        e
+        for e in registry.list_entries()
+        if e.experiment_id == base_experiment_id and e.status == "complete"
+    ][-1]
+    assert latest.run_id == run_b
+
+    client.post(f"/api/v1/research/robustness/{robustness_id}/start")
+    _wait_for_robustness_completion(client, robustness_id)
+
+    manifest = client.get(f"/api/v1/research/robustness/{robustness_id}").json()["manifest"]
+    assert manifest["base_run_id"] == run_a
+    assert manifest["children"][0]["run_id"] == run_a
+
+
 def test_create_is_idempotent_for_identical_config(
     robustness_client: tuple[TestClient, str],
 ) -> None:
