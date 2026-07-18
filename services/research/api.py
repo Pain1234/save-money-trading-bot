@@ -195,7 +195,9 @@ def _detail_from_job_only(
             "symbols": symbols,
             "time_range_start": tr.get("start"),
             "time_range_end": tr.get("end"),
-            "timeframe": "1D",
+            # ExperimentSpec has no timeframe field; match completed-detail
+            # unavailable semantics (do not invent "1D").
+            "timeframe": "Nicht verfügbar",
             "starting_capital": (
                 str(spec["starting_capital"]) if spec.get("starting_capital") is not None else None
             ),

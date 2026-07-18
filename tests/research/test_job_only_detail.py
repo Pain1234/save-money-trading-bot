@@ -69,7 +69,7 @@ def test_failed_job_detail_has_full_config_shape(tmp_path: Path) -> None:
         body = resp.json()
         assert body["config"]["symbols"] == ["BTC"]
         assert isinstance(body["config"]["symbols"], list)
-        assert body["config"]["timeframe"]
+        assert body["config"]["timeframe"] == "Nicht verfügbar"
         assert body["job"]["status"] == "failed"
         assert "time_range.start" in (body["job"]["error"] or "")
         assert body["integrity"]["ok"] is False
