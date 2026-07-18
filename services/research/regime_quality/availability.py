@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from decimal import Decimal
 
 NOT_AVAILABLE = "NOT_AVAILABLE"
 
@@ -11,12 +11,14 @@ def na() -> str:
     return NOT_AVAILABLE
 
 
-def is_na(value: Any) -> bool:
+def is_na(value: object) -> bool:
     return value == NOT_AVAILABLE
 
 
-def decimal_or_na(value: object | None) -> str | None:
+def decimal_or_na(value: object | None) -> str:
     """Serialize Decimal-like values as strings; None → NOT_AVAILABLE."""
     if value is None:
         return NOT_AVAILABLE
-    return format(value, "f") if hasattr(value, "__format__") else str(value)
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    return str(value)

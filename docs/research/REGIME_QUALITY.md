@@ -32,15 +32,26 @@ This module does **not**:
 
 `regime_metrics.json` (also written by the research runner):
 
-- Pins: experiment/run/dataset/classification/classifier hashes
+- Pins: experiment/run/dataset/classification/classifier hashes (caller pins
+  must match `regime_labels.json` or evaluation fails closed)
+- `evidence_status`: `OK` or `INCONCLUSIVE` when closed-trade coverage &lt; 1.0
+- `coverage` / `reconciliation`: labeled vs unlabeled/insufficient trades,
+  `source_net_pnl` vs `attributed_net_pnl` vs `excluded_net_pnl`
 - `regimes[]`: raw metrics per `trend|vol` cell + optional `quality_summary`
-- `portfolio` / `symbols` views
-- `worst_regime` / `strongest_regime`
+- Drawdown: **contiguous episode rebased** (cross-regime equity gaps excluded)
+- `portfolio` / `symbols` views (source + attributed)
+- `worst_regime` / `strongest_regime` (suppressed when `INCONCLUSIVE`)
 - `decision_binding: false`, `auto_promotion: false`
 
 Missing analytics → `NOT_AVAILABLE` (never coerced to `0`).
 Zero-activity regimes → `status: ZERO_ACTIVITY` with zero trades/PnL; summary
 score stays `NOT_AVAILABLE`.
+
+Optional `benchmark_closes` map enables `benchmark_delta`; otherwise
+`NOT_AVAILABLE`.
+
+Post-hoc `evaluate_regime_quality_from_run_dir` requires `checksums.json`
+(or a trusted registry checksum snapshot) and matching manifest/label pins.
 
 ## Score policy `1.0`
 

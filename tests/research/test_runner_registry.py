@@ -79,6 +79,11 @@ def test_run_writes_artifacts_and_registry(tmp_path: Path) -> None:
     assert "regimes" in quality
     assert "worst_regime" in quality
     assert "strongest_regime" in quality
+    assert "coverage" in quality
+    assert "reconciliation" in quality
+    assert quality["reconciliation"]["balanced"] is True
+    assert quality["evidence_status"] in ("OK", "INCONCLUSIVE")
+    assert quality["attribution_rule"]["drawdown"] == "contiguous_episode_rebased"
 
     costs = json.loads((run_dir / "costs.json").read_text(encoding="utf-8"))
     assert costs["gross_net_required"] is True

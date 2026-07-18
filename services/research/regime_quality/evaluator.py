@@ -6,10 +6,12 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from research.artifacts import load_checksums, verify_checksums_against
 from research.regime_quality.availability import NOT_AVAILABLE
 from research.regime_quality.join import (
     attribute_equity,
@@ -18,6 +20,7 @@ from research.regime_quality.join import (
 )
 from research.regime_quality.metrics import RegimeSliceRaw, compute_slice_metrics
 from research.regime_quality.scoring import (
+    compute_score_policy_content_hash,
     get_score_policy,
     summarize_slice_score,
 )
@@ -27,7 +30,7 @@ REGIME_METRICS_FILENAME = "regime_metrics.json"
 
 
 class RegimeQualityError(Exception):
-    """Missing inputs or integrity failures for regime quality evaluation."""
+    """Missing inputs, pin mismatch, or integrity failures."""
 
 
 def _canonical_json_bytes(payload: object) -> bytes:
@@ -73,12 +76,43 @@ def _load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _resolve_dataset_pins(
+    regime_labels: Mapping[str, Any],
+    *,
+    dataset_id: str | None,
+    dataset_content_hash: str | None,
+) -> tuple[str, str]:
+    """Prefer labels as source of truth; reject conflicting caller pins."""
+    label_id = str(regime_labels.get("dataset_id") or "")
+    label_hash = str(regime_labels.get("dataset_content_hash") or "")
+    if not label_id or not label_hash:
+        raise RegimeQualityError(
+            "regime_labels.json missing dataset_id / dataset_content_hash pins"
+        )
+    if dataset_id is not None and dataset_id != label_id:
+        raise RegimeQualityError(
+            f"dataset_id pin mismatch: caller={dataset_id!r} labels={label_id!r}"
+        )
+    if dataset_content_hash is not None and dataset_content_hash != label_hash:
+        raise RegimeQualityError(
+            "dataset_content_hash pin mismatch: "
+            f"caller={dataset_content_hash!r} labels={label_hash!r}"
+        )
+    return label_id, label_hash
+
+
 def _pick_extreme(
     slices: list[RegimeSliceRaw],
     *,
     mode: str,
+    evidence_status: str,
 ) -> dict[str, Any]:
-    """Worst = lowest net_pnl; strongest = highest. Skip zero-activity for rank."""
+    if evidence_status == "INCONCLUSIVE":
+        return {
+            "cell_id": NOT_AVAILABLE,
+            "net_pnl": NOT_AVAILABLE,
+            "reason": "inconclusive_coverage",
+        }
     ranked = [s for s in slices if not s.zero_activity and s.status == "OK"]
     if not ranked:
         return {
@@ -86,10 +120,11 @@ def _pick_extreme(
             "net_pnl": NOT_AVAILABLE,
             "reason": "no_active_regimes",
         }
-    if mode == "worst":
-        chosen = min(ranked, key=lambda s: s.net_pnl)
-    else:
-        chosen = max(ranked, key=lambda s: s.net_pnl)
+    chosen = (
+        min(ranked, key=lambda s: s.net_pnl)
+        if mode == "worst"
+        else max(ranked, key=lambda s: s.net_pnl)
+    )
     return {
         "cell_id": chosen.cell_id,
         "trend": chosen.trend,
@@ -110,6 +145,7 @@ def evaluate_regime_quality(
     dataset_id: str | None = None,
     dataset_content_hash: str | None = None,
     score_policy_version: str = "1.0",
+    benchmark_closes: Mapping[date, Decimal] | None = None,
 ) -> RegimeQualityResult:
     """Compute per-regime raw metrics + worst/strongest profile."""
     if regime_labels.get("point_in_time_safe") is True:
@@ -117,12 +153,28 @@ def evaluate_regime_quality(
             "refusing point_in_time_safe=true labels for ex-post quality join"
         )
 
-    day_index = index_day_labels(regime_labels)
-    trade_buckets = attribute_trades(trades, day_index)
-    equity_buckets = attribute_equity(equity, day_index)
+    ds_id, ds_hash = _resolve_dataset_pins(
+        regime_labels,
+        dataset_id=dataset_id,
+        dataset_content_hash=dataset_content_hash,
+    )
 
-    cell_ids = sorted(set(trade_buckets) | set(equity_buckets))
-    # Also include cells present only in period_labels with OK status and no activity.
+    day_index = index_day_labels(regime_labels)
+    trade_attr = attribute_trades(trades, day_index)
+    equity_attr = attribute_equity(equity, day_index)
+
+    closed_total = trade_attr.closed_total
+    closed_labeled = trade_attr.closed_labeled
+    coverage_ratio = (
+        float(closed_labeled) / float(closed_total) if closed_total else 1.0
+    )
+    evidence_status = (
+        "INCONCLUSIVE"
+        if closed_total > 0 and closed_labeled < closed_total
+        else "OK"
+    )
+
+    cell_ids = sorted(set(trade_attr.by_cell) | set(equity_attr.by_cell))
     for period in regime_labels.get("period_labels") or []:
         if not isinstance(period, dict):
             continue
@@ -138,20 +190,15 @@ def evaluate_regime_quality(
         slices.append(
             compute_slice_metrics(
                 cell_id=cell_id,
-                trades=trade_buckets.get(cell_id, []),
-                equity=equity_buckets.get(cell_id, []),
-                benchmark_delta=NOT_AVAILABLE,  # optional; filled when series supplied
+                trades=trade_attr.by_cell.get(cell_id, []),
+                equity=equity_attr.by_cell.get(cell_id, []),
+                timeline=equity_attr.timeline,
+                benchmark_closes=benchmark_closes,
             )
         )
 
     policy = get_score_policy(score_policy_version)
-    from research.regime_quality.scoring import compute_score_policy_content_hash
-
     policy_hash = compute_score_policy_content_hash(policy)
-    ds_id = dataset_id or str(regime_labels.get("dataset_id") or "")
-    ds_hash = dataset_content_hash or str(
-        regime_labels.get("dataset_content_hash") or ""
-    )
     classification_id = str(regime_labels.get("classification_id") or "")
     clf_hash = str(regime_labels.get("classifier_content_hash") or "")
     quality_id = compute_quality_id(
@@ -170,13 +217,13 @@ def evaluate_regime_quality(
         row["quality_summary"] = summarize_slice_score(sl, policy=policy)
         regime_rows.append(row)
 
-    # Portfolio view: sum active slices (raw, not score).
-    port_net = sum((s.net_pnl for s in slices), Decimal("0"))
+    attributed_net = trade_attr.attributed_net_pnl()
+    source_net = trade_attr.source_net_pnl()
+    excluded_net = trade_attr.excluded_net_pnl()
     port_gross = sum((s.gross_pnl for s in slices), Decimal("0"))
     port_fees = sum((s.fees for s in slices), Decimal("0"))
     port_slip = sum((s.slippage_costs for s in slices), Decimal("0"))
     port_fund = sum((s.funding_costs for s in slices), Decimal("0"))
-    port_trades = sum(s.closed_trades for s in slices)
 
     symbol_totals: dict[str, Decimal] = {}
     for sl in slices:
@@ -195,9 +242,27 @@ def evaluate_regime_quality(
         "classifier_content_hash": clf_hash,
         "labeling_mode": regime_labels.get("labeling_mode"),
         "point_in_time_safe": False,
+        "evidence_status": evidence_status,
         "attribution_rule": {
             "trades": "exit_time_utc_date",
             "equity": "time_utc_date",
+            "drawdown": "contiguous_episode_rebased",
+        },
+        "coverage": {
+            "closed_trades_total": closed_total,
+            "closed_trades_labeled": closed_labeled,
+            "closed_trades_unlabeled": len(trade_attr.unlabeled),
+            "closed_trades_insufficient": len(trade_attr.insufficient),
+            "open_or_missing_exit": len(trade_attr.open_or_missing_exit),
+            "coverage_ratio": coverage_ratio,
+            "equity_points_unlabeled": equity_attr.unlabeled_points,
+            "equity_points_insufficient": equity_attr.insufficient_points,
+        },
+        "reconciliation": {
+            "source_net_pnl": format(source_net, "f"),
+            "attributed_net_pnl": format(attributed_net, "f"),
+            "excluded_net_pnl": format(excluded_net, "f"),
+            "balanced": source_net == attributed_net + excluded_net,
         },
         "score_policy_version": policy.version,
         "score_policy_content_hash": policy_hash,
@@ -205,10 +270,13 @@ def evaluate_regime_quality(
         "auto_promotion": False,
         "regimes": regime_rows,
         "portfolio": {
-            "closed_trades": port_trades,
-            "net_pnl": format(port_net, "f"),
-            "gross_pnl": format(port_gross, "f"),
-            "costs": {
+            "closed_trades_attributed": closed_labeled,
+            "closed_trades_source": closed_total,
+            "net_pnl_attributed": format(attributed_net, "f"),
+            "net_pnl_source": format(source_net, "f"),
+            "net_pnl_excluded": format(excluded_net, "f"),
+            "gross_pnl_attributed": format(port_gross, "f"),
+            "costs_attributed": {
                 "fees": format(port_fees, "f"),
                 "slippage_costs": format(port_slip, "f"),
                 "funding_costs": format(port_fund, "f"),
@@ -217,8 +285,12 @@ def evaluate_regime_quality(
         "symbols": {
             sym: format(pnl, "f") for sym, pnl in sorted(symbol_totals.items())
         },
-        "worst_regime": _pick_extreme(slices, mode="worst"),
-        "strongest_regime": _pick_extreme(slices, mode="strongest"),
+        "worst_regime": _pick_extreme(
+            slices, mode="worst", evidence_status=evidence_status
+        ),
+        "strongest_regime": _pick_extreme(
+            slices, mode="strongest", evidence_status=evidence_status
+        ),
     }
     return RegimeQualityResult(
         artifact=artifact, quality_id=quality_id, slices=tuple(slices)
@@ -229,8 +301,15 @@ def evaluate_regime_quality_from_run_dir(
     run_dir: Path,
     *,
     score_policy_version: str = "1.0",
+    trusted_checksums: Mapping[str, str] | None = None,
+    benchmark_closes: Mapping[date, Decimal] | None = None,
 ) -> RegimeQualityResult:
-    """Load sealed run artifacts and evaluate regime quality."""
+    """Load sealed run artifacts, verify checksums, evaluate regime quality.
+
+    Pin consistency: manifest and ``regime_labels.json`` dataset pins must match.
+    Checksums: ``trusted_checksums`` (registry snapshot) if provided, else
+    on-disk ``checksums.json`` (fail-closed if missing).
+    """
     labels_path = run_dir / "regime_labels.json"
     trades_path = run_dir / "trades.json"
     equity_path = run_dir / "equity.json"
@@ -238,6 +317,22 @@ def evaluate_regime_quality_from_run_dir(
     for path in (labels_path, trades_path, equity_path, manifest_path):
         if not path.is_file():
             raise RegimeQualityError(f"missing required artifact: {path.name}")
+
+    if trusted_checksums is not None:
+        try:
+            verify_checksums_against(run_dir, dict(trusted_checksums))
+        except (ValueError, FileNotFoundError) as exc:
+            raise RegimeQualityError(f"trusted checksum verify failed: {exc}") from exc
+    else:
+        checksums_path = run_dir / "checksums.json"
+        if not checksums_path.is_file():
+            raise RegimeQualityError(
+                "checksums.json missing — refuse unsealed run evaluation"
+            )
+        try:
+            verify_checksums_against(run_dir, load_checksums(run_dir))
+        except (ValueError, FileNotFoundError) as exc:
+            raise RegimeQualityError(f"checksum verify failed: {exc}") from exc
 
     labels = _load_json(labels_path)
     trades = _load_json(trades_path)
@@ -252,19 +347,28 @@ def evaluate_regime_quality_from_run_dir(
     if not isinstance(manifest, dict):
         raise RegimeQualityError("run_manifest.json must be an object")
 
+    man_id = str(manifest.get("dataset_id") or "")
+    man_hash = str(manifest.get("dataset_content_hash") or "")
+    lab_id = str(labels.get("dataset_id") or "")
+    lab_hash = str(labels.get("dataset_content_hash") or "")
+    if man_id and lab_id and man_id != lab_id:
+        raise RegimeQualityError(
+            f"manifest/labels dataset_id mismatch: {man_id!r} vs {lab_id!r}"
+        )
+    if man_hash and lab_hash and man_hash != lab_hash:
+        raise RegimeQualityError(
+            "manifest/labels dataset_content_hash mismatch"
+        )
+
     return evaluate_regime_quality(
         regime_labels=labels,
         trades=trades,
         equity=equity,
         run_id=str(manifest.get("run_id") or run_dir.name),
         experiment_id=str(manifest.get("experiment_id") or run_dir.parent.name),
-        dataset_id=str(
-            manifest.get("dataset_id") or labels.get("dataset_id") or ""
-        ),
-        dataset_content_hash=str(
-            manifest.get("dataset_content_hash")
-            or labels.get("dataset_content_hash")
-            or ""
-        ),
+        # Pins must match labels; pass manifest values for cross-check.
+        dataset_id=lab_id or None,
+        dataset_content_hash=lab_hash or None,
         score_policy_version=score_policy_version,
+        benchmark_closes=benchmark_closes,
     )
