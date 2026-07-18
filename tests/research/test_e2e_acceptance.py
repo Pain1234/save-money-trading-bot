@@ -25,15 +25,22 @@ Design notes:
   (Issue #264) -- no free client paths, no production/private data.
 - Deliberately does **not** set ``RESEARCH_ALLOW_DIRTY_GIT`` anywhere in this
   file (project instruction: no dirty-git escape hatch in acceptance
-  fixtures). The real git working tree must be clean when this module runs;
-  that is itself part of what "Reproduzierbarkeit" means for #250.
+  fixtures). Provenance is enforced with ``allow_dirty_git=False`` against an
+  isolated clean ``git clone --local`` of HEAD so ambient checkout dirt from
+  earlier suite steps (editable installs, unrelated writers) cannot masquerade
+  as a Lab/dataset failure. The ambient porcelain is printed before setup so
+  CI logs still show the contaminating paths.
 - No Postgres / network / live-exchange dependency; safe to run in the
   default CI test lane.
 """
 
 from __future__ import annotations
 
+import io
 import json
+import os
+import subprocess
+import tarfile
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -60,10 +67,60 @@ from strategy_engine.constants import STRATEGY_VERSION
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCAL_LAB_CATALOG_ID = "local-btc-fixture"
-LOCAL_LAB_CATALOG_PATH = (
-    REPO_ROOT / "examples" / "research" / "local_lab" / "catalog.json"
-)
 POLL_TIMEOUT_SECONDS = 90
+
+
+def _git_porcelain(repo: Path) -> str:
+    return subprocess.check_output(
+        ["git", "status", "--porcelain"],
+        cwd=repo,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+
+
+def _materialize_clean_repo_root(tmp_path: Path) -> Path:
+    """Materialize committed HEAD content into a fresh, clean git repo.
+
+    Does **not** reuse the ambient worktree (which may be dirtied by earlier
+    suite steps, editable installs, or CRLF noise). ``git archive HEAD`` exports
+    only committed bytes; a new repo is initialized and committed so
+    ``allow_dirty_git=False`` sees a pristine tree.
+    """
+    clean = tmp_path / "e2e_clean_repo"
+    clean.mkdir()
+    archive = subprocess.check_output(
+        ["git", "archive", "--format=tar", "HEAD"],
+        cwd=REPO_ROOT,
+        stderr=subprocess.DEVNULL,
+    )
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+        tar.extractall(clean)
+
+    for args in (
+        ["git", "init"],
+        ["git", "config", "user.email", "e2e-acceptance@test.local"],
+        ["git", "config", "user.name", "e2e-acceptance"],
+        ["git", "config", "core.autocrlf", "false"],
+        ["git", "add", "-A"],
+        ["git", "commit", "-m", "e2e clean HEAD snapshot"],
+    ):
+        proc = subprocess.run(
+            args, cwd=clean, check=False, capture_output=True, text=True
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"failed building clean E2E repo_root ({args!r}): "
+                f"{proc.stderr or proc.stdout}"
+            )
+
+    porcelain = _git_porcelain(clean)
+    if porcelain.strip():
+        raise RuntimeError(
+            "clean E2E repo_root is unexpectedly dirty after archive snapshot:\n"
+            f"{porcelain}"
+        )
+    return clean
 
 
 def _lab_payload(*, name: str, end: str = "2024-01-31T23:59:59.000000Z") -> dict[str, object]:
@@ -118,41 +175,69 @@ def _poll_robustness(client: TestClient, robustness_id: str) -> str:
     return status
 
 
+@pytest.fixture(scope="module")
+def e2e_clean_repo_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One clean HEAD clone shared by all #250 E2E tests in this module."""
+    return _materialize_clean_repo_root(tmp_path_factory.mktemp("e2e_clean_repo"))
+
+
 @pytest.fixture
 def e2e_client(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    e2e_clean_repo_root: Path,
 ) -> TestClient:
     """Wired FastAPI client for the whole Research Workspace surface.
 
-    Root is an isolated ``tmp_path`` (never the real ``artifacts/research``);
-    the catalog and repo root point at the real, committed local_lab fixture
-    and this checkout. No ``RESEARCH_ALLOW_DIRTY_GIT`` override.
+    Artifacts live under an isolated ``tmp_path``. Provenance ``repo_root`` is
+    a clean local clone of HEAD (never the ambient checkout). No
+    ``RESEARCH_ALLOW_DIRTY_GIT`` override.
     """
-    assert LOCAL_LAB_CATALOG_PATH.is_file(), "committed local_lab catalog missing"
+    ambient_porcelain = _git_porcelain(REPO_ROOT)
+    # Always emit ambient status so CI logs show contaminating writers even
+    # when E2E itself is isolated to a clean clone.
+    print(
+        "\n[e2e#250] ambient REPO_ROOT git status --porcelain "
+        f"({REPO_ROOT}):\n"
+        f"{ambient_porcelain if ambient_porcelain.strip() else '(clean)'}\n",
+        flush=True,
+    )
+
+    clean_root = e2e_clean_repo_root
+    catalog_path = (
+        clean_root / "examples" / "research" / "local_lab" / "catalog.json"
+    )
+    assert catalog_path.is_file(), "committed local_lab catalog missing from clean clone"
+
+    artifacts_root = tmp_path / "artifacts"
+    artifacts_root.mkdir()
 
     monkeypatch.delenv("RESEARCH_ALLOW_DIRTY_GIT", raising=False)
-    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
-    monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(LOCAL_LAB_CATALOG_PATH))
-    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
+    # Clean clone has .git — resolve HEAD directly; env pins must not bypass.
+    monkeypatch.delenv("RESEARCH_EVALUATION_GIT_SHA", raising=False)
+    monkeypatch.delenv("RAILWAY_GIT_COMMIT_SHA", raising=False)
+    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(artifacts_root))
+    monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(clean_root))
 
     def _read() -> ResearchReadService:
-        return ResearchReadService(tmp_path)
+        return ResearchReadService(artifacts_root)
 
     def _write() -> ResearchWriteService:
         return ResearchWriteService(
-            tmp_path, repo_root=REPO_ROOT, allow_dirty_git=False
+            artifacts_root, repo_root=clean_root, allow_dirty_git=False
         )
 
     def _robustness() -> RobustnessOrchestrationService:
         return RobustnessOrchestrationService(
-            tmp_path, repo_root=REPO_ROOT, allow_dirty_git=False
+            artifacts_root, repo_root=clean_root, allow_dirty_git=False
         )
 
     def _gate() -> GateService:
-        return GateService(tmp_path, repo_root=REPO_ROOT)
+        return GateService(artifacts_root, repo_root=clean_root)
 
     def _validation() -> ValidationStudyService:
-        return ValidationStudyService(tmp_path, repo_root=REPO_ROOT)
+        return ValidationStudyService(artifacts_root, repo_root=clean_root)
 
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
@@ -522,7 +607,9 @@ def test_recover_orphans_redispatches_queued_and_fails_dead_running(
     assert store.is_active(queued_id) is False
 
     write_svc = ResearchWriteService(
-        root, repo_root=REPO_ROOT, allow_dirty_git=False
+        root,
+        repo_root=Path(os.environ["RESEARCH_REPO_ROOT"]),
+        allow_dirty_git=False,
     )
     outcome = write_svc.recover_orphans()
     assert queued_id in outcome["redispatched"]
