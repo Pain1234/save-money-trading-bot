@@ -8,7 +8,8 @@ Explicit matrix (see Issue #250):
 4. Equity/drawdown remain available when only the chart *semantic* surface fails
    (dataset-hash mismatch with resealed checksums); whole-artifact byte tamper
    of ``chart_data.json`` / ``trades.json`` fails closed for those surfaces.
-5. Deterministic **failed** job without any private data.
+5. Create rejects Spec ``time_range`` outside DatasetManifest (#278); start
+   fail-closed without private data when pending Spec is missing (#242).
 6. Lab -> Run -> Detail happy path against the committed ``local_lab`` catalog.
 7. Double-start is blocked.
 8. Compare surface (#246 / #277): real
@@ -464,10 +465,10 @@ def test_chart_integrity_failure_leaves_equity_drawdown_available(
     assert equity_resp.json()["equity"] == equity_before
 
 
-# --- 5. Deterministic failed job without private data ------------------------
+# --- 5. Fail-closed create + deterministic failed job (no private data) ------
 
 
-def test_deterministic_failed_job_without_private_data(
+def test_create_rejects_time_range_outside_manifest(
     e2e_client: TestClient,
 ) -> None:
     """Lab-style microsecond end (.999999Z) is after the fixture manifest end.
@@ -475,33 +476,64 @@ def test_deterministic_failed_job_without_private_data(
     Documented gotcha (examples/research/README.md): the committed local_lab
     manifest ends at an inclusive whole second (``...23:59:59.000000Z``).
     Requesting the Lab UI's default day-end granularity
-    (``...23:59:59.999999Z``) is after that bound and fails dataset binding
-    deterministically at run time -- a safe, reproducible failure path that
-    never touches private Strategy V1 results.
+    (``...23:59:59.999999Z``) must fail closed at **create** (#278) — not as a
+    silent queued job that only fails later.
     """
     created = e2e_client.post(
         "/api/v1/research/experiments",
         json=_lab_payload(
-            name="E2E deterministic failure",
+            name="E2E create-time time_range rejection",
             end="2024-01-31T23:59:59.999999Z",
         ),
+    )
+    assert created.status_code == 422, created.text
+    detail = created.json()["detail"]
+    assert detail["message"] == "Validierung fehlgeschlagen"
+    assert "time_range" in detail["fields"]
+    assert "Dataset-Fenster" in detail["fields"]["time_range"]
+    # No metrics/PnL leaked into the error surface.
+    assert "net_pnl" not in json.dumps(created.json()).lower()
+
+
+def test_deterministic_failed_job_without_private_data(
+    e2e_client: TestClient,
+) -> None:
+    """Missing pending Spec after create → start fail-closed without private data.
+
+    Matches the documented #242 acceptance path: absent ``experiment.json`` must
+    not enqueue a run or leak metrics/PnL.
+    """
+    created = e2e_client.post(
+        "/api/v1/research/experiments",
+        json=_lab_payload(name="E2E deterministic failure"),
     )
     assert created.status_code == 200, created.text
     experiment_id = created.json()["experiment_id"]
 
+    artifacts_root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    pending = (
+        artifacts_root
+        / "artifacts"
+        / "research"
+        / "pending"
+        / experiment_id
+        / "experiment.json"
+    )
+    assert pending.is_file(), pending
+    pending.unlink()
+
     started = e2e_client.post(f"/api/v1/research/experiments/{experiment_id}/start")
-    assert started.status_code == 200, started.text
+    assert started.status_code == 409, started.text
+    detail = started.json()["detail"]
+    assert "fehlt" in detail["message"].lower() or "spec" in detail.get("fields", {})
+    # No metrics/PnL leaked into the error surface.
+    assert "net_pnl" not in json.dumps(started.json()).lower()
 
-    status = _poll_status(e2e_client, experiment_id)
-    assert status == "failed", status
-
-    final = e2e_client.get(
+    status = e2e_client.get(
         f"/api/v1/research/experiments/{experiment_id}/status"
     ).json()
-    assert final["error"] is not None
-    assert "time_range.end is after DatasetManifest" in final["error"]
-    # No metrics/PnL leaked into the error surface.
-    assert "net_pnl" not in json.dumps(final).lower()
+    assert status["status"] in {"created", "failed"}
+    assert "net_pnl" not in json.dumps(status).lower()
 
 
 # --- 8. Compare surface (#246 / #277) — real endpoint -----------------------

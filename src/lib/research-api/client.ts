@@ -109,6 +109,9 @@ export function getResearchErrorMessage(error: unknown): string {
     }
     return `Research API nicht verfügbar (${error.status}).`;
   }
+  if (error instanceof Error && error.message) {
+    return `Research API Fehler: ${error.message}`;
+  }
   return "Research API nicht verfügbar.";
 }
 
