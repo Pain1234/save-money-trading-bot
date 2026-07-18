@@ -2,9 +2,9 @@
 
 ## Status (delivered / open)
 
-**Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity).
+**Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity). #247 — Robustness-Orchestrierung (walk-forward, cost stress, parameter stability, bootstrap) auf derselben Runner/Registry/Artefakt-Linie + minimale UI unter `/dashboard/research/robustness` (siehe §4).
 
-**Open:** #242 UI-Abnahme (Lab + catalog), #245 durable jobs, #246–#249 compare/robustness/gates/validation, #250 E2E/UI acceptance; Cancel/Retry deferred.
+**Open:** #242 UI-Abnahme (Lab + catalog), #245 durable jobs, #246/#248/#249 compare/gates/validation, #250 E2E/UI acceptance; Cancel/Retry deferred.
 
 ## Recommended issue split
 
@@ -85,10 +85,27 @@ validation). #266 is the price/trade chart slice under the same milestone.
 Compare View over existing registry entries / metrics artifacts (reuse
 `ExperimentRegistry.compare` semantics where possible).
 
-### 4. P4.7b Robustness-Orchestrierung — #247
+### 4. P4.7b Robustness-Orchestrierung — #247 (delivered)
 
-Wire existing P5 helpers (walk-forward, cost stress, parameter stability,
-bootstrap) into orchestrated runs + UI surfaces — no new backtester.
+Wires the existing P5 helpers into orchestrated runs on the same
+runner/registry/artifact line — no new backtester:
+
+- `services/research/robustness.py` builds per-fold (walk-forward),
+  per-scenario (cost stress), and per-neighbor (parameter stability) child
+  `ExperimentSpec`s from a completed base run; bootstrap post-processes the
+  base run's `equity.json` (no child runs, no second engine).
+- `services/research/robustness_jobs.py` / `robustness_service.py` mirror the
+  #242 job-store + in-process-thread pattern (`created→queued→running→completed|failed`).
+- API under `/api/v1/research/robustness` (create/start/status/list/detail);
+  each test's artifact (`artifacts/research/robustness/{robustness_id}/manifest.json`)
+  is the intended gate-evaluator hook point for #248 (hook only, no gate
+  persistence here).
+- Minimal UI at `/dashboard/research/robustness` (create form, list, detail
+  with per-child results and bootstrap quantiles) — synthetic/local-lab data
+  only, no private Strategy V1 numbers.
+- Tests: `tests/research/test_robustness_builders.py` (unit),
+  `tests/research/test_robustness_api.py` (integration, local BTC fixture),
+  `tests/dashboard/research-robustness.test.tsx` (UI smoke, synthetic fixtures).
 
 ### 5. P4.7c Versionierter Gate Evaluator und Gate-Persistenz — #248
 

@@ -49,23 +49,35 @@ logger = logging.getLogger(__name__)
 
 
 def _recover_research_jobs_on_startup() -> None:
-    """Restart recovery hook (Issue #245 P4.6b).
+    """Restart recovery hook (Issues #245 / #247).
 
-    Re-dispatches orphaned ``queued`` research jobs and fails closed any
-    ``running`` job whose ownership lease is dead, before the API starts
-    serving research-write traffic. Never raises — a recovery failure must
-    not prevent the read-only API from starting.
+    Re-dispatches orphaned ``queued`` research and robustness jobs and fails
+    closed any ``running`` job whose ownership lease is dead, before the API
+    starts serving research-write traffic. Never raises — a recovery failure
+    must not prevent the read-only API from starting.
     """
     try:
         from research.service import research_root_from_env
         from research.write_service import ResearchWriteService
 
-        service = ResearchWriteService(research_root_from_env())
+        root = research_root_from_env()
+        service = ResearchWriteService(root)
         outcome = service.recover_orphans()
         if outcome["redispatched"] or outcome["failed_closed"]:
             logger.info("research_job_recovery_on_startup outcome=%s", outcome)
     except Exception:  # noqa: BLE001 — startup must not crash on recovery issues
         logger.exception("research_job_recovery_on_startup_failed")
+
+    try:
+        from research.robustness_service import RobustnessOrchestrationService
+        from research.service import research_root_from_env
+
+        robustness = RobustnessOrchestrationService(research_root_from_env())
+        outcome = robustness.recover_orphans()
+        if outcome["redispatched"] or outcome["failed_closed"]:
+            logger.info("robustness_job_recovery_on_startup outcome=%s", outcome)
+    except Exception:  # noqa: BLE001 — startup must not crash on recovery issues
+        logger.exception("robustness_job_recovery_on_startup_failed")
 
 
 @asynccontextmanager

@@ -6,6 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
+from research.robustness_service import RobustnessOrchestrationService
 from research.service import ResearchReadService, research_root_from_env
 from research.write_service import (
     ResearchWriteError,
@@ -27,8 +28,15 @@ def get_research_write_service() -> ResearchWriteService:
     return ResearchWriteService(research_root_from_env())
 
 
+def get_robustness_service() -> RobustnessOrchestrationService:
+    return RobustnessOrchestrationService(research_root_from_env())
+
+
 ResearchSvc = Annotated[ResearchReadService, Depends(get_research_service)]
 ResearchWriteSvc = Annotated[ResearchWriteService, Depends(get_research_write_service)]
+RobustnessSvc = Annotated[
+    RobustnessOrchestrationService, Depends(get_robustness_service)
+]
 
 
 @router.get("/overview")
@@ -322,10 +330,87 @@ def research_experiment_status(
         raise HTTPException(status_code=404, detail="experiment not found") from None
 
 
+@router.get("/robustness")
+def research_list_robustness_jobs(
+    svc: RobustnessSvc,
+    base_experiment_id: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    items = svc.list_jobs(base_experiment_id=base_experiment_id)
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/robustness")
+def research_create_robustness_job(
+    payload: dict[str, Any],
+    svc: RobustnessSvc,
+) -> dict[str, Any]:
+    try:
+        return svc.create(payload)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.post("/robustness/{robustness_id}/start")
+def research_start_robustness_job(
+    robustness_id: str,
+    svc: RobustnessSvc,
+) -> dict[str, Any]:
+    try:
+        return svc.start(robustness_id)
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail="robustness job not found"
+        ) from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.get("/robustness/{robustness_id}/status")
+def research_robustness_status(
+    robustness_id: str,
+    svc: RobustnessSvc,
+) -> dict[str, Any]:
+    try:
+        return svc.get_status(robustness_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail="robustness job not found"
+        ) from None
+
+
+@router.get("/robustness/{robustness_id}")
+def research_robustness_detail(
+    robustness_id: str,
+    svc: RobustnessSvc,
+) -> dict[str, Any]:
+    try:
+        status = svc.get_status(robustness_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail="robustness job not found"
+        ) from None
+    manifest = svc.get_manifest(robustness_id)
+    return {**status, "manifest": manifest}
+
+
 def is_research_write_path(path: str) -> bool:
     """POST allow-list for private research write surface on the dashboard API."""
     if path.rstrip("/") == "/api/v1/research/experiments":
         return True
     if path.startswith("/api/v1/research/experiments/") and path.endswith("/start"):
+        return True
+    if path.rstrip("/") == "/api/v1/research/robustness":
+        return True
+    if path.startswith("/api/v1/research/robustness/") and path.endswith("/start"):
         return True
     return False

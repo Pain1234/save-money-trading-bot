@@ -118,6 +118,12 @@ export default async function ResearchOverviewPage() {
             >
               Alle Experimente →
             </Link>
+            <Link
+              href="/dashboard/research/robustness"
+              className="text-sm text-mint hover:underline"
+            >
+              Robustheit →
+            </Link>
           </div>
         </div>
 
