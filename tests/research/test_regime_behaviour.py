@@ -298,6 +298,91 @@ def test_behaviour_id_binds_transition_evidence() -> None:
     assert b.artifact["transition_risk"]["risk_label"] == "HIGH_TRANSITION_RISK"
 
 
+def test_behaviour_id_binds_trade_window_evidence() -> None:
+    """Same transitions/day_events, different window trades → different ids."""
+    metrics = _base_metrics(regimes=[])
+    labels = _base_labels(
+        transitions=[{"transition_id": "BULL_TO_BEAR"}],
+        day_events=[
+            {"as_of": "2024-02-01", "event": "TRANSITION_IN"},
+        ],
+    )
+    mild = evaluate_behaviour_profile(
+        regime_metrics=metrics,
+        regime_labels=labels,
+        trades=[
+            {
+                "exit_time": "2024-02-01T12:00:00+00:00",
+                "net_pnl": "-1",
+                "fees": "0",
+                "slippage_cost": "0",
+                "funding": "0",
+                "quantity": "1",
+                "entry_fill_price": "10",
+            }
+        ],
+    )
+    severe = evaluate_behaviour_profile(
+        regime_metrics=metrics,
+        regime_labels=labels,
+        trades=[
+            {
+                "exit_time": "2024-02-01T12:00:00+00:00",
+                "net_pnl": "-30",
+                "fees": "1",
+                "slippage_cost": "0",
+                "funding": "0",
+                "quantity": "2",
+                "entry_fill_price": "100",
+            }
+        ],
+    )
+    assert mild.behaviour_id != severe.behaviour_id
+    assert mild.artifact["transition_risk"]["risk_label"] == "MODERATE_TRANSITION_RISK"
+    assert severe.artifact["transition_risk"]["risk_label"] == "HIGH_TRANSITION_RISK"
+
+
+def test_missing_evidence_status_is_untrusted() -> None:
+    metrics = _base_metrics(regimes=[
+        {
+            "cell_id": "BULL|NORMAL_VOL",
+            "trend": "BULL",
+            "vol": "NORMAL_VOL",
+            "status": "OK",
+            "zero_activity": False,
+            "closed_trades": 3,
+            "net_pnl": "100",
+            "expectancy": "30",
+            "costs": {"fees": "1", "slippage_costs": "0", "funding_costs": "0"},
+            "tail_loss": "0.01",
+            "pnl_concentration": "0.2",
+            "time_in_market": "0.5",
+        },
+    ])
+    del metrics["evidence_status"]
+    result = evaluate_behaviour_profile(
+        regime_metrics=metrics,
+        regime_labels=_base_labels(),
+    )
+    art = result.artifact
+    assert art["evidence_status"] == "MISSING"
+    assert art["evidence_trusted"] is False
+    assert art["main_strength"] is None
+    assert art["regimes"][0]["labels"] == ["INSUFFICIENT_EVIDENCE"]
+    assert "PROFITABLE" not in art["regimes"][0]["labels"]
+
+
+def test_missing_metrics_dataset_pins_rejected() -> None:
+    metrics = _base_metrics(regimes=[])
+    del metrics["dataset_id"]
+    del metrics["dataset_content_hash"]
+    with pytest.raises(BehaviourProfileError, match="dataset_id"):
+        evaluate_behaviour_profile(
+            regime_metrics=metrics,
+            regime_labels=_base_labels(),
+        )
+
+
 def test_classification_pin_mismatch_rejected() -> None:
     metrics = _base_metrics(regimes=[])
     labels = _base_labels(classification_id="cl_other")
@@ -315,7 +400,9 @@ def test_policy_hash_includes_late_entry_and_priorities() -> None:
 
 
 def test_compute_behaviour_id_stable_for_same_inputs() -> None:
-    te = compute_transition_evidence_hash(transitions=[], day_events=[])
+    te = compute_transition_evidence_hash(
+        transitions=[], day_events=[], trades=[]
+    )
     a = compute_behaviour_id(
         run_id="r",
         quality_id="q",

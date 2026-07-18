@@ -36,8 +36,11 @@ transition-risk cutoffs). Silent edits change `policy_content_hash`.
 
 ### Evidence fail-closed
 
-When `regime_metrics.evidence_status != OK` (e.g. incomplete coverage from
-#287 → `INCONCLUSIVE`):
+Only explicit `evidence_status == "OK"` is trusted. Missing or unknown status
+is treated as untrusted (`evidence_status` recorded as `MISSING` when absent).
+
+When evidence is untrusted (e.g. incomplete coverage from #287 →
+`INCONCLUSIVE`, or missing status):
 
 - Per-regime labels forced to `INSUFFICIENT_EVIDENCE`
 - `main_strength` suppressed (`null`)
@@ -51,10 +54,12 @@ Missing / `NOT_AVAILABLE` `net_pnl` on active regimes → `INSUFFICIENT_EVIDENCE
 
 `behaviour_id` binds: `run_id`, `quality_id`, `classification_id`,
 `classifier_content_hash`, `transition_evidence_hash` (canonical transitions +
-day_events), `policy_version`, `policy_content_hash`.
+day_events + trade fields that drive window PnL/costs/turnover),
+`policy_version`, `policy_content_hash`.
 
-Pin checks against `regime_labels` require matching dataset **and**
-classification pins (reject foreign classification of the same dataset).
+Metrics **must** carry `dataset_id` and `dataset_content_hash`. Pin checks
+against `regime_labels` require exact match on dataset **and** classification
+pins (no empty-left skip; reject foreign classification of the same dataset).
 
 `evaluate_behaviour_profile_from_run_dir` **requires** external
 `trusted_checksums` (registry trust anchor). Local `checksums.json` alone is

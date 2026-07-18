@@ -36,16 +36,43 @@ def _canonical_json_bytes(payload: object) -> bytes:
     ).encode("utf-8")
 
 
+_TRANSITION_TRADE_KEYS: tuple[str, ...] = (
+    "entry_fill_price",
+    "exit_time",
+    "fees",
+    "funding",
+    "net_pnl",
+    "quantity",
+    "slippage_cost",
+)
+
+
+def _trade_evidence_rows(
+    trades: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, object]]:
+    """Normalize trade fields that affect transition_risk into identity rows."""
+    rows: list[dict[str, object]] = []
+    for trade in trades or ():
+        rows.append({key: trade.get(key) for key in _TRANSITION_TRADE_KEYS})
+    return rows
+
+
 def compute_transition_evidence_hash(
     *,
     transitions: Sequence[Mapping[str, Any]],
     day_events: Sequence[Mapping[str, Any]],
+    trades: Sequence[Mapping[str, Any]] | None = None,
 ) -> str:
-    """Bind transition / day-event evidence into behaviour identity."""
+    """Bind transition, day-event, and trade evidence into behaviour identity.
+
+    Trade rows matter: ``transition_risk`` (window PnL / costs / turnover /
+    HIGH vs MODERATE) is derived from trades exiting on TRANSITION_IN/OUT days.
+    """
     return hashlib.sha256(
         _canonical_json_bytes(
             {
                 "day_events": list(day_events),
+                "trades": _trade_evidence_rows(trades),
                 "transitions": list(transitions),
             }
         )
@@ -118,10 +145,13 @@ def evaluate_behaviour_profile(
     classifier_content_hash = _require_pin(
         regime_metrics, "classifier_content_hash", label="regime_metrics"
     )
-    dataset_id = str(regime_metrics.get("dataset_id") or "")
-    dataset_content_hash = str(regime_metrics.get("dataset_content_hash") or "")
+    dataset_id = _require_pin(regime_metrics, "dataset_id", label="regime_metrics")
+    dataset_content_hash = _require_pin(
+        regime_metrics, "dataset_content_hash", label="regime_metrics"
+    )
 
     # Pin consistency with labels when provided (dataset + classification).
+    # Both sides required and must match exactly (no empty-left skip).
     if regime_labels is not None:
         for key in (
             "dataset_id",
@@ -129,19 +159,21 @@ def evaluate_behaviour_profile(
             "classification_id",
             "classifier_content_hash",
         ):
-            left = str(regime_metrics.get(key) or "")
-            right = str(regime_labels.get(key) or "")
-            if not right:
-                raise BehaviourProfileError(
-                    f"regime_labels missing required pin {key!r}"
-                )
-            if left and left != right:
+            left = _require_pin(regime_metrics, key, label="regime_metrics")
+            right = _require_pin(regime_labels, key, label="regime_labels")
+            if left != right:
                 raise BehaviourProfileError(
                     f"pin mismatch on {key}: metrics={left!r} labels={right!r}"
                 )
 
-    evidence = str(regime_metrics.get("evidence_status") or "OK")
-    evidence_trusted = evidence == "OK"
+    # Only explicit evidence_status == "OK" is trusted; missing/unknown fail closed.
+    raw_evidence = regime_metrics.get("evidence_status")
+    if raw_evidence is None or str(raw_evidence).strip() == "":
+        evidence = "MISSING"
+        evidence_trusted = False
+    else:
+        evidence = str(raw_evidence)
+        evidence_trusted = evidence == "OK"
 
     regimes_out: list[dict[str, Any]] = []
     all_weaknesses: list[str] = []
@@ -181,14 +213,16 @@ def evaluate_behaviour_profile(
     if regime_labels is not None:
         transitions = list(regime_labels.get("transitions") or [])
         day_events = list(regime_labels.get("day_events") or [])
+    trade_list = list(trades) if trades else []
     transition_evidence_hash = compute_transition_evidence_hash(
         transitions=transitions,
         day_events=day_events,
+        trades=trade_list,
     )
     transition_risk = build_transition_risk_profile(
         transitions=transitions,
         day_events=day_events,
-        trades=list(trades) if trades else None,
+        trades=trade_list or None,
         policy=policy,
         evidence_trusted=evidence_trusted,
     )
@@ -226,9 +260,8 @@ def evaluate_behaviour_profile(
         "quality_id": quality_id,
         "classification_id": classification_id,
         "classifier_content_hash": classifier_content_hash,
-        "dataset_id": dataset_id or regime_metrics.get("dataset_id"),
-        "dataset_content_hash": dataset_content_hash
-        or regime_metrics.get("dataset_content_hash"),
+        "dataset_id": dataset_id,
+        "dataset_content_hash": dataset_content_hash,
         "transition_evidence_hash": transition_evidence_hash,
         "policy_version": policy.version,
         "policy_content_hash": policy_hash,
