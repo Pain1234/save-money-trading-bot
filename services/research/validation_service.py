@@ -24,7 +24,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from research.gate_evaluator import GateResultStore, GateRunRecord
+from research.gate_evaluator import (
+    GateEvaluationError,
+    GateResultStore,
+    GateRunRecord,
+    verify_gate_record_artifact_checksums,
+)
 from research.gate_policy import GatePolicyError, verify_policy_content_hash
 from research.gate_service import GateService
 from research.registry import ExperimentRegistry, RegistryEntry
@@ -243,6 +248,18 @@ class ValidationStudyService:
                 str(exc),
                 field_errors={
                     "gate_run_ids": "policy_content_hash mismatch — gate untrusted"
+                },
+            ) from exc
+        try:
+            verify_gate_record_artifact_checksums(self.root, record)
+        except GateEvaluationError as exc:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "gate_run_ids": (
+                        "artifact_checksums mismatch — gate evidence untrusted"
+                    ),
+                    **exc.field_errors,
                 },
             ) from exc
         return PinnedGateEvidence(
@@ -472,6 +489,18 @@ class ValidationStudyService:
             raise ResearchWriteError(
                 str(exc),
                 field_errors={"gate_run_ids": "policy_content_hash mismatch"},
+            ) from exc
+        try:
+            verify_gate_record_artifact_checksums(self.root, record)
+        except GateEvaluationError as exc:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "gate_run_ids": (
+                        "artifact_checksums mismatch — gate evidence untrusted"
+                    ),
+                    **exc.field_errors,
+                },
             ) from exc
         return record
 

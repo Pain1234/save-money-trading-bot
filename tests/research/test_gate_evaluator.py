@@ -34,13 +34,21 @@ from research.robustness import (
     robustness_manifest_path,
     save_robustness_manifest,
 )
+from research.robustness_jobs import RobustnessJob, RobustnessJobStore
 from research.runner import RunRequest, run_experiment
 from research.write_service import ResearchWriteError
 
 from tests.research.fixtures import REPO_ROOT, align_spec_to_bundle, btc_bundle
 
-# Deterministic pin so evaluate() does not depend on a clean checkout of REPO_ROOT.
+# Deterministic pin for .git-less evaluation image roots used by unit tests.
 _EVAL_SHA = "a" * 40
+
+
+def _evaluation_image_root(tmp_path: Path) -> Path:
+    """Repo root without ``.git`` so deploy-SHA pinning is the only path."""
+    root = tmp_path / ".evaluation_image_root"
+    root.mkdir(exist_ok=True)
+    return root
 
 
 @pytest.fixture(autouse=True)
@@ -130,6 +138,32 @@ def _clone_run_with_net_pnl(
     return new_run_id
 
 
+def _seal_completed_robustness_job(
+    root: Path,
+    *,
+    robustness_id: str,
+    base_experiment_id: str,
+    base_run_id: str,
+    test_type: str,
+    digest: str,
+    config: dict | None = None,
+) -> None:
+    RobustnessJobStore(root).save(
+        RobustnessJob(
+            robustness_id=robustness_id,
+            base_experiment_id=base_experiment_id,
+            base_run_id=base_run_id,
+            test_type=test_type,
+            status="completed",
+            created_at="2024-01-01T00:00:00.000000Z",
+            updated_at="2024-01-01T00:00:00.000000Z",
+            finished_at="2024-01-01T00:00:00.000000Z",
+            config=config,
+            manifest_content_hash=digest,
+        )
+    )
+
+
 def _save_walk_forward_manifest(
     root: Path,
     *,
@@ -163,7 +197,15 @@ def _save_walk_forward_manifest(
         bootstrap_result=None,
         summary={"n_children": len(children), "n_complete": len(children), "n_failed": 0},
     )
-    save_robustness_manifest(root, manifest)
+    _path, digest = save_robustness_manifest(root, manifest)
+    _seal_completed_robustness_job(
+        root,
+        robustness_id=robustness_id,
+        base_experiment_id=base_experiment_id,
+        base_run_id=base_run_id,
+        test_type="walk_forward",
+        digest=digest,
+    )
     return robustness_id
 
 
@@ -221,13 +263,22 @@ def _save_bootstrap_manifest(
         },
         summary={"n_children": 1, "n_complete": 1, "n_failed": 0},
     )
-    save_robustness_manifest(root, manifest)
+    _path, digest = save_robustness_manifest(root, manifest)
+    _seal_completed_robustness_job(
+        root,
+        robustness_id=robustness_id,
+        base_experiment_id=base_experiment_id,
+        base_run_id=base_run_id,
+        test_type="bootstrap",
+        digest=digest,
+        config=config,
+    )
     return robustness_id
 
 
 def test_evaluate_binds_required_evidence_fields(tmp_path: Path) -> None:
     root, experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
 
     record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
@@ -249,7 +300,7 @@ def test_evaluate_binds_required_evidence_fields(tmp_path: Path) -> None:
 
 def test_evaluate_records_measurements_for_audit(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
     assert "closed_trades" in record.measurements
@@ -261,7 +312,7 @@ def test_evaluate_records_measurements_for_audit(tmp_path: Path) -> None:
 
 def test_evaluate_gate_pass_fail_matches_comparator(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
     policy = gp.get_policy("1.0")
@@ -281,7 +332,7 @@ def test_evaluate_gate_pass_fail_matches_comparator(tmp_path: Path) -> None:
 
 def test_evaluate_is_idempotent_append_only(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
 
     first = evaluator.evaluate(run_id=run_id, policy_version="1.0")
     second = evaluator.evaluate(run_id=run_id, policy_version="1.0")
@@ -293,14 +344,14 @@ def test_evaluate_is_idempotent_append_only(tmp_path: Path) -> None:
 
 
 def test_evaluate_unknown_run_id_raises(tmp_path: Path) -> None:
-    evaluator = GateEvaluator(tmp_path, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(tmp_path, repo_root=_evaluation_image_root(tmp_path))
     with pytest.raises(GateEvaluationError):
         evaluator.evaluate(run_id="run_does_not_exist", policy_version="1.0")
 
 
 def test_evaluate_unknown_policy_version_raises(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError):
         evaluator.evaluate(run_id=run_id, policy_version="999.0")
 
@@ -313,7 +364,7 @@ def test_evaluate_rejects_tampered_run_artifacts(tmp_path: Path) -> None:
     original = metrics_path.read_bytes()
     metrics_path.write_bytes(original.replace(b"complete", b"complete "))
 
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(Exception):  # noqa: B017 — fail-closed via registry checksum verify
         evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
@@ -326,7 +377,7 @@ def test_walk_forward_manifest_binds_robustness_evidence(tmp_path: Path) -> None
         base_run_id=run_id,
     )
 
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(
         run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
     )
@@ -351,7 +402,7 @@ def test_walk_forward_manifest_failing_ratio_fails_gate(tmp_path: Path) -> None:
         fold_run_ids=[neg_a, neg_b, run_id],
     )
 
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(
         run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
     )
@@ -376,7 +427,7 @@ def test_evaluate_rejects_tampered_manifest_child_net_pnl(tmp_path: Path) -> Non
     payload["children"][0]["net_pnl"] = "999999"
     path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError, match="manifest seal|content hash"):
         evaluator.evaluate(
             run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
@@ -394,7 +445,7 @@ def test_evaluate_rejects_tampered_bootstrap_q05_after_seal(tmp_path: Path) -> N
     payload["bootstrap_result"]["net_pnl_quantiles"]["q05"] = 999.0
     path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError, match="manifest seal|content hash"):
         evaluator.evaluate(
             run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
@@ -410,7 +461,7 @@ def test_evaluate_rejects_resealed_bootstrap_q05_disagreement(tmp_path: Path) ->
         base_run_id=run_id,
         q05_override="999",
     )
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError, match="bootstrap q05"):
         evaluator.evaluate(
             run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
@@ -422,7 +473,7 @@ def test_bootstrap_manifest_binds_recomputed_q05(tmp_path: Path) -> None:
     robustness_id = _save_bootstrap_manifest(
         root, base_experiment_id=experiment_id, base_run_id=run_id
     )
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(
         run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
     )
@@ -435,7 +486,7 @@ def test_get_and_list_reject_tampered_evidence_after_evaluate(tmp_path: Path) ->
     robustness_id = _save_walk_forward_manifest(
         root, base_experiment_id=experiment_id, base_run_id=run_id
     )
-    svc = GateService(root, repo_root=REPO_ROOT)
+    svc = GateService(root, repo_root=_evaluation_image_root(root))
     record = svc.evaluate(
         {"run_id": run_id, "policy_version": "1.0", "robustness_run_ids": [robustness_id]}
     )
@@ -460,7 +511,7 @@ def test_get_and_list_reject_tampered_robustness_manifest_after_evaluate(
     robustness_id = _save_walk_forward_manifest(
         root, base_experiment_id=experiment_id, base_run_id=run_id
     )
-    svc = GateService(root, repo_root=REPO_ROOT)
+    svc = GateService(root, repo_root=_evaluation_image_root(root))
     record = svc.evaluate(
         {"run_id": run_id, "policy_version": "1.0", "robustness_run_ids": [robustness_id]}
     )
@@ -480,7 +531,7 @@ def test_invalidated_record_returns_evidence_integrity_flag_on_tamper(
     tmp_path: Path,
 ) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    svc = GateService(root, repo_root=REPO_ROOT)
+    svc = GateService(root, repo_root=_evaluation_image_root(root))
     record = svc.evaluate({"run_id": run_id, "policy_version": "1.0"})
     gate_run_id = record["gate_run_id"]
     svc.invalidate(gate_run_id, {"reason": "fixture", "actor": "test"})
@@ -532,9 +583,121 @@ def test_evaluate_fails_closed_on_dirty_tree_without_env_pin(
         evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
 
+def test_evaluate_env_pin_does_not_bypass_dirty_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _experiment_id, run_id = _completed_run(tmp_path)
+    dirty_repo = tmp_path / "dirty_repo_pin"
+    dirty_repo.mkdir()
+    subprocess.run(["git", "init"], cwd=dirty_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=dirty_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=dirty_repo,
+        check=True,
+        capture_output=True,
+    )
+    (dirty_repo / "README").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=dirty_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=dirty_repo,
+        check=True,
+        capture_output=True,
+    )
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=dirty_repo, text=True
+    ).strip()
+    (dirty_repo / "README").write_text("dirty\n", encoding="utf-8")
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", head)
+
+    evaluator = GateEvaluator(root, repo_root=dirty_repo)
+    with pytest.raises(GateEvaluationError, match="evaluation_code_commit|dirty"):
+        evaluator.evaluate(run_id=run_id, policy_version="1.0")
+
+
+def test_evaluate_rejects_env_pin_mismatch_against_clean_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _experiment_id, run_id = _completed_run(tmp_path)
+    clean_repo = tmp_path / "clean_repo"
+    clean_repo.mkdir()
+    subprocess.run(["git", "init"], cwd=clean_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=clean_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=clean_repo,
+        check=True,
+        capture_output=True,
+    )
+    (clean_repo / "README").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=clean_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=clean_repo,
+        check=True,
+        capture_output=True,
+    )
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "f" * 40)
+
+    evaluator = GateEvaluator(root, repo_root=clean_repo)
+    with pytest.raises(GateEvaluationError, match="does not match HEAD|env pin"):
+        evaluator.evaluate(run_id=run_id, policy_version="1.0")
+
+
+def test_evaluate_rejects_unregistered_robustness_manifest_sidecar_only(
+    tmp_path: Path,
+) -> None:
+    """manifest.json + .sha256 without a completed job must fail closed."""
+    root, experiment_id, run_id = _completed_run(tmp_path)
+    robustness_id = "rob_sidecar_only"
+    children = tuple(
+        RobustnessChildResult(
+            child_id=f"fold_{i:02d}",
+            label=f"fold_{i:02d}",
+            experiment_id=experiment_id,
+            run_id=run_id,
+            status="complete",
+            net_pnl=_run_net_pnl(root, run_id),
+        )
+        for i in range(1, 4)
+    )
+    save_robustness_manifest(
+        root,
+        RobustnessManifest(
+            schema_version=ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+            robustness_id=robustness_id,
+            test_type="walk_forward",
+            base_experiment_id=experiment_id,
+            base_run_id=run_id,
+            dataset_catalog_id=None,
+            config={},
+            created_at="2024-01-01T00:00:00.000000Z",
+            children=children,
+            bootstrap_result=None,
+            summary={"n_children": 3, "n_complete": 3, "n_failed": 0},
+        ),
+    )
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
+    with pytest.raises(GateEvaluationError, match="not registered|job missing"):
+        evaluator.evaluate(
+            run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+        )
+
+
 def test_evaluate_missing_robustness_manifest_raises(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError):
         evaluator.evaluate(
             run_id=run_id, policy_version="1.0", robustness_run_ids=["rob_missing"]
@@ -559,7 +722,7 @@ def test_evaluate_rejects_cross_run_robustness_evidence(tmp_path: Path) -> None:
         )
         for i in range(1, 4)
     )
-    save_robustness_manifest(
+    save_path, digest = save_robustness_manifest(
         root,
         RobustnessManifest(
             schema_version=ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
@@ -575,7 +738,16 @@ def test_evaluate_rejects_cross_run_robustness_evidence(tmp_path: Path) -> None:
             summary={"n_children": 3, "n_complete": 3, "n_failed": 0},
         ),
     )
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    del save_path
+    _seal_completed_robustness_job(
+        root,
+        robustness_id=robustness_id,
+        base_experiment_id=experiment_id,
+        base_run_id=foreign_run_id,
+        test_type="walk_forward",
+        digest=digest,
+    )
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError, match="base_run_id|cross-run"):
         evaluator.evaluate(
             run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
@@ -597,7 +769,7 @@ def test_evaluate_rejects_duplicate_test_type_manifests(tmp_path: Path) -> None:
         robustness_id=second_id,
     )
 
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     with pytest.raises(GateEvaluationError, match="duplicate robustness test_type"):
         evaluator.evaluate(
             run_id=run_id,
@@ -611,7 +783,7 @@ def test_get_and_list_reject_same_version_policy_content_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    svc = GateService(root, repo_root=REPO_ROOT)
+    svc = GateService(root, repo_root=_evaluation_image_root(root))
     record = svc.evaluate({"run_id": run_id, "policy_version": "1.0"})
     gate_run_id = record["gate_run_id"]
 
@@ -666,7 +838,7 @@ def test_store_append_rejects_duplicate_active_gate_run_id(tmp_path: Path) -> No
 
 def test_invalidate_appends_sidecar_without_mutating_original(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
     store = GateResultStore(root)
@@ -688,7 +860,7 @@ def test_invalidate_appends_sidecar_without_mutating_original(tmp_path: Path) ->
 
 def test_double_invalidate_raises(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
     store = GateResultStore(root)
@@ -724,7 +896,7 @@ def test_persisted_record_detects_policy_content_changed_under_same_version(
     policy_content_hash must reject re-verification once the in-repo policy
     for that SAME version string has been silently edited."""
     root, _experiment_id, run_id = _completed_run(tmp_path)
-    evaluator = GateEvaluator(root, repo_root=REPO_ROOT)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
     record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
 
     # Sanity: verification passes against the unmodified in-repo policy.
