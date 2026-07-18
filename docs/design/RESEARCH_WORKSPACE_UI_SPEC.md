@@ -1,8 +1,11 @@
 # Research Workspace UI Spec — Hyperliquid-Style Shell
 
-**Status:** Binding visual contract for P4.9 UI epic  
-**Reference image:** [`research-workspace-hyperliquid-reference.png`](./research-workspace-hyperliquid-reference.png)  
-**Milestone:** P4 – Research Engine und Research Workspace V1  
+**Status:** Binding visual contract for P4.9 UI epic
+
+**Reference image:** [`research-workspace-hyperliquid-reference.png`](./research-workspace-hyperliquid-reference.png)
+
+**Milestone:** P4 – Research Engine und Research Workspace V1
+
 **Related:** Epic P4.9 UI (Hyperliquid-Style Research Workspace); data epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) (Regime Scorecard)
 
 The reference PNG is a **visual implementation target only**. It must never be

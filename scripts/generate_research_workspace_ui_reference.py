@@ -133,7 +133,12 @@ def main() -> None:
         font=font_sm,
     )
 
-    out = Path(__file__).resolve().parents[1] / "docs" / "design" / "research-workspace-hyperliquid-reference.png"
+    out = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "design"
+        / "research-workspace-hyperliquid-reference.png"
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out, "PNG", optimize=True)
     print(f"wrote {out} ({out.stat().st_size} bytes)")
