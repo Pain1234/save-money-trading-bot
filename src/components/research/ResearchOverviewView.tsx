@@ -1,14 +1,19 @@
 import Link from "next/link";
 
+import { ResearchAnalyticsSection } from "@/components/research/analytics/ResearchAnalyticsSection";
 import { ExecutiveGateStrip } from "@/components/research/ExecutiveGateStrip";
 import { Card } from "@/components/ui/Card";
 import { KpiCard } from "@/components/ui/KpiCard";
-import { buildExecutiveSummary } from "@/lib/research/executive-summary";
+import {
+  buildExecutiveSummary,
+  filterJobsForEvidence,
+} from "@/lib/research/executive-summary";
 import {
   displayValue,
   type GateRunRecord,
   type ResearchExperimentSummary,
   type ResearchOverview,
+  type ResearchSeriesPoint,
   type RobustnessJobSummary,
   type ValidationStudyDetail,
 } from "@/lib/research-api/client";
@@ -30,6 +35,9 @@ interface ResearchOverviewViewProps {
   gateRuns: GateRunRecord[];
   studies: ValidationStudyDetail[];
   robustnessJobs: RobustnessJobSummary[];
+  /** Equity for evidence-pinned experiment — optional existing API series. */
+  pinnedEquity?: ResearchSeriesPoint[] | null;
+  pinnedDrawdown?: ResearchSeriesPoint[] | null;
 }
 
 export function ResearchOverviewView({
@@ -37,6 +45,8 @@ export function ResearchOverviewView({
   gateRuns,
   studies,
   robustnessJobs,
+  pinnedEquity = null,
+  pinnedDrawdown = null,
 }: ResearchOverviewViewProps) {
   const executive = buildExecutiveSummary({
     overview,
@@ -44,6 +54,18 @@ export function ResearchOverviewView({
     studies,
     robustnessJobs,
   });
+
+  const costJobs = executive.evidence
+    ? filterJobsForEvidence(
+        robustnessJobs,
+        executive.evidence,
+        "cost_stress",
+      )
+    : [];
+  const costInventory =
+    costJobs.length > 0
+      ? `${costJobs.length} gepinnte cost_stress-Jobs`
+      : null;
 
   const empty = overview.experiment_count === 0;
 
@@ -126,6 +148,13 @@ export function ResearchOverviewView({
       </div>
 
       <ExecutiveGateStrip summary={executive} />
+
+      <ResearchAnalyticsSection
+        evidence={executive.evidence}
+        equity={pinnedEquity}
+        drawdown={pinnedDrawdown}
+        costStressInventoryDetail={costInventory}
+      />
 
       {empty ? (
         <p className="text-[12px] text-text-muted">
