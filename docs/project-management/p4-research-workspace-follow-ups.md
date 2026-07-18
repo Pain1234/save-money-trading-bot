@@ -104,6 +104,16 @@ Validation studies API and UI.
 Playwright + API acceptance covering Lab → run → detail → compare; double-run
 repro checks; no mock production data.
 
+## Follow-up (not in #274)
+
+**PostgresDatasetCatalog → Lab catalog:** Issue #274 ships file-based HL export
+only (raw pages + versioned snapshot + `catalog.json`). Do **not** auto-list
+`PostgresDatasetCatalog` in the Research write API and do not run
+`import_from_raw_payload` as part of Lab publish. Track a dedicated follow-up
+issue to optionally bridge Postgres-normalized datasets into the Lab catalog
+(absolute/relative path rules, quality gate, R-015 snapshots) when product needs
+it.
+
 ## Milestone note
 
 Milestone remains **P4 – Research Engine und Research Workspace V1**.
