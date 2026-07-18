@@ -23,6 +23,7 @@ describe("research navigation", () => {
       "/dashboard/research/strategies",
       "/dashboard/research/experiments",
       "/dashboard/research/experiments/new",
+      "/dashboard/research/compare",
       "/dashboard/research/robustness",
     ]);
   });

@@ -65,6 +65,31 @@ def research_experiments(
     return {"items": items, "count": len(items)}
 
 
+@router.get("/experiments/compare")
+def research_experiments_compare(
+    svc: ResearchSvc,
+    run_a: Annotated[str, Query()],
+    run_b: Annotated[str, Query()],
+) -> dict[str, Any]:
+    """Compare two runs via ExperimentRegistry.compare (Issue #246).
+
+    Fail-closed: unknown run_ids are 404, invalid ids are 400, missing/
+    tampered artifacts are 409/400 — never silently treated as compatible.
+    """
+    try:
+        return svc.compare_runs(run_a, run_b)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404, detail=f"run not found: {exc}"
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/experiments/{experiment_id}")
 def research_experiment_detail(
     experiment_id: str,

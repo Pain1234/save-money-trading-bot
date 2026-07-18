@@ -356,6 +356,9 @@ class ResearchReadService:
 
     def experiment_detail(self, experiment_id: str) -> dict[str, Any]:
         entry = self.get_entry(experiment_id)
+        return self._detail_for_entry(entry)
+
+    def _detail_for_entry(self, entry: RegistryEntry) -> dict[str, Any]:
         try:
             run_dir = self._artifact_dir(entry)
         except PermissionError as exc:
@@ -502,6 +505,31 @@ class ResearchReadService:
                 "has_chart_data": (run_dir / "chart_data.json").is_file(),
             },
             "integrity": {"ok": True, "error": None},
+        }
+
+    def compare_runs(self, run_a: str, run_b: str) -> dict[str, Any]:
+        """Compare two runs using ExperimentRegistry.compare (Issue #246).
+
+        No second compatibility engine: this method is a thin read-model
+        wrapper that enriches ``ExperimentRegistry.compare``'s entries with
+        the same detail payload used by ``experiment_detail`` (metrics,
+        equity, drawdown, config) so the UI never has to guess or invent
+        values for incompatible/missing data.
+        """
+        run_a = assert_safe_id(run_a, field="run_a")
+        run_b = assert_safe_id(run_b, field="run_b")
+        result = self.registry.compare(run_a, run_b)
+        entry_a: RegistryEntry = result["a"]
+        entry_b: RegistryEntry = result["b"]
+        return {
+            "compatible": bool(result["compatible"]),
+            "run_a": entry_a.run_id,
+            "run_b": entry_b.run_id,
+            "diffs": result["diffs"],
+            "runs": {
+                "a": self._detail_for_entry(entry_a),
+                "b": self._detail_for_entry(entry_b),
+            },
         }
 
     def _require_verified_complete_run_dir(
