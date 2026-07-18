@@ -426,7 +426,8 @@ def test_compare_compatible_and_incompatible_runs(e2e_client: TestClient) -> Non
     """Exercise ``GET /api/v1/research/experiments/compare`` (#277).
 
     Compatible: a completed run compared to itself (empty diffs).
-    Incompatible: two completed Lab runs with different Spec ``name`` fields.
+    Incompatible: two completed Lab runs with different Spec ``hypothesis``
+    fields (Lab ``name`` maps to hypothesis).
     Must fail (404) if the Compare route is missing from this stack.
     """
     created_a = e2e_client.post(
@@ -478,8 +479,11 @@ def test_compare_compatible_and_incompatible_runs(e2e_client: TestClient) -> Non
     assert diff.status_code == 200, diff.text
     diff_body = diff.json()
     assert diff_body["compatible"] is False
-    assert "spec.name" in diff_body["diffs"]
-    assert diff_body["diffs"]["spec.name"] == ["E2E compare A", "E2E compare B"]
+    assert "spec.hypothesis" in diff_body["diffs"]
+    assert diff_body["diffs"]["spec.hypothesis"] == [
+        "E2E compare A",
+        "E2E compare B",
+    ]
     assert diff_body["runs"]["a"]["summary"]["run_id"] == run_a
     assert diff_body["runs"]["b"]["summary"]["run_id"] == run_b
 
