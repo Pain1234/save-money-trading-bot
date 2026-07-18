@@ -1,0 +1,90 @@
+# Gate evaluator and gate persistence (Issue #248 / P4.7c)
+
+Versioned, evidence-bound evaluation of already-produced research evidence
+(#141-#147 runner/registry, #247 robustness orchestrator) against a
+versioned gate policy. **No second backtest engine. No auto-promotion into
+paper or live trading anywhere in this surface.**
+
+This is generic P4.7c infrastructure for the future Validation Study API
+(#249). It does **not** implement the private, human-owned P5 decision
+rules (`docs/research/p5/P5_DECISION_RULES.md`, still "GATES PROPOSED") and
+must never be treated as a substitute for that human sign-off (#205).
+
+## Evidence-binding contract (mandatory)
+
+A `policy_version` + threshold + measured value alone are **not** enough.
+Every persisted `GateRunRecord` carries:
+
+| Field | Source |
+|-------|--------|
+| `run_id` (+ optional `robustness_run_ids`) | Caller input, verified against the registry / robustness artifacts |
+| `artifact_checksums` | Registry trust-anchor checksums for the run + a SHA-256 seal per evaluated robustness `manifest.json` |
+| `dataset_id` / `dataset_content_hash` | The run's sealed `RunManifest` (#142) |
+| `policy_version` **and** `policy_content_hash` | `research.gate_policy` — content hash, not version string alone |
+| `run_code_commit` | The run's sealed `RunManifest.git_commit` |
+| `evaluation_code_commit` | `git rev-parse HEAD` at evaluation time (falls back to `run_code_commit` in deploy images without `.git`) |
+
+`GateEvaluator.evaluate()` fails closed (`GateEvaluationError`) if the run is
+not `complete`, if artifacts were tampered with (registry checksum verify),
+if a referenced robustness manifest is missing, or if `policy_version` is
+unknown.
+
+## Policy versioning (content-hash bound)
+
+`research.gate_policy.GatePolicy` is versioned data (`GateDefinition` name /
+metric / comparator / threshold), never code branching on private numbers.
+The binding identity for a persisted record is the policy's SHA-256 content
+hash (`compute_policy_content_hash`), **not** the version string alone:
+
+- Extend by adding a **new** version key to the registry.
+- Never mutate an existing version's `gates` tuple in place — that is
+  exactly the failure mode `verify_policy_content_hash` exists to catch: if
+  version `"1.0"` were silently re-defined with different thresholds, a
+  persisted record's old content hash no longer matches the current
+  in-repo definition for that version, and re-verification raises
+  `GatePolicyError` (`tests/research/test_gate_policy.py`).
+
+## Persistence (append-only, immutable invalidation)
+
+`GateResultStore` mirrors `research.registry.ExperimentRegistry`:
+
+- Records are appended to
+  `artifacts/research/gates/registry.jsonl` — never rewritten.
+- `gate_run_id` is deterministic (SHA-256 over `run_id` +
+  `policy_version` + `policy_content_hash` + `robustness_run_ids`), so
+  re-evaluating the same evidence under the same policy content is
+  idempotent (returns the existing active record instead of appending a
+  duplicate).
+- Invalidating a result appends a **superseding** record (`status:
+  "invalidated"` + `invalidation_reason`) plus a sidecar under
+  `artifacts/research/gates/invalidations/<gate_run_id>.jsonl` — the
+  original record line is never edited or deleted.
+
+## No auto-promotion
+
+`GateRunRecord.promotion_action` is always `"none"`. No code path in
+`gate_policy.py` / `gate_evaluator.py` / `gate_service.py` calls into
+`paper_trading` or any live order surface. `overall_status: "fail" | "pass"`
+is informational evidence only — promotion remains a separate, human-owned
+decision (#205 for Strategy V1; P6/P8 milestones generally).
+
+## API
+
+`services/research/api.py` (`/api/v1/research/...`):
+
+| Route | Purpose |
+|-------|---------|
+| `GET /gate-policies` | Registered policy versions + content hash (read-only, no secrets) |
+| `GET /gates` | List gate results (optional `?run_id=`) |
+| `GET /gates/{gate_run_id}` | One gate result |
+| `POST /gates/evaluate` | Evaluate `{run_id, policy_version, robustness_run_ids?}` (idempotent) |
+| `POST /gates/{gate_run_id}/invalidate` | Append-only invalidation `{reason, actor}` |
+
+## Tests
+
+- `tests/research/test_gate_policy.py` — content-hash determinism, unknown
+  version, and the same-version-content-hash-mismatch case.
+- `tests/research/test_gate_evaluator.py` — evidence binding, tampered
+  artifact rejection, robustness-manifest binding, idempotent append-only
+  persistence, invalidation.
+- `tests/research/test_gate_api.py` — integration (local BTC fixture).

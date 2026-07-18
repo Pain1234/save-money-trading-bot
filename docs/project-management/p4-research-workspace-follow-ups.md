@@ -2,9 +2,9 @@
 
 ## Status (delivered / open)
 
-**Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity). #247 — Robustness-Orchestrierung (walk-forward, cost stress, parameter stability, bootstrap) auf derselben Runner/Registry/Artefakt-Linie + minimale UI unter `/dashboard/research/robustness` (siehe §4).
+**Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity). #247 — Robustness-Orchestrierung (walk-forward, cost stress, parameter stability, bootstrap) auf derselben Runner/Registry/Artefakt-Linie + minimale UI unter `/dashboard/research/robustness` (siehe §4). #248 — Versionierter Gate Evaluator und Gate-Persistenz (Policy-Content-Hash-Bindung, evidenzgebundene, append-only Gate-Records, Read/Evaluate-API, keine Auto-Promotion; siehe §5).
 
-**Open:** #242 UI-Abnahme (Lab + catalog), #245 durable jobs, #246/#248/#249 compare/gates/validation, #250 E2E/UI acceptance; Cancel/Retry deferred.
+**Open:** #242 UI-Abnahme (Lab + catalog), #245 durable jobs, #246/#249 compare/validation, #250 E2E/UI acceptance; Cancel/Retry deferred.
 
 ## Recommended issue split
 
@@ -61,10 +61,36 @@ runner/registry/artifact line — no new backtester:
   `tests/research/test_robustness_api.py` (integration, local BTC fixture),
   `tests/dashboard/research-robustness.test.tsx` (UI smoke, synthetic fixtures).
 
-### 5. P4.7c Versionierter Gate Evaluator und Gate-Persistenz — #248
+### 5. P4.7c Versionierter Gate Evaluator und Gate-Persistenz — #248 (delivered)
 
-Gate evaluation versioning, persistence of accept/reject reasons, no silent
-promotion into paper trading.
+Evaluates evidence already produced by the research runner (#141-#147) and
+the robustness orchestrator (#247) against a versioned, content-hash-bound
+policy — no second backtest engine, no silent promotion into paper/live:
+
+- `services/research/gate_policy.py` — versioned `GatePolicy` /
+  `GateDefinition`; binding identity is the policy's SHA-256 content hash,
+  not the version string alone (`verify_policy_content_hash` rejects a
+  version silently re-defined with different content). Ships one generic
+  example policy (`1.0`) — infrastructure for #249, not the private P5 human
+  decision rules (`docs/research/p5/P5_DECISION_RULES.md`, #205).
+- `services/research/gate_evaluator.py` — `GateEvaluator` binds evidence
+  (run's sealed `RunManifest` + registry checksums + optional robustness
+  manifests) into an immutable `GateRunRecord`: `run_id`, optional
+  `robustness_run_ids`, `artifact_checksums`, `dataset_id` /
+  `dataset_content_hash`, `policy_version` + `policy_content_hash`,
+  `run_code_commit` + `evaluation_code_commit`. `GateResultStore` persists
+  append-only under `artifacts/research/gates/registry.jsonl`
+  (`registry.invalidate` pattern: invalidation appends a superseding record
+  + sidecar, never rewrites).
+- API under `/api/v1/research/gates` (`GET` list/detail, `POST /evaluate`,
+  `POST /{gate_run_id}/invalidate`) + `GET /gate-policies`
+  (`services/research/gate_service.py`, `services/research/api.py`).
+- Tests: `tests/research/test_gate_policy.py` (content-hash + versioning
+  unit tests, including the same-version-content-hash-mismatch case),
+  `tests/research/test_gate_evaluator.py` (evidence binding, idempotent
+  append-only persistence, invalidation), `tests/research/test_gate_api.py`
+  (integration, local BTC fixture).
+- Docs: `docs/research/GATES.md`.
 
 ### 6. P4.7d Validation Studies — #249
 

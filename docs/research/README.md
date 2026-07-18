@@ -23,6 +23,8 @@ Public-release gates (#176–#180) may remain open on the milestone after resear
 | `runner` / `artifacts` | CLI runner + atomic layout (#143) |
 | `registry` | Index + semantic compare + trust-anchor verify + invalidation (#145 / #165 / #167) |
 | `repro` | Semantic double-run compare (#146) |
+| `robustness` / `robustness_service` | Walk-forward / cost-stress / parameter-stability / bootstrap orchestration (#247) |
+| `gate_policy` / `gate_evaluator` / `gate_service` | Versioned, evidence-bound gate evaluation + append-only persistence (#248) |
 
 ## End-to-end CLI example
 
@@ -109,6 +111,7 @@ Completed `(experiment_id, run_id)` directories are immutable. Keep originals; m
 - [FUNDING.md](FUNDING.md)
 - [REPRODUCIBILITY.md](REPRODUCIBILITY.md)
 - [INVALIDATION.md](INVALIDATION.md)
+- [GATES.md](GATES.md)
 - [P4_ACCEPTANCE.md](P4_ACCEPTANCE.md)
 - [BACKTESTER_PAPER_PARITY.md](BACKTESTER_PAPER_PARITY.md)
 
