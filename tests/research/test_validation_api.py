@@ -92,6 +92,10 @@ def validation_client(
     monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
     monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
     monkeypatch.setenv("RESEARCH_ALLOW_DIRTY_GIT", "1")
+    # Deploy-image path for GateService: no .git → validated RESEARCH_EVALUATION_GIT_SHA.
+    eval_image_root = tmp_path / ".evaluation_image_root"
+    eval_image_root.mkdir()
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "a" * 40)
 
     def _read() -> ResearchReadService:
         return ResearchReadService(tmp_path)
@@ -103,14 +107,10 @@ def validation_client(
         return RobustnessOrchestrationService(tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True)
 
     def _gate() -> GateService:
-        return GateService(tmp_path, repo_root=REPO_ROOT)
+        return GateService(tmp_path, repo_root=eval_image_root)
 
     def _validation() -> ValidationStudyService:
         return ValidationStudyService(tmp_path, repo_root=REPO_ROOT)
-
-    # Gate evaluation fails closed on a dirty working tree unless a deployment
-    # pin is provided — tests pin an explicit evaluation SHA (Issue #248 P2).
-    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "a" * 40)
 
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
@@ -635,6 +635,48 @@ def test_decision_bound_to_snapshot_survives_post_decision_latest_drift(
     assert body["decision"]["evidence_snapshot_id"] == snapshot_id
     assert body["evidence_snapshot"]["primary"]["run_id"] == pinned_run
     assert body["evidence_integrity"]["ok"] is True
+
+
+def test_create_validation_study_rejects_gate_with_tampered_robustness_manifest(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    """Gate pin must re-run artifact checksum verification (Issue #249 P1).
+
+    Study pins only the gate (no separate robustness_ids). After the gate's
+    robustness manifest is tampered — including rewriting the sidecar — create
+    must fail closed the same way GateService.get would.
+    """
+    import hashlib
+
+    from research.robustness import robustness_manifest_path
+
+    client, ids = validation_client
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    path = robustness_manifest_path(root, ids["robustness_id"])
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    # Flip a sealed measurement while keeping JSON well-formed.
+    if raw.get("bootstrap_result") and raw["bootstrap_result"].get("net_pnl_quantiles"):
+        raw["bootstrap_result"]["net_pnl_quantiles"]["q05"] = 999999.0
+    elif raw.get("children"):
+        raw["children"][0]["net_pnl"] = "999999"
+    path.write_text(json.dumps(raw, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    (path.parent / "manifest.json.sha256").write_text(
+        hashlib.sha256(path.read_bytes()).hexdigest() + "\n", encoding="utf-8"
+    )
+
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": ids["base_experiment_id"],
+            "gate_run_ids": [ids["gate_run_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "gate_run_ids" in fields
+    assert "artifact_checksums" in fields["gate_run_ids"] or "untrusted" in fields[
+        "gate_run_ids"
+    ]
 
 
 def test_decided_study_fail_closed_when_pinned_run_invalidated(
