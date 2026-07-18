@@ -75,7 +75,14 @@ for the dashboard `.env.local` setup, including the `\$` escaping gotcha).
 - [ ] "Neues Experiment" from the strategy detail page opens the Lab
       pre-filled with `trend_v1`.
 
-### B. Strategy Lab → Run → Detail (#242 closure)
+### B. Strategy Lab → Run → Detail (#242 closure — browser residual under #250)
+
+Lab **feature acceptance** for #242 is closed on `main` via PR #243 + follow-up
+Lab fixes, API E2E (`tests/research/test_e2e_acceptance.py`), and the Write-Service
+smoke protocol on issue #242 (committed `local_lab` catalog; no free client path).
+
+The checkboxes below remain the **human browser** residual and close under
+**#250** (not a reopened #242 feature track):
 
 - [ ] `/dashboard/research/experiments/new` shows the strategy picker,
       dataset picker (from the local_lab catalog only — no free-text path
