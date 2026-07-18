@@ -20,8 +20,10 @@ from research.hl_dataset_export import (
     HlDatasetExportError,
     default_catalog_alias,
     export_from_raw_pages,
+    normalize_git_sha,
     parse_as_of,
     raw_source_for_network,
+    resolve_export_code_commit,
     resolve_export_window,
     synthesize_hl_daily_pages,
 )
@@ -69,6 +71,35 @@ def test_default_alias_derives_from_symbol_network_days() -> None:
     assert (
         default_catalog_alias(MarketSymbol.ETH, HyperliquidNetwork.TESTNET, 31)
         == "hl-eth-testnet-31d"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "not-a-sha",
+        "unknown",
+        "1234567",
+        "abcdef0",
+        "0123456789abcdef0123456789abcdef0123456",  # 39 hex
+        "0123456789abcdef0123456789abcdef012345678",  # 41 hex
+        "g123456789abcdef0123456789abcdef01234567",  # non-hex
+    ],
+)
+def test_normalize_git_sha_rejects_invalid(bad: str) -> None:
+    with pytest.raises(HlDatasetExportError, match="full git SHA"):
+        normalize_git_sha(bad)
+    with pytest.raises(HlDatasetExportError, match="full git SHA"):
+        resolve_export_code_commit(explicit=bad, repo_root=Path("."))
+
+
+def test_normalize_git_sha_accepts_full_hex_and_lowercases() -> None:
+    upper = "0123456789ABCDEF0123456789ABCDEF01234567"
+    assert normalize_git_sha(upper) == _FIXED_COMMIT
+    sha256 = "a" * 64
+    assert normalize_git_sha(sha256) == sha256
+    assert resolve_export_code_commit(explicit=f"  {upper}  ", repo_root=Path(".")) == (
+        _FIXED_COMMIT
     )
 
 

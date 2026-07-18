@@ -66,8 +66,9 @@ python scripts/export_research_dataset_hyperliquid.py `
 
 Default catalog alias is `hl-<symbol>-<network>-<days>d` (e.g. `hl-btc-mainnet-31d`).
 Override with `--catalog-alias` only when intentional. Manifest `code_commit` must be a
-real SHA (`--code-commit`, clean Git HEAD, or `RESEARCH_GIT_COMMIT` /
-`RAILWAY_GIT_COMMIT_SHA`) — fail-closed otherwise.
+full Git SHA — 40 or 64 hex chars (`--code-commit`, clean Git HEAD, or
+`RESEARCH_GIT_COMMIT` / `RAILWAY_GIT_COMMIT_SHA`) — fail-closed otherwise (abbreviated
+or non-hex strings are rejected).
 
 Production (mainnet public API, pinned end date, absolute catalog paths):
 

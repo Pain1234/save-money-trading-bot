@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--code-commit",
         default=None,
         help=(
-            "Git SHA for manifest code_commit. "
+            "Full git SHA (40 or 64 hex chars) for manifest code_commit. "
             "Default: clean HEAD or RESEARCH_GIT_COMMIT / RAILWAY_GIT_COMMIT_SHA."
         ),
     )

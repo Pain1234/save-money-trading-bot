@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ from research.dataset_binding import hash_research_bundle
 DEFAULT_DAYS = 730
 SCHEMA_VERSION = "1.0"
 PROVIDER_VERSION = "hyperliquid_historical/1.0"
+_FULL_GIT_SHA = re.compile(r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
 
 # Optional mid-write hook for fail-injection tests (staging Path).
 SnapshotWriteHook = Callable[[Path], None]
@@ -47,6 +49,19 @@ SnapshotWriteHook = Callable[[Path], None]
 
 class HlDatasetExportError(ValueError):
     """Fail-closed export / catalog update error."""
+
+
+def normalize_git_sha(value: str) -> str:
+    """Accept only full 40- or 64-char hex SHAs; return lowercase.
+
+    Rejects abbreviated SHAs, ``unknown``, and arbitrary non-hex strings.
+    """
+    pinned = value.strip().lower()
+    if not _FULL_GIT_SHA.fullmatch(pinned):
+        raise HlDatasetExportError(
+            f"code_commit must be a full git SHA (40 or 64 lowercase hex chars); got {value!r}"
+        )
+    return pinned
 
 
 @dataclass(frozen=True)
@@ -147,19 +162,20 @@ def resolve_export_code_commit(
     explicit: str | None,
     repo_root: Path,
 ) -> str:
-    """Real code provenance: ``--code-commit``, env pin, or clean Git HEAD."""
+    """Real code provenance: ``--code-commit``, env pin, or clean Git HEAD.
+
+    All sources are normalized through ``normalize_git_sha`` (full hex only).
+    """
     if explicit is not None:
-        pinned = explicit.strip()
-        if len(pinned) < 7 or pinned.lower() == "unknown":
-            raise HlDatasetExportError(
-                "code_commit must be a real git SHA (min 7 chars), not unknown"
-            )
-        return pinned
+        return normalize_git_sha(explicit)
     try:
         from research.runner import resolve_git_commit
 
-        return resolve_git_commit(repo_root, allow_dirty=False)
+        return normalize_git_sha(resolve_git_commit(repo_root, allow_dirty=False))
     except ValueError as exc:
+        # resolve_git_commit raises ValueError; normalize raises HlDatasetExportError.
+        if isinstance(exc, HlDatasetExportError):
+            raise
         raise HlDatasetExportError(str(exc)) from exc
 
 
@@ -379,8 +395,7 @@ def build_export_manifest(
     code_commit: str,
 ) -> DatasetManifest:
     """Canonical export manifest (not ``build_manifest_dict_for_bundle``)."""
-    if len(code_commit) < 7 or code_commit.lower() == "unknown":
-        raise HlDatasetExportError("code_commit must be a real git SHA (min 7 chars)")
+    code_commit = normalize_git_sha(code_commit)
     content_hash = hash_research_bundle(bundle, symbols)
     row_count = sum(
         len(bundle.daily.get(s, ()))
@@ -759,6 +774,7 @@ __all__ = [
     "fetch_raw_pages",
     "last_closed_utc_day",
     "merge_catalog_atomic",
+    "normalize_git_sha",
     "parse_as_of",
     "production_env_snippet",
     "raw_source_for_network",
