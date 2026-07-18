@@ -53,6 +53,9 @@ $env:RESEARCH_DATASET_CATALOG_PATH = "<repo-root>\examples\research\local_lab\ca
 # Keep the git working tree clean — do NOT set RESEARCH_ALLOW_DIRTY_GIT for
 # this acceptance pass (that flag is a documented exception for automated
 # tests only, per examples/research/README.md).
+# Note: `tests/research/test_e2e_acceptance.py` isolates provenance to a clean
+# `git archive` snapshot of HEAD (and prints ambient `git status --porcelain`
+# for CI diagnosis); it still never sets RESEARCH_ALLOW_DIRTY_GIT.
 PAPER_API_ENABLED=1 PAPER_API_PORT=8080 python -m paper_trading.api_runner
 ```
 
