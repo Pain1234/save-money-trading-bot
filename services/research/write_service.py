@@ -384,6 +384,35 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
                     },
                 )
 
+    # Fail closed on Spec window outside DatasetManifest (avoid silent job failure).
+    try:
+        from datetime import datetime
+
+        from research.dataset_binding import load_dataset_manifest
+
+        manifest = load_dataset_manifest(
+            entry.manifest_path, repo_root=repo_root_from_env()
+        )
+        start = datetime.fromisoformat(str(tr["start"]).replace("Z", "+00:00"))
+        end = datetime.fromisoformat(str(tr["end"]).replace("Z", "+00:00"))
+        if start < manifest.start_timestamp:
+            field_errors["time_range"] = (
+                "Startdatum liegt vor dem Dataset-Fenster "
+                f"({manifest.start_timestamp.date().isoformat()})"
+            )
+        if end > manifest.end_timestamp:
+            field_errors["time_range"] = (
+                "Enddatum liegt nach dem Dataset-Fenster "
+                f"({manifest.end_timestamp.date().isoformat()})"
+            )
+    except (OSError, ValueError, TypeError, FileNotFoundError) as exc:
+        field_errors["dataset_catalog_id"] = (
+            f"DatasetManifest konnte nicht geladen werden: {exc}"
+        )
+
+    if field_errors:
+        raise ResearchWriteError("Validierung fehlgeschlagen", field_errors=field_errors)
+
     notes = str(payload.get("notes") or "")
     seed = payload.get("random_seed")
     random_seed = int(seed) if seed is not None and str(seed) != "" else None
