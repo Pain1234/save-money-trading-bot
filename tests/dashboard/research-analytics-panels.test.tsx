@@ -151,7 +151,7 @@ describe("pinnedRunMatchesDetail", () => {
         robustness: [],
         gates: [],
       },
-    } as ValidationStudyDetail;
+    } as unknown as ValidationStudyDetail;
 
     const anchor = toEvidenceAnchor(study);
     expect(anchor.experimentId).toBe("exp_a");

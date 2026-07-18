@@ -24,12 +24,16 @@ export function pinnedRunMatchesDetail(
 }
 
 /** Equity-Punkte ohne Wert weglassen — nie still mit 0 füllen. */
+export type EquitySeriesPoint = Omit<ResearchSeriesPoint, "equity"> & {
+  equity: number;
+};
+
 export function sanitizeEquitySeries(
   points: ResearchSeriesPoint[] | null | undefined,
-): ResearchSeriesPoint[] {
+): EquitySeriesPoint[] {
   if (!points?.length) return [];
   return points.filter(
-    (p): p is ResearchSeriesPoint & { equity: number } =>
+    (p): p is EquitySeriesPoint =>
       typeof p.equity === "number" && Number.isFinite(p.equity),
   );
 }
@@ -38,12 +42,16 @@ export function sanitizeEquitySeries(
  * Drawdown-Punkte ohne Wert weglassen — `(drawdown ?? 0)` würde Nullwerte erfinden.
  * Leere Liste nach Filter → Aufrufer zeigt „Nicht verfügbar“.
  */
+export type DrawdownSeriesPoint = Omit<ResearchSeriesPoint, "drawdown"> & {
+  drawdown: number;
+};
+
 export function sanitizeDrawdownSeries(
   points: ResearchSeriesPoint[] | null | undefined,
-): ResearchSeriesPoint[] {
+): DrawdownSeriesPoint[] {
   if (!points?.length) return [];
   return points.filter(
-    (p): p is ResearchSeriesPoint & { drawdown: number } =>
+    (p): p is DrawdownSeriesPoint =>
       typeof p.drawdown === "number" && Number.isFinite(p.drawdown),
   );
 }
