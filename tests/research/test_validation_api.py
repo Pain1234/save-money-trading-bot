@@ -294,6 +294,71 @@ def test_create_validation_study_rejects_unknown_gate_run_id(
     assert "gate_run_ids" in resp.json()["detail"]["fields"]
 
 
+def _complete_second_experiment(client: TestClient, tmp_path: Path) -> tuple[str, str]:
+    """Create and finish a second experiment (run B) under the same catalog."""
+    _catalog_path, payload = _catalog_and_lab_payload(tmp_path)
+    payload = {**payload, "name": "validation study other experiment", "random_seed": 11}
+    created = client.post("/api/v1/research/experiments", json=payload).json()
+    experiment_id = created["experiment_id"]
+    started = client.post(f"/api/v1/research/experiments/{experiment_id}/start")
+    assert started.status_code == 200, started.text
+    deadline = time.time() + 60
+    status = "queued"
+    while time.time() < deadline:
+        status = client.get(f"/api/v1/research/experiments/{experiment_id}/status").json()[
+            "status"
+        ]
+        if status in {"completed", "failed"}:
+            break
+        time.sleep(0.2)
+    assert status == "completed", status
+    run_id = client.get(f"/api/v1/research/experiments/{experiment_id}").json()["summary"][
+        "run_id"
+    ]
+    assert run_id
+    return experiment_id, run_id
+
+
+def test_create_validation_study_rejects_cross_run_robustness(
+    validation_client: tuple[TestClient, dict[str, str]],
+    tmp_path: Path,
+) -> None:
+    """Study for run B cannot pin robustness whose base_run_id is run A."""
+    client, ids = validation_client
+    other_experiment_id, _other_run_id = _complete_second_experiment(client, tmp_path)
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": other_experiment_id,
+            "robustness_ids": [ids["robustness_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "robustness_ids" in fields
+    assert "not in study pinned runs" in fields["robustness_ids"]
+
+
+def test_create_validation_study_rejects_cross_run_gate(
+    validation_client: tuple[TestClient, dict[str, str]],
+    tmp_path: Path,
+) -> None:
+    """Study for run B cannot pin a gate whose run_id is run A."""
+    client, ids = validation_client
+    other_experiment_id, _other_run_id = _complete_second_experiment(client, tmp_path)
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": other_experiment_id,
+            "gate_run_ids": [ids["gate_run_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "gate_run_ids" in fields
+    assert "not in study pinned runs" in fields["gate_run_ids"]
+
+
 def test_create_validation_study_rejects_missing_experiment_id(
     validation_client: tuple[TestClient, dict[str, str]],
 ) -> None:
