@@ -38,14 +38,15 @@ class HyperliquidHistoricalProvider:
         self._config = config
         self._adapter = adapter or HyperliquidCandleAdapter()
 
-    async def fetch_candles(
+    async def fetch_candles_with_raw_pages(
         self,
         symbol: MarketSymbol,
         timeframe: MarketTimeframe,
         start_time: datetime,
         end_time: datetime,
         evaluation_time: datetime,
-    ) -> tuple[RawCandle, ...]:
+    ) -> tuple[tuple[RawCandle, ...], tuple[bytes, ...]]:
+        """Paginated fetch; returns candles plus immutable HTTP body bytes per page."""
         start_time = ensure_utc(start_time)
         end_time = ensure_utc(end_time)
         evaluation_time = ensure_utc(evaluation_time)
@@ -58,6 +59,7 @@ class HyperliquidHistoricalProvider:
         end_ms = _to_epoch_ms(end_time)
 
         all_candles: list[RawCandle] = []
+        raw_pages: list[bytes] = []
         seen_keys: set[tuple[int, int]] = set()
         cursor = start_ms
         last_progress_ms: int | None = None
@@ -74,9 +76,10 @@ class HyperliquidHistoricalProvider:
                     "endTime": end_ms,
                 },
             }
-            payload = await self._client.post_info(
+            payload, raw = await self._client.post_info_with_raw(
                 body, request_id=f"snapshot-{coin}-{interval}-{page}"
             )
+            raw_pages.append(raw)
             if not isinstance(payload, list):
                 raise HyperliquidParseError("candleSnapshot response must be a list")
 
@@ -88,26 +91,25 @@ class HyperliquidHistoricalProvider:
             for item in payload:
                 if not isinstance(item, dict):
                     raise HyperliquidParseError("candleSnapshot item must be an object")
-                raw = self._adapter.parse_candle(
+                raw_candle = self._adapter.parse_candle(
                     item,
                     expected_coin=coin,
                     expected_interval=interval,
                     evaluation_time=evaluation_time,
                     strict=True,
                 )
-                open_ms = _to_epoch_ms(raw.open_time)
+                open_ms = _to_epoch_ms(raw_candle.open_time)
                 if open_ms > end_ms:
                     raise HyperliquidParseError(
-                        f"candleSnapshot candle open time {open_ms} after "
-                        f"requested end {end_ms}"
+                        f"candleSnapshot candle open time {open_ms} after requested end {end_ms}"
                     )
                 if open_ms < start_ms:
                     continue
-                key = (open_ms, _to_epoch_ms(raw.close_time))
+                key = (open_ms, _to_epoch_ms(raw_candle.close_time))
                 if key in seen_keys:
                     continue
                 seen_keys.add(key)
-                page_candles.append(raw)
+                page_candles.append(raw_candle)
 
             page_candles.sort(key=lambda c: c.open_time)
             if not page_candles:
@@ -143,7 +145,20 @@ class HyperliquidHistoricalProvider:
             )
 
         all_candles.sort(key=lambda c: c.open_time)
-        return tuple(all_candles)
+        return tuple(all_candles), tuple(raw_pages)
+
+    async def fetch_candles(
+        self,
+        symbol: MarketSymbol,
+        timeframe: MarketTimeframe,
+        start_time: datetime,
+        end_time: datetime,
+        evaluation_time: datetime,
+    ) -> tuple[RawCandle, ...]:
+        candles, _pages = await self.fetch_candles_with_raw_pages(
+            symbol, timeframe, start_time, end_time, evaluation_time
+        )
+        return candles
 
     async def fetch_history(
         self,

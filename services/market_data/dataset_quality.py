@@ -132,3 +132,13 @@ def evaluate_dataset_quality(
 
 def quality_status_from_report(report: DataQualityReport) -> DataQualityStatus:
     return report.status
+
+
+def evaluate_series_quality(
+    candles: tuple[NormalizedCandle, ...],
+    symbol: MarketSymbol,
+    timeframe: MarketTimeframe,
+    evaluation_time: datetime,
+) -> DataQualityReport:
+    """Series-level quality gate (structure, gaps, duplicates, stale)."""
+    return _evaluate_candles(candles, symbol, timeframe, evaluation_time)
