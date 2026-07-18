@@ -4,7 +4,9 @@
 
 **Delivered:** #265 — Trend Strategy V1 visible/selectable in Research (catalog + Lab). #266 — experiment detail **Kurs & Trades** chart from verified `trades.json` + run-bound `chart_data.json` candles (fail-closed integrity). #247 — Robustness-Orchestrierung (walk-forward, cost stress, parameter stability, bootstrap) auf derselben Runner/Registry/Artefakt-Linie + minimale UI unter `/dashboard/research/robustness` (siehe §4). #248 — Versionierter Gate Evaluator und Gate-Persistenz (Policy-Content-Hash-Bindung, evidenzgebundene, append-only Gate-Records, Read/Evaluate-API, keine Auto-Promotion; siehe §5).
 
-**Open:** #242 UI-Abnahme (Lab + catalog), #245 durable jobs, #246/#249 compare/validation, #250 E2E/UI acceptance; Cancel/Retry deferred.
+#249 — Validation Studies API and UI, aggregating already-produced experiment/robustness/gate evidence (no second engine, no live/paper promotion). #250 — E2E/reproducibility/UI-acceptance suite implemented on `feat/250-research-e2e` (stacked on `main → #247 → #248 → #249`); see §7.
+
+**Open:** #242 UI-Abnahme (Lab + catalog; manual checklist now documented, human run outstanding), #245 durable jobs, #246 compare (both off `main`, not on the #250 stack); Cancel/Retry deferred.
 
 ## Recommended issue split
 
@@ -96,10 +98,23 @@ policy — no second backtest engine, no silent promotion into paper/live:
 
 Validation studies API and UI.
 
-### 7. P4.8 End-to-End-, Reproduzierbarkeits- und UI-Abnahmetests — #250
+### 7. P4.8 End-to-End-, Reproduzierbarkeits- und UI-Abnahmetests — #250 (implemented on `feat/250-research-e2e`)
 
-Playwright + API acceptance covering Lab → run → detail → compare; double-run
-repro checks; no mock production data.
+API E2E acceptance (`tests/research/test_e2e_acceptance.py`) against the
+committed `local_lab` catalog, without `RESEARCH_ALLOW_DIRTY_GIT`: canonical
+strategy dedup, chart vs bound dataset + `trades.json`, tampered-checksum /
+dataset-mismatch fail-closed with equity/drawdown proven unaffected,
+deterministic failed job (no private data), Lab→Run→Detail happy path,
+double-start blocked, and a robustness→gate→validation smoke chain. No
+Playwright harness existed for research yet, so this stays API-level
+(consistent with the existing vitest/pytest pattern for #265/#266); the repo's
+only Playwright coverage remains the unrelated paper-trading dashboard specs
+under `tests/visual/` and `tests/e2e/`. Compare (#246) and durable-job
+restart/ownership (#245) are **not** on this branch stack (separate open PRs
+off `main`) — their absence is asserted and documented, not silently skipped.
+CLI compatibility guarded by `tests/research/test_cli_compat.py`. Manual UI
+checklist: `docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md` (closes the
+remaining #242 Abnahme theme; human execution/evidence still outstanding).
 
 ## Follow-up (not in #274)
 

@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Planned (seed issues closed; exit criteria **not** met — do not treat as complete) | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine und Research Workspace V1 | **In flight** (Lab #242/#243; catalog #265; chart #266; #245–#250 open) | No |
+| P4 | Research Engine und Research Workspace V1 | **In flight** (Lab #242/#243; catalog #265; chart #266; #250 E2E suite on `feat/250-research-e2e`; #245/#246 still open off `main`) | No |
 | P5 | Honest Validation of Trend Strategy V1 | **Planning** (helpers #200–#203 ≠ execution; #251–#254 open; no OOS opened) | No |
 | P6 | Paper Trading Soak | **Not started** (Epic #46; sub-issues #256–#262; clock not started) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Planning only (no new impl split until P5/P6 gates) | No |
@@ -37,7 +37,7 @@ Central project goal:
 - **P1 complete** (2026-07-14): tag `baseline-paper-v1.0.0` at `daacb627` (PR #62 merge). Post-tag doc/lock/CI improvements tracked in PR #63 (optional `baseline-paper-v1.0.1` after merge).
 - **P3 complete** (2026-07-14): versioned historical market data pipeline implemented (`services/market_data/`, migration `010_market_data_datasets`, issues #76–#84); reproducibility audit in `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md`.
 - Dashboard UI locally usable with real paper data (login, wallet, PnL, positions, fills, equity); **not** yet classified as production-accepted performant monitoring (`docs/railway-paper-trading-dashboard-v1.md` maturity levels).
-- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **reopened** until manual UI acceptance with a valid dataset catalog is documented. Catalog visibility #265 and price/trade chart #266 opened. Also open: #245 (durable jobs), #246–#249 (compare/robustness/gates/validation studies), #250 (E2E/UI-Abnahme). Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`. Governance sync: #244.
+- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **reopened** until manual UI acceptance with a valid dataset catalog is documented. Catalog visibility #265 and price/trade chart #266 merged to `main`. Robustness #247 / gate evaluator #248 / validation studies #249 delivered on the `feat/249-validation-studies` stack (open PR, not yet on `main`). #250 (E2E/Reproduzierbarkeit/UI-Abnahme) implemented on `feat/250-research-e2e`, stacked on that same PR chain. Still open, off `main`, not part of this stack: #245 (durable jobs), #246 (compare). Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`. Governance sync: #244.
 - **P5** planning/helpers (#197–#203, #181) ≠ actual Strategy V1 validation. Execution issues: #251–#254; study register #255; final OOS #204 still blocked. See `docs/research/p5/README.md`.
 - **P6** soak **not started**. Epic #46 decomposed into #256–#262; private telemetry boundary #182.
 - **P2.5** seed issues are closed but ROADMAP exit criteria remain open — status drift documented in the coverage audit; not marked complete.
@@ -420,16 +420,37 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] Experiment detail view „Kurs & Trades“ from verified `trades.json` + bound dataset candles
 - [x] Fail-closed on integrity / dataset mismatch; equity/drawdown charts unchanged
 
+#### Research Workspace — E2E, reproducibility, UI acceptance (#250) — **in progress on `feat/250-research-e2e`**
+
+Stacked on `main → #247 → #248 → #249` (this stack does **not** include #245
+durable jobs or #246 compare, which are separate PRs off `main` — documented
+absent, not silently skipped; see `docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`).
+
+- [x] API E2E suite `tests/research/test_e2e_acceptance.py`: Trend Strategy V1
+  exactly-once, chart vs bound dataset + `trades.json`, tampered-checksum
+  fail-closed, equity/drawdown unaffected by chart-only integrity failure,
+  deterministic failed job without private data, Lab→Run→Detail happy path,
+  double-start blocked, robustness/gate/validation smoke, documented absence
+  of #246/#245 surfaces — all without `RESEARCH_ALLOW_DIRTY_GIT`.
+- [x] CLI compatibility smoke `tests/research/test_cli_compat.py` (`python -m
+  research` help/compare still wired; `research.repro` importable).
+- [x] Manual UI acceptance checklist documented (`docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`),
+  closing the remaining #242 "manuelle UI-Abnahme" theme (evidence table to
+  be filled in by a human run against a local dataset catalog — no private
+  metrics recorded).
+- [ ] Human execution of the manual checklist + evidence row filled in
+  (tracked in the doc's evidence table; not fabricated here).
+- [ ] Re-run the #245/#246 sections of the checklist once those PRs land on a
+  branch that includes this stack.
+
 #### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
 
-- [ ] [#265](https://github.com/Pain1234/save-money-trading-bot/issues/265) P4.6 Make Trend Strategy V1 visible and selectable in Research
-- [ ] [#266](https://github.com/Pain1234/save-money-trading-bot/issues/266) P4.7 Add price and trade chart to research experiment details
-- [ ] [#245](https://github.com/Pain1234/save-money-trading-bot/issues/245) P4.6b Durable Research Job Execution und Restart Recovery
-- [ ] [#246](https://github.com/Pain1234/save-money-trading-bot/issues/246) P4.7a Experiment- und Strategie-Vergleich
-- [ ] [#247](https://github.com/Pain1234/save-money-trading-bot/issues/247) P4.7b Robustness-Orchestrierung
-- [ ] [#248](https://github.com/Pain1234/save-money-trading-bot/issues/248) P4.7c Versionierter Gate Evaluator und Gate-Persistenz
-- [ ] [#249](https://github.com/Pain1234/save-money-trading-bot/issues/249) P4.7d Validation Studies API und UI
-- [ ] [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) P4.8 Research E2E, Reproduzierbarkeit und UI-Abnahme
+- [ ] [#245](https://github.com/Pain1234/save-money-trading-bot/issues/245) P4.6b Durable Research Job Execution und Restart Recovery — open PR off `main`, **not** on the #250 stack
+- [ ] [#246](https://github.com/Pain1234/save-money-trading-bot/issues/246) P4.7a Experiment- und Strategie-Vergleich — open PR off `main`, **not** on the #250 stack
+- [ ] [#247](https://github.com/Pain1234/save-money-trading-bot/issues/247) P4.7b Robustness-Orchestrierung — code complete on the #250 stack; issue/PR still open (not yet on `main`)
+- [ ] [#248](https://github.com/Pain1234/save-money-trading-bot/issues/248) P4.7c Versionierter Gate Evaluator und Gate-Persistenz — code complete on the #250 stack; issue/PR still open (not yet on `main`)
+- [ ] [#249](https://github.com/Pain1234/save-money-trading-bot/issues/249) P4.7d Validation Studies API und UI — code complete on the #250 stack; issue/PR still open (not yet on `main`)
+- [ ] [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) P4.8 Research E2E, Reproduzierbarkeit und UI-Abnahme — this PR; awaits review/merge and the human manual-checklist run
 - [ ] Cancel / Retry / Re-run (explicitly deferred — no issue)
 
 ### Binding dependency chain
@@ -459,7 +480,7 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism; UI inventing metrics not produced by the engine
 
-**Current gap:** Engine + read-only workspace + Lab code on `main`. Strategy catalog (#265) and price/trade chart (#266) required before P4 workspace exit. #242 not fully accepted. #245–#250 open. **P4 not complete.** P5 economic execution remains gated on usable workspace + P5 execution chain.
+**Current gap:** Engine + read-only workspace + Lab code on `main`; strategy catalog (#265) and price/trade chart (#266) merged. #250 E2E/reproducibility/UI-acceptance suite implemented on `feat/250-research-e2e` (stacked on #247/#248/#249); human execution of the manual UI checklist still outstanding. #242 stays open until that manual run is recorded. #245 (durable jobs) and #246 (compare) remain separate open PRs off `main`, not yet part of this stack. **P4 not complete.** P5 economic execution remains gated on usable workspace + P5 execution chain.
 
 ---
 
