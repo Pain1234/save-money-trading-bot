@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 from research.robustness import (
+    ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
     RobustnessChildResult,
     RobustnessManifest,
-    ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+    robustness_manifest_path,
     save_robustness_manifest,
     verify_robustness_manifest_seal,
-    robustness_manifest_path,
 )
 
 
