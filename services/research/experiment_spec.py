@@ -109,6 +109,21 @@ class CostScenarioSpec(BaseModel):
     funding_assumption: FundingAssumption
 
 
+class SymbolConstraintPin(BaseModel):
+    """Sealed per-symbol exchange sizing pin (#363).
+
+    Bound into Spec identity so research runs cannot inject constraints outside
+    the sealed configuration (P5 evidence requirement).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    quantity_step: Decimal = Field(gt=Decimal("0"))
+    minimum_quantity: Decimal = Field(gt=Decimal("0"))
+    minimum_notional: Decimal = Field(ge=Decimal("0"))
+    price_tick_size: Decimal = Field(gt=Decimal("0"))
+
+
 class ExperimentSpec(BaseModel):
     """Fail-closed, versioned experiment specification."""
 
@@ -125,6 +140,14 @@ class ExperimentSpec(BaseModel):
     fee_assumption: FeeAssumption
     slippage_assumption: SlippageAssumption
     funding_assumption: FundingAssumption
+    symbol_constraints: dict[str, SymbolConstraintPin] = Field(
+        min_length=1,
+        description=(
+            "Required sealed per-symbol exchange constraints "
+            "(quantity_step / minimum_quantity / minimum_notional / price_tick_size). "
+            "Must cover exactly the Spec symbols (#363)."
+        ),
+    )
     cost_scenarios: tuple[CostScenarioSpec, ...] = Field(
         default_factory=tuple,
         description="Optional named cost variants (scenario capability; P5 evaluates stress)",
@@ -157,6 +180,20 @@ class ExperimentSpec(BaseModel):
         # Stable, de-duplicated order for deterministic serialization
         ordered = tuple(sorted(set(value), key=lambda s: s.value))
         return ordered
+
+    @model_validator(mode="after")
+    def _symbol_constraints_cover_exactly(self) -> ExperimentSpec:
+        needed = {s.value for s in self.symbols}
+        have = set(self.symbol_constraints)
+        missing = sorted(needed - have)
+        extra = sorted(have - needed)
+        if missing or extra:
+            msg = (
+                "symbol_constraints must cover exactly Spec symbols; "
+                f"missing={missing} extra={extra}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def parse_experiment_spec(

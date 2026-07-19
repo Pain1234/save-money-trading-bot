@@ -49,7 +49,14 @@ def _daily(symbol: str, day: int, close: str) -> Candle:
 def _btc_spec(**overrides: object):
     raw = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     raw["symbols"] = ["BTC"]
+    from research.symbol_constraints import hyperliquid_mainnet_v1_pins
+
+    raw["symbol_constraints"] = hyperliquid_mainnet_v1_pins(("BTC",))
     raw.update(overrides)
+    if "symbols" in overrides and "symbol_constraints" not in overrides:
+        raw["symbol_constraints"] = hyperliquid_mainnet_v1_pins(
+            tuple(str(s) for s in raw["symbols"])  # type: ignore[arg-type]
+        )
     return parse_experiment_spec(raw)
 
 
@@ -80,6 +87,9 @@ def test_benchmark_net_reflects_higher_fees() -> None:
     low = _btc_spec()
     raw = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     raw["symbols"] = ["BTC"]
+    from research.symbol_constraints import hyperliquid_mainnet_v1_pins
+
+    raw["symbol_constraints"] = hyperliquid_mainnet_v1_pins(("BTC",))
     raw["fee_assumption"] = {
         "entry_fee_rate": "0.05",
         "exit_fee_rate": "0.05",

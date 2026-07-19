@@ -459,6 +459,18 @@ def build_spec_from_payload(payload: dict[str, Any]) -> ExperimentSpec:
         "owner": str(payload.get("owner") or "dashboard"),
     }
 
+    # Seal Hyperliquid mainnet constraint pins into Spec identity (#363).
+    # Client may supply an explicit map; otherwise inject the frozen HL v1 set.
+    from research.symbol_constraints import hyperliquid_mainnet_v1_pins
+
+    raw_constraints = payload.get("symbol_constraints")
+    if isinstance(raw_constraints, dict) and raw_constraints:
+        spec_payload["symbol_constraints"] = raw_constraints
+    else:
+        spec_payload["symbol_constraints"] = hyperliquid_mainnet_v1_pins(
+            [str(s) for s in symbols_raw]
+        )
+
     try:
         return parse_experiment_spec(spec_payload)
     except (ValidationError, ValueError, TypeError) as exc:
