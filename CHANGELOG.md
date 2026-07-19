@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (P5 Gate 1 complete — #196)
+
+- Recorded `FREEZE PIN REFRESHED` (2026-07-19T15:47:02Z) on public-core
+  `aa0e232…`; Gate 1 binding for Agents 2/3. Added Phase-2 integrity checklist.
+  Holdout remains `SEALED`.
+
 ### Changed (P5 candidate freeze pin refresh — #196)
 
 - Post-#363 freeze pin refresh prepared for public-core SHA

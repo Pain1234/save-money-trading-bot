@@ -1,6 +1,6 @@
 # P5 Candidate Freeze Manifest
 
-**Status:** PIN REFRESH PREPARED — awaiting human `FREEZE PIN REFRESHED` / re-approval on #196
+**Status:** PIN REFRESHED — `FREEZE PIN REFRESHED` 2026-07-19T15:47:02Z on #196
 **Issue:** [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196) (P5-00)
 **Rule:** After human freeze, no parameter change may keep the name Strategy V1 without a new `strategy_version`, new freeze manifest, and new validation chain.
 
@@ -10,7 +10,7 @@
 |-------|-------|-------|
 | `strategy_id` | `trend_v1` | Matches resolver key in P4 docs |
 | `strategy_version` | `1.0.0` | Must match code + spec |
-| Git commit (freeze pin / public-core SHA) | `aa0e232a6a0ea235a8a10682f8c7c4229b15a4d4` | `main` tip after #363 merge (PR #366); **human must re-confirm pin** |
+| Git commit (freeze pin / public-core SHA) | `aa0e232a6a0ea235a8a10682f8c7c4229b15a4d4` | `main` after #363 (PR #366); pin refreshed 2026-07-19T15:47:02Z |
 | Prior human freeze pin | `35b4fa6d0c7d4f74a397a7d1a57437823341237b` | `FREEZE APPROVED` 2026-07-19T12:54:01Z — superseded for Partition B by this refresh |
 | Regression evidence SHA | `aa0e232a6a0ea235a8a10682f8c7c4229b15a4d4` | Re-run 2026-07-19 after #363 |
 | Strategy code hash (SHA-256 of `services/strategy_engine/**/*.py`) | `866fc2afab516bd024406c05f8816dd7237fc1f4cbb12821cdfb4845e344893c` | 10 files; repo-relative posix path + NUL + bytes + NUL |
@@ -19,8 +19,8 @@
 | Symbol constraints content hash | `e5b2254249179eebe89d8d349b2a44566b50fbe79b37b2f32b62dc8d3b364817` | `HYPERLIQUID_MAINNET_V1_CONTENT_HASH` |
 | ExperimentSpec schema | `1.0` | `EXPERIMENT_SPEC_SCHEMA_VERSION` |
 | Candidate freeze hash | `90214c9031ccc91091a24a171991fbf84032c45845154cd78b4350ed0bfb59d6` | SHA-256 of canonical Gate-1 identity JSON (see below) |
-| Freeze timestamp (UTC) | **Set at human pin refresh** | Does not reopen holdout |
-| Human approver | **REQUIRED for pin refresh** | Comment on #196 with new SHA + UTC |
+| Freeze timestamp (UTC) | 2026-07-19T15:47:02Z | Pin refresh; does not reopen holdout |
+| Human approver | @Pain1234 | `FREEZE PIN REFRESHED` on #196 |
 | Private Spec path | `Pain1234/save-money-trading-bot-private-research` → `specs/trend_v1_1.0.0/` | Per #181 |
 
 ### Candidate freeze hash payload (canonical)
@@ -54,7 +54,7 @@ Prior prep evidence (historical): SHA `b51bde6…` with 113+3 — superseded by 
 | Compare Spec+Run identity | Met | #167 |
 | Backtester/paper parity docs | Met | BACKTESTER_PAPER_PARITY.md |
 | Strategy V1 version unique | Met | `1.0.0` |
-| Candidate freeze signed | **Pin refresh pending human** | prior approval on `35b4fa6…`; refresh to `aa0e232…` |
+| Candidate freeze signed | **Pin refreshed** | `FREEZE PIN REFRESHED` 2026-07-19T15:47:02Z on `aa0e232…` |
 | No open critical P4-fix | No open P4-fix found at evidence run | re-check at sign-off |
 | Public/private storage | Met (#181 merged) | PR #222 / private repo |
 | Final OOS unopened | Met | Holdout `SEALED` / `NO` |
@@ -123,6 +123,6 @@ Source: `docs/strategy-v1-parameter-inventory.md`, `docs/strategy-specification.
 | Preparer (initial) | Cursor agent (P5 execution) | 2026-07-17 | Prepared hashes + regression evidence |
 | Human freeze approval (prior pin) | @Pain1234 | 2026-07-19T12:54:01Z | `FREEZE APPROVED` on `35b4fa6…` |
 | Preparer (post-#363 pin refresh) | Cursor agent (Agent 1) | 2026-07-19 | Evidence on `aa0e232…`; Gate-1 handoff |
-| Human freeze pin refresh | **REQUIRED** | | Comment on #196: `FREEZE PIN REFRESHED` + `aa0e232…` + UTC |
+| Human freeze pin refresh | @Pain1234 | 2026-07-19T15:47:02Z | `FREEZE PIN REFRESHED` + `aa0e232…` |
 
 **Final holdout status at freeze:** **unopened / SEALED**. Forward holdout clock is not reset by this pin refresh; #204 remains blocked until Pre-OOS gate.

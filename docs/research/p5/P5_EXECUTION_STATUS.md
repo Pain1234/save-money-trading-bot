@@ -10,7 +10,7 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 | Wave | Issue | Public deliverable | Blocking human / time gate |
 |------|-------|--------------------|----------------------------|
 | 0 | #181 | Private repo + namespace docs | **Merged** (PR #222); confirm private ACL |
-| 1 | #196 | Candidate freeze evidence on main tip | Human `FREEZE PIN REFRESHED` on `aa0e232…` (post-#363) |
+| 1 | #196 | Candidate freeze evidence on main tip | **`FREEZE PIN REFRESHED`** 2026-07-19T15:47:02Z on `aa0e232…` |
 | 2 | #197 | Partitions / exposure audit | `PARTITIONS LOCKED` + embargo + monthly warmup ack |
 | 3 | #198 | Protocol + decision rules | `PROTOCOL FROZEN` / `DECISION RULES FROZEN` |
 | 4 | #199 | Benchmarks / regimes | Human approval (metrics 1.2 / Spec cost parity) |
@@ -28,7 +28,7 @@ Do **not** open holdout C until all are true:
 
 - [x] #181 merged / private store usable
 - [x] Human `FREEZE APPROVED` on #196 (prior pin `35b4fa6…` @ 2026-07-19T12:54:01Z)
-- [ ] Human `FREEZE PIN REFRESHED` on #196 for public-core `aa0e232…` (post-#363; see Gate-1 handoff)
+- [x] Human `FREEZE PIN REFRESHED` on #196 for public-core `aa0e232…` (2026-07-19T15:47:02Z; PR #367 docs on `8bb39c1…`)
 - [x] Human partition lock on #197 (`PARTITIONS LOCKED` 2026-07-19T12:54:01Z)
 - [x] Human protocol + decision freeze on #198 (`PROTOCOL FROZEN` / `DECISION RULES FROZEN`)
 - [x] Human benchmark/regime approval on #199 (`BENCHMARKS AND REGIMES APPROVED`)
@@ -56,12 +56,13 @@ those packs as evidence for #251–#254.
 | Gate | State |
 |------|-------|
 | Public stack #181 / #196-docs / #197-#203 / #204-prep / #205-prep | On `main` |
-| Human locks #196–#199 + #294 | **Present**; #196 pin refresh to `aa0e232…` pending |
+| Human locks #196–#199 + #294 | **Present**; #196 pin refreshed to `aa0e232…` |
 | #250 P4 acceptance evidence | Recorded on `1516ddb…`; **human close pending** |
 | #363 sealed symbol constraints | **Merged** on `aa0e232…`; prior private packs invalidated |
-| Private Partition B datasets | **Missing** (templates only) |
+| Gate 1 | **Open** — Agents 2/3 may execute #251–#254 on pinned SHA |
+| Private Partition B datasets | Templates / private repo; pin file PR pending |
 | Private robustness packs #200-#203 helpers | On `main`; **execution packs not run on sealed SHA** |
-| Next Ready (after human pin refresh) | [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251) private Walk-Forward |
+| Next Ready | [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251) + [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253) in parallel |
 | Forward holdout length | **Not started** |
 | Holdout opened? | `NO` / `SEALED` |
 | #204 OOS execution | **BLOCKED** — do not run |
