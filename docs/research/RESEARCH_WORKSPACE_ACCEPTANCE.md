@@ -162,15 +162,20 @@ The checkboxes below remain the **human browser** residual and close under
 
 ### G. Scorecard detail binding (#292)
 
-- [ ] Validation Study detail shows Scorecard Evidence Profile when
-      `scorecard_ids` / snapshot pins / `run_id` resolve; otherwise honest
-      empty reason (no invented metrics).
+- [ ] Validation Study detail shows Scorecard Evidence Profile when a
+      **primary-run** scorecard resolves (`scorecard_ids` / snapshot pins /
+      `run_id`); additional-run pins alone must not become the study profile.
+- [ ] `evidence_integrity.ok=false` or pin hash mismatch → error/unavailable
+      (no ready profile strip).
 - [ ] Experiment detail loads scorecards by `run_id`; FAIL / LOW confidence
       remain visually prominent; no Promote button.
 - [ ] Strategy detail soft-binds via last experiment → run → scorecard.
 - [ ] Missing / `NOT_AVAILABLE` fields render as **Nicht verfügbar**.
+- [ ] `ISOLATED_PEAK` is warning-toned in profile strip **and** Parameter panel.
 - [ ] Regime table stays unavailable until per-regime rows exist on GET
       (document reason in UI).
+- [ ] Rest scope accepted: Evidence Inputs / Gate Failures / Raw Metric Refs
+      not yet rendered (documented in UI spec).
 
 ## Ownership / restart recovery (#245 / #276)
 

@@ -7,10 +7,18 @@ import { ScorecardProfileStrip } from "../../src/components/research/ScorecardPr
 import {
   BACKEND_NOT_AVAILABLE,
   buildScorecardProfileView,
+  evaluateScorecardTrust,
+  pickScorecardForPrimaryRun,
   scorecardDisplayValue,
+  scorecardToneForStatus,
+  studyPrimaryRunId,
 } from "../../src/lib/research/scorecard-binding";
 import { UNAVAILABLE } from "../../src/lib/research/executive-summary";
-import type { ScorecardRecord } from "../../src/lib/research-api/client";
+import type {
+  ScorecardRecord,
+  ValidationStudyDetail,
+} from "../../src/lib/research-api/client";
+import { ParameterPlateauPanel } from "../../src/components/research/analytics/ParameterPlateauPanel";
 
 function syntheticScorecard(
   overrides: Partial<ScorecardRecord> = {},
@@ -80,6 +88,112 @@ describe("scorecardDisplayValue", () => {
   });
 });
 
+describe("pickScorecardForPrimaryRun", () => {
+  it("ignores additional-run scorecards even when listed first", () => {
+    const additional = syntheticScorecard({
+      scorecard_id: "sc_additional",
+      run_id: "run_additional",
+    });
+    const primary = syntheticScorecard({
+      scorecard_id: "sc_primary",
+      run_id: "run_primary",
+    });
+    const picked = pickScorecardForPrimaryRun(
+      [additional, primary],
+      "run_primary",
+    );
+    expect(picked?.scorecard_id).toBe("sc_primary");
+  });
+
+  it("returns null when only additional-run scorecards exist", () => {
+    const additional = syntheticScorecard({
+      scorecard_id: "sc_additional",
+      run_id: "run_additional",
+    });
+    expect(pickScorecardForPrimaryRun([additional], "run_primary")).toBeNull();
+  });
+});
+
+describe("studyPrimaryRunId", () => {
+  it("prefers evidence_snapshot.primary.run_id", () => {
+    const study = {
+      run_id: "run_fallback",
+      evidence_snapshot: {
+        snapshot_id: "snap",
+        primary: {
+          experiment_id: "exp",
+          run_id: "run_primary",
+          checksums_digest: "x",
+          dataset_id: "d",
+          dataset_content_hash: "h",
+          git_commit: "c",
+        },
+        additional: [],
+        robustness: [],
+        gates: [],
+        scorecards: [],
+      },
+    } as Pick<ValidationStudyDetail, "run_id" | "evidence_snapshot">;
+    expect(studyPrimaryRunId(study)).toBe("run_primary");
+  });
+});
+
+describe("evaluateScorecardTrust", () => {
+  it("fail-closes when evidence_integrity.ok is false", () => {
+    const trust = evaluateScorecardTrust(
+      syntheticScorecard({
+        evidence_integrity: { ok: false, error: "checksum mismatch" },
+      }),
+    );
+    expect(trust.ok).toBe(false);
+    if (!trust.ok) {
+      expect(trust.message).toContain("checksum mismatch");
+    }
+  });
+
+  it("fail-closes on pinned content_hash mismatch", () => {
+    const trust = evaluateScorecardTrust(
+      syntheticScorecard({ evidence_content_hash: "hash_evidence" }),
+      "hash_other",
+    );
+    expect(trust.ok).toBe(false);
+    if (!trust.ok) {
+      expect(trust.message).toMatch(/content_hash mismatch/i);
+    }
+  });
+
+  it("allows ready with soft warning when only invalidated", () => {
+    const trust = evaluateScorecardTrust(
+      syntheticScorecard({
+        status: "invalidated",
+        invalidation_reason: "superseded",
+      }),
+    );
+    expect(trust.ok).toBe(true);
+    if (trust.ok) {
+      expect(trust.warnings[0]).toMatch(/invalidated/);
+    }
+  });
+});
+
+describe("scorecardToneForStatus", () => {
+  it("marks ISOLATED_PEAK as warning, not mint", () => {
+    expect(scorecardToneForStatus("ISOLATED_PEAK")).toBe("warning");
+    expect(scorecardToneForStatus("BROAD_PLATEAU")).toBe("mint");
+  });
+});
+
+describe("ParameterPlateauPanel tone", () => {
+  it("does not paint ISOLATED_PEAK mint", () => {
+    const html = renderToStaticMarkup(
+      <ParameterPlateauPanel classification="ISOLATED_PEAK" />,
+    );
+    expect(html).toContain('data-tone="warning"');
+    expect(html).toContain("text-warning");
+    expect(html).not.toMatch(/parameter-plateau-classification[^>]*text-mint/);
+  });
+});
+
 describe("buildScorecardProfileView", () => {
   it("binds backend profile fields without inventing metrics", () => {
     const profile = buildScorecardProfileView(syntheticScorecard(), {
@@ -94,6 +208,7 @@ describe("buildScorecardProfileView", () => {
     expect(byId["worst-transition"]?.value).toBe("ELEVATED");
     expect(byId["cost-stress"]?.value).toBe(UNAVAILABLE);
     expect(byId["parameter-area"]?.value).toBe("ISOLATED_PEAK");
+    expect(byId["parameter-area"]?.tone).toBe("warning");
     expect(byId["evidence-confidence"]?.value).toBe("LOW");
     expect(byId["main-weakness"]?.value).toBe("weak_in_chop");
     expect(byId["final-decision"]?.value).toBe("reject");
@@ -177,6 +292,7 @@ describe("ScorecardBindSection", () => {
     expect(html).toContain('data-testid="scorecard-profile-strip"');
     expect(html).toContain('data-testid="parameter-plateau-bound"');
     expect(html).toContain("ISOLATED_PEAK");
+    expect(html).toContain('data-tone="warning"');
     expect(html).toContain('data-testid="transition-risk-bound"');
     expect(html).toContain("ELEVATED");
     expect(html).toContain('data-testid="evidence-confidence-value"');

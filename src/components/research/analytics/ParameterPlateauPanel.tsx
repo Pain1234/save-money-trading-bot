@@ -1,11 +1,23 @@
 import { AnalyticsPanel } from "@/components/research/analytics/AnalyticsPanel";
-import { scorecardDisplayValue } from "@/lib/research/scorecard-binding";
+import {
+  scorecardDisplayValue,
+  scorecardToneForStatus,
+} from "@/lib/research/scorecard-binding";
+import type { ExecutiveTone } from "@/lib/research/executive-summary";
+import { cn } from "@/lib/utils";
 
 interface ParameterPlateauPanelProps {
   classification?: string | null;
   detail?: string | null;
   reason?: string;
 }
+
+const toneClass: Record<ExecutiveTone, string> = {
+  mint: "text-mint",
+  danger: "text-negative",
+  warning: "text-warning",
+  muted: "text-text-muted",
+};
 
 /** Parameter plateau (#300/#292) — binds classification from scorecard when present. */
 export function ParameterPlateauPanel({
@@ -30,6 +42,8 @@ export function ParameterPlateauPanel({
     );
   }
 
+  const tone = scorecardToneForStatus(classification);
+
   return (
     <AnalyticsPanel
       id="parameter-plateau"
@@ -41,7 +55,11 @@ export function ParameterPlateauPanel({
           <dt className="text-[10px] uppercase tracking-[0.06em] text-text-muted">
             Classification
           </dt>
-          <dd className="font-mono text-mint">
+          <dd
+            className={cn("font-mono", toneClass[tone])}
+            data-testid="parameter-plateau-classification"
+            data-tone={tone}
+          >
             {scorecardDisplayValue(classification)}
           </dd>
         </div>

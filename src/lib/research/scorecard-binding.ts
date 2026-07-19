@@ -62,7 +62,8 @@ function asString(value: unknown): string | null {
   return String(value);
 }
 
-function toneForStatus(raw: string | null): ExecutiveTone {
+/** Shared tone mapping for profile strip + analytics panels. */
+export function scorecardToneForStatus(raw: string | null): ExecutiveTone {
   if (!raw || raw === BACKEND_NOT_AVAILABLE) return "muted";
   const upper = raw.toUpperCase();
   if (
@@ -89,7 +90,8 @@ function toneForStatus(raw: string | null): ExecutiveTone {
     upper === "LOW" ||
     upper === "MEDIUM" ||
     upper === "ISOLATED_PEAK" ||
-    upper === "WARNING"
+    upper === "WARNING" ||
+    upper === "ELEVATED"
   ) {
     return "warning";
   }
@@ -101,10 +103,57 @@ function pickActiveScorecard(items: ScorecardRecord[]): ScorecardRecord | null {
   return active ?? items[0] ?? null;
 }
 
-function warningsForRecord(
+/** Primary run identity for a Validation Study (snapshot preferred). */
+export function studyPrimaryRunId(
+  study: Pick<ValidationStudyDetail, "run_id" | "evidence_snapshot">,
+): string | null {
+  return study.evidence_snapshot?.primary.run_id ?? study.run_id ?? null;
+}
+
+/**
+ * Prefer scorecards whose run_id matches the study primary run.
+ * Never fall back to an additional-run scorecard when primaryRunId is known.
+ */
+export function pickScorecardForPrimaryRun(
+  candidates: ScorecardRecord[],
+  primaryRunId: string | null,
+): ScorecardRecord | null {
+  if (!primaryRunId) return null;
+  return pickActiveScorecard(
+    candidates.filter((item) => item.run_id === primaryRunId),
+  );
+}
+
+export type ScorecardTrustResult =
+  | { ok: true; warnings: string[] }
+  | { ok: false; message: string };
+
+/**
+ * Fail-closed for untrusted evidence (integrity fail or pin hash mismatch).
+ * Soft warnings (e.g. invalidated) may still accompany a trusted ready state.
+ */
+export function evaluateScorecardTrust(
   scorecard: ScorecardRecord,
   pinHash?: string | null,
-): string[] {
+): ScorecardTrustResult {
+  if (scorecard.evidence_integrity && scorecard.evidence_integrity.ok === false) {
+    return {
+      ok: false,
+      message:
+        scorecard.evidence_integrity.error ??
+        "evidence_integrity.ok=false — Scorecard untrusted",
+    };
+  }
+  if (
+    pinHash &&
+    scorecard.evidence_content_hash &&
+    pinHash !== scorecard.evidence_content_hash
+  ) {
+    return {
+      ok: false,
+      message: "pinned scorecard content_hash mismatch — Evidence untrusted",
+    };
+  }
   const warnings: string[] = [];
   if (scorecard.status === "invalidated") {
     warnings.push(
@@ -115,22 +164,18 @@ function warningsForRecord(
       }`,
     );
   }
-  if (scorecard.evidence_integrity && !scorecard.evidence_integrity.ok) {
-    warnings.push(
-      scorecard.evidence_integrity.error ??
-        "evidence_integrity.ok=false",
-    );
+  return { ok: true, warnings };
+}
+
+function bindTrustedScorecard(
+  scorecard: ScorecardRecord,
+  pinHash?: string | null,
+): ScorecardBindState {
+  const trust = evaluateScorecardTrust(scorecard, pinHash);
+  if (!trust.ok) {
+    return { kind: "error", message: trust.message };
   }
-  if (
-    pinHash &&
-    scorecard.evidence_content_hash &&
-    pinHash !== scorecard.evidence_content_hash
-  ) {
-    warnings.push(
-      "pinned scorecard content_hash mismatch — Evidence untrusted",
-    );
-  }
-  return warnings;
+  return { kind: "ready", scorecard, warnings: trust.warnings };
 }
 
 export async function loadScorecardForRun(
@@ -151,42 +196,75 @@ export async function loadScorecardForRun(
         reason: `Keine Scorecards für run_id=${runId}`,
       };
     }
-    return {
-      kind: "ready",
-      scorecard,
-      warnings: warningsForRecord(scorecard),
-    };
+    return bindTrustedScorecard(scorecard);
   } catch (error) {
     return { kind: "error", message: getResearchErrorMessage(error) };
   }
 }
 
-export async function loadScorecardForStudy(
-  study: ValidationStudyDetail,
-): Promise<ScorecardBindState> {
+function studyScorecardCandidateIds(study: ValidationStudyDetail): string[] {
   const pinned = study.evidence_snapshot?.scorecards ?? [];
-  const ids =
+  const fromStudy =
     study.scorecard_ids && study.scorecard_ids.length > 0
       ? study.scorecard_ids
       : pinned.map((p) => p.scorecard_id);
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const id of fromStudy) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+export async function loadScorecardForStudy(
+  study: ValidationStudyDetail,
+): Promise<ScorecardBindState> {
+  const primaryRunId = studyPrimaryRunId(study);
+  const pinned = study.evidence_snapshot?.scorecards ?? [];
+  const ids = studyScorecardCandidateIds(study);
 
   if (ids.length > 0) {
-    const scorecardId = ids[0]!;
-    try {
-      const scorecard = await fetchScorecard(scorecardId);
-      const pin = pinned.find((p) => p.scorecard_id === scorecard.scorecard_id);
-      return {
-        kind: "ready",
-        scorecard,
-        warnings: warningsForRecord(scorecard, pin?.content_hash ?? null),
-      };
-    } catch (error) {
-      return { kind: "error", message: getResearchErrorMessage(error) };
+    const fetched: ScorecardRecord[] = [];
+    const fetchErrors: string[] = [];
+    const results = await Promise.allSettled(
+      ids.map((id) => fetchScorecard(id)),
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        fetched.push(result.value);
+      } else {
+        fetchErrors.push(getResearchErrorMessage(result.reason));
+      }
     }
+
+    const primaryMatch = pickScorecardForPrimaryRun(fetched, primaryRunId);
+    if (primaryMatch) {
+      const pin = pinned.find((p) => p.scorecard_id === primaryMatch.scorecard_id);
+      return bindTrustedScorecard(primaryMatch, pin?.content_hash ?? null);
+    }
+
+    // Do not bind an additional-run scorecard to the primary evidence identity.
+    if (primaryRunId) {
+      return loadScorecardForRun(primaryRunId);
+    }
+
+    if (fetchErrors.length > 0 && fetched.length === 0) {
+      return {
+        kind: "error",
+        message: fetchErrors[0] ?? "Scorecard-Fetch fehlgeschlagen",
+      };
+    }
+
+    return {
+      kind: "empty",
+      reason:
+        "Keine Scorecard für den Primary-Run der Study — Additional-Run-Pins werden nicht als Primary-Profil genutzt",
+    };
   }
 
-  const runId = study.evidence_snapshot?.primary.run_id ?? study.run_id;
-  return loadScorecardForRun(runId);
+  return loadScorecardForRun(primaryRunId);
 }
 
 export async function loadScorecardForExperiment(
@@ -299,7 +377,7 @@ export function buildScorecardProfileView(
       detail: gates.gate_run_id
         ? `gate_run_id=${gates.gate_run_id}`
         : "Kein gate_run_id am Scorecard",
-      tone: toneForStatus(integrity),
+      tone: scorecardToneForStatus(integrity),
       source: "global_profile.gates.integrity_status",
     },
     {
@@ -309,7 +387,7 @@ export function buildScorecardProfileView(
       detail: gates.gate_run_id
         ? `overall_status · ${gates.gate_run_id}`
         : "overall_status",
-      tone: toneForStatus(overall),
+      tone: scorecardToneForStatus(overall),
       source: "global_profile.gates.overall_status",
     },
     {
@@ -319,7 +397,7 @@ export function buildScorecardProfileView(
       detail: quality.strongest_regime
         ? `strongest=${scorecardDisplayValue(asString(quality.strongest_regime))}`
         : null,
-      tone: toneForStatus(worstRegime),
+      tone: scorecardToneForStatus(worstRegime),
       source: "global_profile.quality.worst_regime",
     },
     {
@@ -327,7 +405,7 @@ export function buildScorecardProfileView(
       label: "Worst Transition",
       value: scorecardDisplayValue(tRisk),
       detail: transitionRiskDetail(transitionRisk),
-      tone: toneForStatus(tRisk),
+      tone: scorecardToneForStatus(tRisk),
       source: "global_profile.behaviour.transition_risk.risk_label",
     },
     {
@@ -339,7 +417,9 @@ export function buildScorecardProfileView(
       detail: costLimitation
         ? costLimitation.detail
         : "Nicht in Layer-5 global_profile — Cost-Stress nur als Robustness-Job",
-      tone: costLimitation ? toneForStatus(costLimitation.status) : "muted",
+      tone: costLimitation
+        ? scorecardToneForStatus(costLimitation.status)
+        : "muted",
       source: "limitations[cost*] | absent",
     },
     {
@@ -347,7 +427,7 @@ export function buildScorecardProfileView(
       label: "Parameter Area",
       value: scorecardDisplayValue(paramClass),
       detail: parameterDetail(parameterArea),
-      tone: toneForStatus(paramClass),
+      tone: scorecardToneForStatus(paramClass),
       source: "global_profile.parameter_area.classification",
     },
     {
@@ -357,7 +437,7 @@ export function buildScorecardProfileView(
       detail: confidence.source
         ? `source=${String(confidence.source)}`
         : null,
-      tone: toneForStatus(confLabel),
+      tone: scorecardToneForStatus(confLabel),
       source: "global_profile.confidence.overall_label",
     },
     {
