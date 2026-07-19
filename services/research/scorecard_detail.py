@@ -248,14 +248,17 @@ def _classifier_transition_refs(labels: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
-def _child_by_label(
-    children: list[Any], *, needle: str
-) -> dict[str, Any] | None:
+def _child_by_id(children: list[Any], *, child_id: str) -> dict[str, Any] | None:
+    """Match sealed robustness children by ``child_id`` only.
+
+    Production cost-stress manifests set ``label`` to free-text scenario
+    rationales (see ``build_cost_stress_child_specs``); ``child_id`` is the
+    stable scenario name (``base``, ``combined_elevated``, …).
+    """
     for child in children:
         if not isinstance(child, dict):
             continue
-        label = str(child.get("label") or child.get("child_id") or "")
-        if label == needle or needle in label:
+        if str(child.get("child_id") or "") == child_id:
             return child
     return None
 
@@ -291,8 +294,8 @@ def _cost_stress_from_pinned(
                 "reason": "cost_stress_children_missing",
                 "robustness_run_id": rid,
             }
-        base = _child_by_label(children_raw, needle="base")
-        elevated = _child_by_label(children_raw, needle="combined_elevated")
+        base = _child_by_id(children_raw, child_id="base")
+        elevated = _child_by_id(children_raw, child_id="combined_elevated")
         if base is None or elevated is None:
             return {
                 "status": NOT_AVAILABLE,

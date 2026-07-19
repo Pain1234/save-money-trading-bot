@@ -858,6 +858,30 @@ def test_invalidate_appends_sidecar_without_mutating_original(tmp_path: Path) ->
     assert latest.invalidation_reason == "fixture correction"
 
 
+def test_get_honors_invalidation_sidecar_after_jsonl_reactivation(
+    tmp_path: Path,
+) -> None:
+    root, _experiment_id, run_id = _completed_run(tmp_path)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
+    record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
+    store = GateResultStore(root)
+    store.invalidate(record.gate_run_id, reason="sidecar binding", actor="test")
+
+    lines = store.path.read_text(encoding="utf-8").strip().splitlines()
+    payload = json.loads(lines[-1])
+    payload["status"] = "active"
+    payload["invalidation_reason"] = None
+    with store.path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+    assert json.loads(store.path.read_text(encoding="utf-8").strip().splitlines()[-1])[
+        "status"
+    ] == "active"
+    viewed = store.get(record.gate_run_id)
+    assert viewed is not None
+    assert viewed.status == "invalidated"
+
+
 def test_double_invalidate_raises(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
     evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))

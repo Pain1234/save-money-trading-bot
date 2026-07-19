@@ -37,25 +37,50 @@ def _save_cost_stress_manifest(
     base_experiment_id: str,
     base_run_id: str,
     robustness_id: str = "rob_test_cost_stress",
+    production_labels: bool = False,
 ) -> str:
-    children = (
-        RobustnessChildResult(
-            child_id="base",
-            label="base",
-            experiment_id=base_experiment_id,
-            run_id=base_run_id,
-            status="complete",
-            net_pnl=te._run_net_pnl(root, base_run_id),
-        ),
-        RobustnessChildResult(
-            child_id="combined_elevated",
-            label="combined_elevated",
-            experiment_id=base_experiment_id,
-            run_id=base_run_id,
-            status="complete",
-            net_pnl="1.23",
-        ),
-    )
+    if production_labels:
+        # Mirrors build_cost_stress_child_specs: child_id=scenario.name, label=rationale.
+        children = (
+            RobustnessChildResult(
+                child_id="base",
+                label=(
+                    "Frozen Spec fee/slippage/funding "
+                    "(funding off unless Spec enables)"
+                ),
+                experiment_id=base_experiment_id,
+                run_id=base_run_id,
+                status="complete",
+                net_pnl=te._run_net_pnl(root, base_run_id),
+            ),
+            RobustnessChildResult(
+                child_id="combined_elevated",
+                label="Joint elevated fees, slippage, and funding",
+                experiment_id=base_experiment_id,
+                run_id=base_run_id,
+                status="complete",
+                net_pnl="1.23",
+            ),
+        )
+    else:
+        children = (
+            RobustnessChildResult(
+                child_id="base",
+                label="base",
+                experiment_id=base_experiment_id,
+                run_id=base_run_id,
+                status="complete",
+                net_pnl=te._run_net_pnl(root, base_run_id),
+            ),
+            RobustnessChildResult(
+                child_id="combined_elevated",
+                label="combined_elevated",
+                experiment_id=base_experiment_id,
+                run_id=base_run_id,
+                status="complete",
+                net_pnl="1.23",
+            ),
+        )
     manifest = RobustnessManifest(
         schema_version=ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
         robustness_id=robustness_id,
@@ -150,6 +175,29 @@ def test_detail_cost_stress_from_pinned_robustness(tmp_path: Path) -> None:
     assert boundary["base_net_pnl"] is not None
     assert "verdict" not in detail["cost_stress"]
     assert detail["cost_stress"]["manifest_content_hash"]
+
+
+def test_detail_cost_stress_production_rationale_labels(tmp_path: Path) -> None:
+    """Production manifests use free-text labels; boundary must key off child_id."""
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    rob_id = _save_cost_stress_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        robustness_id="rob_cost_prod_labels",
+        production_labels=True,
+    )
+    record = _evaluator(root).evaluate(
+        run_id=run_id, policy_version="1.0", robustness_run_ids=[rob_id]
+    )
+    detail = assemble_scorecard_detail(root, record)
+    assert detail["cost_stress"]["status"] == "OK"
+    assert detail["cost_stress"]["boundary"]["combined_elevated_net_pnl"] == "1.23"
+    assert detail["cost_stress"]["boundary"]["base_child_id"] == "base"
+    assert (
+        detail["cost_stress"]["boundary"]["combined_elevated_child_id"]
+        == "combined_elevated"
+    )
 
 
 def test_detail_cost_stress_incomplete_is_not_available(tmp_path: Path) -> None:
@@ -323,6 +371,59 @@ def test_detail_invalidated_gate_fail_closed(tmp_path: Path) -> None:
     )
     with pytest.raises(Exception, match="not active|status=invalidated|untrusted"):
         svc.get_detail(created["scorecard_id"])
+
+
+def test_detail_gate_jsonl_reactivation_blocked_by_sidecar(tmp_path: Path) -> None:
+    """JSONL status=active after invalidate must not revive gate forensics (#350)."""
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    neg_a = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_a", net_pnl="-10"
+    )
+    neg_b = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_b", net_pnl="-20"
+    )
+    robustness_id = te._save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        fold_run_ids=[neg_a, neg_b, run_id],
+    )
+    gate = GateEvaluator(root, repo_root=te._evaluation_image_root(root)).evaluate(
+        run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+    )
+    svc = ScorecardService(root, repo_root=te._evaluation_image_root(root))
+    created = svc.evaluate(
+        {
+            "run_id": run_id,
+            "policy_version": "1.0",
+            "gate_run_id": gate.gate_run_id,
+            "robustness_run_ids": [robustness_id],
+        }
+    )
+    store = GateResultStore(root)
+    store.invalidate(gate.gate_run_id, reason="fixture", actor="test")
+    assert store.invalidation_sidecar_path(gate.gate_run_id).is_file()
+
+    # Rewrite only the latest JSONL line back to active (outcome hash unchanged).
+    lines = store.path.read_text(encoding="utf-8").strip().splitlines()
+    payload = json.loads(lines[-1])
+    assert payload["status"] == "invalidated"
+    payload["status"] = "active"
+    payload["invalidation_reason"] = None
+    with store.path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+    # Raw last line looks active, but sidecar must keep get() invalidated.
+    raw_last = json.loads(store.path.read_text(encoding="utf-8").strip().splitlines()[-1])
+    assert raw_last["status"] == "active"
+    viewed = store.get(gate.gate_run_id)
+    assert viewed is not None
+    assert viewed.status == "invalidated"
+
+    with pytest.raises(Exception, match="not active|status=invalidated|untrusted"):
+        svc.get_detail(created["scorecard_id"])
+    with pytest.raises(Exception, match="not active|status=invalidated|untrusted"):
+        svc.get(created["scorecard_id"])
 
 
 def test_detail_service_and_summary_unchanged(tmp_path: Path) -> None:

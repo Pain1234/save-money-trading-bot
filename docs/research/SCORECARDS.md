@@ -83,9 +83,9 @@ not recompute backtests or invent metrics.
 | `regime_rows[]` | Per `regime_metrics.regimes[]` cell: quality, confidence (scorecard-overall scope), behaviour join, trades, net_pnl, max_drawdown, costs, benchmark_delta |
 | `transition_risk` | From sealed `behavior_profile.transition_risk` (else `NOT_AVAILABLE`) |
 | `classifier_transitions` | Sealed `regime_labels.json` transitions + period_labels + calendar_gaps + day_events (IDs / period borders / `as_of` time refs) |
-| `cost_stress` | `OK` only with sealed base + `combined_elevated` `net_pnl` boundary; else `NOT_AVAILABLE` (no null-verdict OK) |
+| `cost_stress` | `OK` only with sealed `child_id` `base` + `combined_elevated` `net_pnl` boundary (not free-text `label`); else `NOT_AVAILABLE` |
 | `evidence_inputs` | Bound run/gate/robustness/policy/dataset pins + `gate_evidence_content_hash` + promotion flags |
-| `gate_failures` | Non-PASS gates **after** verifying scorecard-pinned `gate_evidence_content_hash`; tamper/invalidation → fail-closed (409), not empty list |
+| `gate_failures` | Non-PASS gates **after** verifying scorecard-pinned `gate_evidence_content_hash` and binding invalidation sidecar; tamper/invalidation/JSONL-reactivation → fail-closed (409) |
 | `raw_artifact_refs` | Layer file names + checksum keys + robustness/scorecard refs |
 | `missing_data_semantics` | Token `NOT_AVAILABLE` — clients must not coerce to `0` / PASS |
 

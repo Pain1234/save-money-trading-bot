@@ -531,6 +531,42 @@ class GateResultStore:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
 
+    def invalidation_sidecar_path(self, gate_run_id: str) -> Path:
+        return self.invalidation_dir / f"{gate_run_id}.jsonl"
+
+    def _sidecar_marks_invalidated(self, gate_run_id: str) -> bool:
+        """True when an invalidation sidecar exists for ``gate_run_id``.
+
+        Sidecar is append-only and authoritative: rewriting the JSONL log back
+        to ``active`` must not resurrect a gate (#350).
+        """
+        sidecar = self.invalidation_sidecar_path(gate_run_id)
+        if not sidecar.is_file():
+            return False
+        try:
+            text = sidecar.read_text(encoding="utf-8")
+        except OSError:
+            # Unreadable sidecar → fail closed (treat as invalidated).
+            return True
+        if not text.strip():
+            # Empty sidecar file still signals prior invalidation intent.
+            return True
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                return True
+            if not isinstance(raw, dict):
+                return True
+            if str(raw.get("status") or "") == "invalidated":
+                return True
+            if str(raw.get("gate_run_id") or "") == gate_run_id:
+                return True
+        # Non-empty unparseable-as-invalidation content → fail closed.
+        return True
+
     def list_entries(self) -> list[GateRunRecord]:
         if not self.path.exists():
             return []
@@ -542,9 +578,15 @@ class GateResultStore:
         return entries
 
     def get(self, gate_run_id: str) -> GateRunRecord | None:
-        """Most recent record for ``gate_run_id`` (reflects invalidation if any)."""
+        """Most recent record for ``gate_run_id`` (sidecar invalidation is binding)."""
         matches = [e for e in self.list_entries() if e.gate_run_id == gate_run_id]
-        return matches[-1] if matches else None
+        if not matches:
+            return None
+        entry = matches[-1]
+        if self._sidecar_marks_invalidated(gate_run_id):
+            reason = entry.invalidation_reason or "invalidation_sidecar"
+            return replace(entry, status="invalidated", invalidation_reason=reason)
+        return entry
 
     def list_for_run(self, run_id: str) -> list[GateRunRecord]:
         return [e for e in self.list_entries() if e.run_id == run_id]
@@ -565,7 +607,7 @@ class GateResultStore:
             msg = f"gate result already invalidated: {gate_run_id}"
             raise ValueError(msg)
         self.invalidation_dir.mkdir(parents=True, exist_ok=True)
-        sidecar = self.invalidation_dir / f"{gate_run_id}.jsonl"
+        sidecar = self.invalidation_sidecar_path(gate_run_id)
         sidecar_record = {
             "gate_run_id": gate_run_id,
             "status": "invalidated",
