@@ -1,7 +1,7 @@
 # P5 Gate 1 Handoff (Agent 1 → Agents 2/3)
 
-**Status:** PREPARED — binding after human `FREEZE PIN REFRESHED` on #196
-**Public-core merge:** [#363](https://github.com/Pain1234/save-money-trading-bot/issues/363) via [PR #366](https://github.com/Pain1234/save-money-trading-bot/pull/366)
+**Status:** BINDING — `FREEZE PIN REFRESHED` 2026-07-19T15:47:02Z on #196
+**Public-core merge:** [#363](https://github.com/Pain1234/save-money-trading-bot/issues/363) via [PR #366](https://github.com/Pain1234/save-money-trading-bot/pull/366); freeze docs [PR #367](https://github.com/Pain1234/save-money-trading-bot/pull/367) @ `8bb39c1…`
 **Holdout:** `SEALED` (`NO` — do not open)
 
 Agents 2 and 3 must not produce final Partition B evidence until this package is
