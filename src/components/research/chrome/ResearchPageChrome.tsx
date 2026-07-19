@@ -25,6 +25,9 @@ export const rs = {
   th: "px-2 py-1 font-medium text-text-muted",
   td: "px-2 py-1.5",
   backLink: "text-[11px] text-text-muted hover:text-mint",
+  fieldLabel: "text-[11px] text-text-muted",
+  fieldError: "text-[11px] text-red-300",
+  field: "block text-[12px]",
 } as const;
 
 interface ResearchPageHeaderProps {
@@ -94,7 +97,7 @@ export function ResearchApiError({
       className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-3"
       role="alert"
     >
-      <h1 className="text-[16px] font-semibold text-red-300">{title}</h1>
+      <p className="text-[16px] font-semibold text-red-300">{title}</p>
       <p className="mt-1 text-[12px] text-red-200/90">{message}</p>
     </div>
   );
