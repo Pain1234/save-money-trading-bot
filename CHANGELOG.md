@@ -18,6 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   residual [#357](https://github.com/Pain1234/save-money-trading-bot/issues/357);
   keep #292 open. Docs: UI spec UI-05.
 
+### Added (P5 scorecard/policy bind — #294)
+
+- Freeze document `docs/research/p5/P5_SCORECARD_POLICY_BIND.md` pins P4.9
+  scorecard / classifier / confidence / behaviour / gate policy versions and
+  content hashes against `main` SHA `5cb3a7bf2b31…` (ADR-020). Also binds
+  `evaluation_code_commit` to that SHA, ties `run_code_commit` to #196, sets
+  classifier `1.0` as sole scorecard taxonomy SoT (#199 median = private
+  overlay), and amends epic order so #292 UI does not block #294. Holdout
+  remains closed; Human Freeze sign-off pending.
+
 ### Added (P4.9 scorecard detail API — #350)
 
 - Read-only `GET /api/v1/research/scorecards/{scorecard_id}/detail` joins sealed

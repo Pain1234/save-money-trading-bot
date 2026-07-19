@@ -383,7 +383,7 @@ ValidationStudy schema `1.2` pins `scorecard_ids` into the evidence snapshot.
 | [#291](https://github.com/Pain1234/save-money-trading-bot/issues/291) | Artifacts + API |
 | [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) | Research Workspace UI |
 | [#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) | E2E / anti-overfit acceptance — API matrix in `test_scorecard_e2e_acceptance.py`; UI deferred to #292/#250 |
-| [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) | P5 binding / freeze (P5 milestone) |
+| [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) | P5 binding / freeze — [`P5_SCORECARD_POLICY_BIND.md`](p5/P5_SCORECARD_POLICY_BIND.md) + ADR-020; Holdout closed; Human Freeze pending |
 
 ### Dependency chain
 
@@ -394,13 +394,14 @@ P4 existing engine
 → #286 Integrity/Gates
 → {#287 Quality, #288 Confidence, #289 Behaviour, #290 Parameter Area}
 → #291 Artifact/API
-→ #292 UI
-→ #293 E2E
-→ #294 P5 Binding/Freeze
+→ #293 E2E (API) / #350 detail API
+→ #294 P5 Binding/Freeze ([`P5_SCORECARD_POLICY_BIND.md`](p5/P5_SCORECARD_POLICY_BIND.md); Holdout closed)
 → P5 execution #251–#254
 → human pre-OOS gate
 → #204 one-shot final OOS
 → #205 human decision
+
+#292 UI is parallel / non-blocking for #294 (ADR-020 amendment)
 ```
 
 ---

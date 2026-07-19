@@ -456,13 +456,13 @@ Studies — **no** second registry, **no** auto-promotion. Contract:
 - [x] [#291](https://github.com/Pain1234/save-money-trading-bot/issues/291) feat: scorecard artifacts + read-only API
 - [ ] [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) feat: Research Workspace scorecard UI
 - [x] [#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) test: reproducibility + anti-overfit E2E
-- [ ] [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) docs(p5): bind Strategy V1 freeze to scorecard policy versions (P5 milestone)
+- [ ] [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) docs(p5): bind Strategy V1 freeze to scorecard policy versions (P5 milestone) — docs + ADR-020; **Human Freeze pending**; Holdout closed
 
 Dependency chain (binding):
 
 ```text
-P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #292 → #293
-→ #294 → #251–#254 → human pre-OOS → #204 → #205
+P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #293/#350
+→ #294 (docs bind; #292 UI parallel / non-blocking) → #251–#254 → human pre-OOS → #204 → #205
 ```
 
 #### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
@@ -477,7 +477,7 @@ P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #292
 ```
 P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → engine done
 → #240 read-only → #242 Lab/start (accepted; browser residual #250) → #265 catalog (delivered) → #266 chart (delivered)
-→ #245 → {#246…#249} → #250 → P4.9 #295 (#284…#293) → P4 done → P5 (#294 bind, then #251–#254, #204, #205)
+→ #245 → {#246…#249} → #250 → P4.9 #295 (#284…#291,#293,#350; #292 UI parallel) → P5 (#294 bind, then #251–#254, #204, #205)
 ```
 
 Docs preparation may run in parallel from #142.
