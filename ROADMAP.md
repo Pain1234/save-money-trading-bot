@@ -461,8 +461,8 @@ Studies — **no** second registry, **no** auto-promotion. Contract:
 Dependency chain (binding):
 
 ```text
-P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #292 → #293
-→ #294 → #251–#254 → human pre-OOS → #204 → #205
+P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #293/#350
+→ #294 (docs bind; #292 UI parallel / non-blocking) → #251–#254 → human pre-OOS → #204 → #205
 ```
 
 #### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
@@ -477,7 +477,7 @@ P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #292
 ```
 P3 → #141 → #142 → {#144, #49, #148} → #143 → {#48, #145} → #146 → #147 → engine done
 → #240 read-only → #242 Lab/start (accepted; browser residual #250) → #265 catalog (delivered) → #266 chart (delivered)
-→ #245 → {#246…#249} → #250 → P4.9 #295 (#284…#293) → P4 done → P5 (#294 bind, then #251–#254, #204, #205)
+→ #245 → {#246…#249} → #250 → P4.9 #295 (#284…#291,#293,#350; #292 UI parallel) → P5 (#294 bind, then #251–#254, #204, #205)
 ```
 
 Docs preparation may run in parallel from #142.

@@ -43,7 +43,7 @@ Do **not** open holdout C until all are true:
 | Public stack #181 / #196-docs / #197-#203 / #204-prep / #205-prep | On `main` |
 | Freeze evidence refresh | PR #236 merged; **human FREEZE APPROVED pending** on #196 |
 | Human locks #197-#199 | **Pending** (requested on issues) |
-| #294 scorecard/policy bind | Docs on branch/PR; **PENDING_HUMAN_SIGN_OFF**; Holdout `NO` |
+| #294 scorecard/policy bind | Docs on branch/PR; **PENDING_HUMAN_SIGN_OFF**; Holdout `NO`; #292 UI non-blocking |
 | Private Partition B datasets | **Missing** (templates only) |
 | Private robustness packs #200-#203 | **Not run** (blocked) |
 | Forward holdout length | **Not started** until freeze UTC |

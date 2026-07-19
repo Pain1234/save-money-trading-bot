@@ -49,22 +49,28 @@ and bound for Strategy V1 freeze via
 Classifier `1.0` reuses the public +5% / −5% trend thresholds from this
 document and adds a three-way vol axis (`LOW_VOL` / `NORMAL_VOL` / `HIGH_VOL`)
 with **generic public absolute bounds** (not the private partition-B median).
-Do **not** maintain a conflicting second taxonomy: extend this contract, keep
-determinism, and freeze before final holdout. See
+Do **not** treat the private median overlay as a second scorecard taxonomy.
+Scorecard evidence uses classifier `1.0` only; keep determinism and freeze
+before final holdout. See
 [`docs/research/REGIME_SCORECARD.md`](../REGIME_SCORECARD.md).
 
 **Engine implementation (`classifier_version` `1.0`, Issue #285):**
 
-| Axis | Public Research Engine (`services/research/regime/`) | P5 private (#199 / #294) |
-|------|------------------------------------------------------|--------------------------|
+| Axis | Scorecard SoT (classifier `1.0` / #294) | #199 private overlay only |
+|------|------------------------------------------|----------------------------|
 | Trend | Same ±5% calendar-month return on closed daily closes | Same |
-| Vol | Three-way `LOW_VOL` / `NORMAL_VOL` / `HIGH_VOL` via **versioned absolute** daily-return stdev thresholds (`vol_low_max=0.015`, `vol_high_min=0.035`) | Binary high/low vs **private** partition-B median (not in public repo) |
+| Vol | Three-way `LOW_VOL` / `NORMAL_VOL` / `HIGH_VOL` via **versioned absolute** daily-return stdev thresholds (`vol_low_max=0.015`, `vol_high_min=0.035`) | Binary high/low vs **private** partition-B median (not in public repo; not scorecard cells) |
 | Transitions | Directed ids + day-level `TRANSITION_IN` / `OUT` / `STABLE_REGIME` windows | Optional in private reports |
 | Artifact | Run sidecar `regime_labels.json` (dataset + classifier + bars hashes) | Private economic tables stay out of public fixtures |
 
-Public `1.0` vol thresholds are infrastructure defaults, **not** the frozen P5
-median. Mapping / freeze for Strategy V1 remains [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294).
-See also [`REGIME_CLASSIFIER.md`](../REGIME_CLASSIFIER.md).
+Public `1.0` vol thresholds are infrastructure defaults and, under
+[#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) /
+[P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md) (ADR-020), are the
+**sole SoT for scorecard / Research Engine regime evidence**. The private
+partition-B median High/Low rule remains a **private diagnostic overlay only**
+— not a substitute for classifier `1.0` cells. A median-based scorecard axis
+requires a new classifier version + new freeze. See also
+[`REGIME_CLASSIFIER.md`](../REGIME_CLASSIFIER.md).
 
 ## Symbol and portfolio reporting
 

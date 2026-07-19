@@ -394,13 +394,14 @@ P4 existing engine
 → #286 Integrity/Gates
 → {#287 Quality, #288 Confidence, #289 Behaviour, #290 Parameter Area}
 → #291 Artifact/API
-→ #292 UI
-→ #293 E2E
+→ #293 E2E (API) / #350 detail API
 → #294 P5 Binding/Freeze ([`P5_SCORECARD_POLICY_BIND.md`](p5/P5_SCORECARD_POLICY_BIND.md); Holdout closed)
 → P5 execution #251–#254
 → human pre-OOS gate
 → #204 one-shot final OOS
 → #205 human decision
+
+#292 UI is parallel / non-blocking for #294 (ADR-020 amendment)
 ```
 
 ---

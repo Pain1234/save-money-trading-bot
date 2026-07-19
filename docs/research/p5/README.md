@@ -62,9 +62,10 @@ Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295), cont
 [`docs/research/REGIME_SCORECARD.md`](../REGIME_SCORECARD.md). After P4.9
 infrastructure, [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
 binds frozen Strategy V1 validation to scorecard/classifier/behaviour/confidence
-policy versions **without** opening the final holdout — see
-[P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md) (ADR-020). Extends
-#198/#199; does not replace them.
+policy versions **and** `evaluation_code_commit` **without** opening the final
+holdout — see [P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md)
+(ADR-020). Classifier `1.0` is the sole scorecard taxonomy SoT; #292 UI does
+not block #294. Extends #198/#199; does not replace them.
 
 Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181).
 

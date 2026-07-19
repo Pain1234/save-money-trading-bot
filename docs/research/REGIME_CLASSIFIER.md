@@ -48,15 +48,14 @@ edits under the same version fail closed
 
 ### Relationship to #199 High/Low vol
 
-| #199 (P5 Strategy V1 contract) | P4.9 `1.0` |
-|--------------------------------|------------|
-| Bull / Bear / Sideways (+5% / −5%) | Same trend thresholds |
-| High / Low vs private partition-B median | Three-way absolute bounds (public generic) |
+| Layer | Taxonomie |
+|-------|-----------|
+| Scorecard / Research Engine evidence | Classifier `1.0` three-way absolute vol (sole SoT under [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) / ADR-020) |
+| #199 private diagnostic overlay | Binary High/Low vs partition-B median — **not** interchangeable with scorecard cells |
 
-Do **not** maintain a conflicting second taxonomy. Strategy V1 evaluation
-continues to follow [#199](https://github.com/Pain1234/save-money-trading-bot/issues/199);
-freeze binding of private vol cutoffs to a classifier version is
-[#294](https://github.com/Pain1234/save-money-trading-bot/issues/294).
+Trend (±5%) is shared. Do **not** substitute the private median for classifier
+`1.0` labels in scorecards or ACCEPT evidence. A median-based scorecard axis
+needs a new classifier version + new freeze.
 
 ## Determinism and dataset binding
 
