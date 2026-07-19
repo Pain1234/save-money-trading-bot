@@ -20,12 +20,16 @@ interface EquityVsBenchmarkChartProps {
   /** Benchmark series when API exposes it — never invent. */
   benchmark?: ResearchSeriesPoint[] | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 export function EquityVsBenchmarkChart({
   equity,
   benchmark,
   reason = "Equity/Benchmark-Serien Nicht verfügbar",
+  compactEmpty = false,
+  detailHref = null,
 }: EquityVsBenchmarkChartProps) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -44,6 +48,8 @@ export function EquityVsBenchmarkChart({
         title="Equity vs Benchmark"
         unavailable
         unavailableReason={reason}
+        compactEmpty={compactEmpty}
+        detailHref={detailHref}
       />
     );
   }

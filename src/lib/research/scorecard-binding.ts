@@ -9,7 +9,7 @@ import {
   type ValidationStudyDetail,
   type ValidationStudyOutcome,
 } from "@/lib/research-api/client";
-import { UNAVAILABLE, type ExecutiveTone } from "@/lib/research/executive-summary";
+import { UNAVAILABLE, type ExecutiveTone } from "@/lib/research/labels";
 
 /** Backend missing-data literal — display as Nicht verfügbar. */
 export const BACKEND_NOT_AVAILABLE = "NOT_AVAILABLE";
@@ -25,6 +25,177 @@ export type ScorecardBindState =
       detail: ScorecardDetail | null;
       detailError: string | null;
     };
+
+/**
+ * Pin / trust vocabulary for Overview + detail (#358).
+ * Do not invent parallel status strings — reuse these codes in UI copy.
+ */
+export type ScorecardPinStatus =
+  | "READY"
+  | "LEGACY_NO_SCORECARD"
+  | "NOT_PINNED"
+  | "HASH_MISMATCH"
+  | "INVALIDATED"
+  | "WRONG_PRIMARY_RUN"
+  | "DETAIL_NOT_AVAILABLE"
+  | "INTEGRITY_FAIL"
+  | "FETCH_ERROR"
+  | "NO_STUDY";
+
+export const SCORECARD_PIN_STATUS = {
+  READY: "READY",
+  LEGACY_NO_SCORECARD: "LEGACY_NO_SCORECARD",
+  NOT_PINNED: "NOT_PINNED",
+  HASH_MISMATCH: "HASH_MISMATCH",
+  INVALIDATED: "INVALIDATED",
+  WRONG_PRIMARY_RUN: "WRONG_PRIMARY_RUN",
+  DETAIL_NOT_AVAILABLE: "DETAIL_NOT_AVAILABLE",
+  INTEGRITY_FAIL: "INTEGRITY_FAIL",
+  FETCH_ERROR: "FETCH_ERROR",
+  NO_STUDY: "NO_STUDY",
+} as const satisfies Record<ScorecardPinStatus, ScorecardPinStatus>;
+
+export interface ScorecardPinClassification {
+  status: ScorecardPinStatus;
+  /** Human-readable cause (German UI). */
+  cause: string;
+  studyId: string | null;
+  experimentId: string | null;
+  studyHref: string | null;
+  experimentHref: string | null;
+}
+
+const LEGACY_NO_SCORECARD_HEADLINE =
+  "Keine gepinnte Scorecard für diese Validation Study.";
+
+/**
+ * Map bind result → contract pin status. Never widens to unpinned registry.
+ */
+export function classifyStudyScorecardPin(
+  bind: ScorecardBindState | null | undefined,
+  study: Pick<
+    ValidationStudyDetail,
+    "study_id" | "experiment_id" | "scorecard_ids" | "evidence_snapshot"
+  > | null,
+): ScorecardPinClassification {
+  const studyId = study?.study_id ?? null;
+  const experimentId =
+    study?.evidence_snapshot?.primary.experiment_id ??
+    study?.experiment_id ??
+    null;
+  const studyHref = studyId
+    ? `/dashboard/research/validation/${encodeURIComponent(studyId)}`
+    : null;
+  const experimentHref = experimentId
+    ? `/dashboard/research/experiments/${encodeURIComponent(experimentId)}`
+    : null;
+
+  if (!study) {
+    return {
+      status: SCORECARD_PIN_STATUS.NO_STUDY,
+      cause: "Kein Validation-Study-Anker — Scorecard nicht gebunden",
+      studyId: null,
+      experimentId: null,
+      studyHref: null,
+      experimentHref: null,
+    };
+  }
+
+  if (!bind) {
+    const pinnedCount = study.evidence_snapshot?.scorecards?.length ?? 0;
+    const idCount = study.scorecard_ids?.length ?? 0;
+    const status =
+      idCount === 0 && pinnedCount === 0
+        ? SCORECARD_PIN_STATUS.LEGACY_NO_SCORECARD
+        : SCORECARD_PIN_STATUS.NOT_PINNED;
+    return {
+      status,
+      cause: `${LEGACY_NO_SCORECARD_HEADLINE} Ursache: ${status}${
+        status === SCORECARD_PIN_STATUS.LEGACY_NO_SCORECARD
+          ? " — Study ohne scorecard_ids / evidence_snapshot.scorecards."
+          : " — Pin vorhanden, Bind noch nicht geladen."
+      }`,
+      studyId,
+      experimentId,
+      studyHref,
+      experimentHref,
+    };
+  }
+
+  if (bind.kind === "ready") {
+    if (bind.detailError || !bind.detail) {
+      return {
+        status: SCORECARD_PIN_STATUS.READY,
+        cause: bind.detailError
+          ? `Pin READY — Detail: DETAIL_NOT_AVAILABLE (${bind.detailError})`
+          : "Pin READY — Scorecard Summary gebunden; Detail optional",
+        studyId,
+        experimentId,
+        studyHref,
+        experimentHref,
+      };
+    }
+    return {
+      status: SCORECARD_PIN_STATUS.READY,
+      cause: "Gepinnte Scorecard vertrauenswürdig gebunden",
+      studyId,
+      experimentId,
+      studyHref,
+      experimentHref,
+    };
+  }
+
+  if (bind.kind === "error") {
+    const msg = bind.message;
+    let status: ScorecardPinStatus = SCORECARD_PIN_STATUS.FETCH_ERROR;
+    if (/invalidat/i.test(msg)) status = SCORECARD_PIN_STATUS.INVALIDATED;
+    else if (/content_hash mismatch|hash mismatch/i.test(msg)) {
+      status = SCORECARD_PIN_STATUS.HASH_MISMATCH;
+    } else if (/ungepinnt|Pin-Hash|requirePinHash/i.test(msg)) {
+      status = SCORECARD_PIN_STATUS.NOT_PINNED;
+    } else if (/evidence_integrity|untrusted/i.test(msg)) {
+      status = SCORECARD_PIN_STATUS.INTEGRITY_FAIL;
+    }
+    return {
+      status,
+      cause: `${LEGACY_NO_SCORECARD_HEADLINE} Ursache: ${status} — ${msg}`,
+      studyId,
+      experimentId,
+      studyHref,
+      experimentHref,
+    };
+  }
+
+  // empty
+  const reason = bind.reason;
+  const pinnedCount = study.evidence_snapshot?.scorecards?.length ?? 0;
+  const idCount = study.scorecard_ids?.length ?? 0;
+  let status: ScorecardPinStatus = SCORECARD_PIN_STATUS.NOT_PINNED;
+  if (idCount === 0 && pinnedCount === 0) {
+    status = SCORECARD_PIN_STATUS.LEGACY_NO_SCORECARD;
+  } else if (/Primary-Run|Additional-Run/i.test(reason)) {
+    status = SCORECARD_PIN_STATUS.WRONG_PRIMARY_RUN;
+  }
+  return {
+    status,
+    cause: `${LEGACY_NO_SCORECARD_HEADLINE} Ursache: ${status} — ${reason}`,
+    studyId,
+    experimentId,
+    studyHref,
+    experimentHref,
+  };
+}
+
+/** Detail panels only — READY summary may still lack sealed detail. */
+export function classifyDetailAvailability(
+  bind: ScorecardBindState | null | undefined,
+): ScorecardPinStatus | null {
+  if (!bind || bind.kind !== "ready") return null;
+  if (bind.detailError || !bind.detail) {
+    return SCORECARD_PIN_STATUS.DETAIL_NOT_AVAILABLE;
+  }
+  return null;
+}
 
 export interface ScorecardProfileCell {
   id: string;
@@ -514,11 +685,17 @@ export function buildScorecardProfileView(
       id: "main-weakness",
       label: "Main Weakness",
       value: scorecardDisplayValue(weakness),
-      detail: strength
-        ? `strength=${scorecardDisplayValue(strength)}`
-        : null,
+      detail: null,
       tone: weakness && weakness !== BACKEND_NOT_AVAILABLE ? "warning" : "muted",
       source: "global_profile.behaviour.main_weakness",
+    },
+    {
+      id: "main-strength",
+      label: "Main Strength",
+      value: scorecardDisplayValue(strength),
+      detail: null,
+      tone: strength && strength !== BACKEND_NOT_AVAILABLE ? "mint" : "muted",
+      source: "global_profile.behaviour.main_strength",
     },
     {
       id: "final-decision",

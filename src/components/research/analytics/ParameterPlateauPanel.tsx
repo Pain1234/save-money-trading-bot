@@ -10,6 +10,8 @@ interface ParameterPlateauPanelProps {
   classification?: string | null;
   detail?: string | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 const toneClass: Record<ExecutiveTone, string> = {
@@ -24,6 +26,8 @@ export function ParameterPlateauPanel({
   classification = null,
   detail = null,
   reason = "Parameter-Area Nicht verfügbar — Scorecard/Plateau-API (#291/#290)",
+  compactEmpty = false,
+  detailHref = null,
 }: ParameterPlateauPanelProps) {
   const hasValue =
     classification != null &&
@@ -38,6 +42,8 @@ export function ParameterPlateauPanel({
         subtitle="Plateau vs Isolierter Peak — keine erfundenen Stabilitäts-Scores"
         unavailable
         unavailableReason={reason}
+        compactEmpty={compactEmpty}
+        detailHref={detailHref}
       />
     );
   }

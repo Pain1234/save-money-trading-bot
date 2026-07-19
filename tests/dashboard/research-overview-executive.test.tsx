@@ -233,6 +233,9 @@ describe("buildExecutiveSummary evidence identity", () => {
     const byId = Object.fromEntries(summary.cells.map((c) => [c.id, c]));
     expect(byId["evidence-confidence"]?.value).toBe(UNAVAILABLE);
     expect(byId["worst-regime"]?.value).toBe(UNAVAILABLE);
+    expect(byId["worst-transition"]?.value).toBe(UNAVAILABLE);
+    expect(byId["main-weakness"]?.value).toBe(UNAVAILABLE);
+    expect(byId["main-strength"]?.value).toBe(UNAVAILABLE);
     expect(byId["cost-stress"]?.value).toBe(UNAVAILABLE);
     expect(byId["parameter-area"]?.value).toBe(UNAVAILABLE);
     expect(byId.integrity?.value).toBe(UNAVAILABLE);
@@ -241,6 +244,7 @@ describe("buildExecutiveSummary evidence identity", () => {
     expect(summary.evidence).toBeNull();
     expect(summary.strategyId).toBeNull();
     expect(summary.freezeLabel).toBe(UNAVAILABLE);
+    expect(summary.pin.status).toBe("NO_STUDY");
     expect(JSON.stringify(summary)).not.toMatch(/123\.45|0\.87|demo.?pnl/i);
   });
 

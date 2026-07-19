@@ -5,10 +5,16 @@ import type {
   RobustnessJobSummary,
   ValidationStudyDetail,
 } from "@/lib/research-api/client";
+import {
+  buildScorecardProfileView,
+  classifyStudyScorecardPin,
+  SCORECARD_PIN_STATUS,
+  type ScorecardBindState,
+  type ScorecardPinClassification,
+} from "@/lib/research/scorecard-binding";
+import { UNAVAILABLE, type ExecutiveTone } from "@/lib/research/labels";
 
-export const UNAVAILABLE = "Nicht verfügbar";
-
-export type ExecutiveTone = "mint" | "danger" | "warning" | "muted";
+export { UNAVAILABLE, type ExecutiveTone } from "@/lib/research/labels";
 
 export interface ExecutiveCell {
   id: string;
@@ -29,6 +35,7 @@ export interface ExecutiveEvidenceAnchor {
   strategyVersion: string | null;
   gateRunIds: string[];
   robustnessIds: string[];
+  scorecardId?: string | null;
 }
 
 export interface ExecutiveSummary {
@@ -39,6 +46,8 @@ export interface ExecutiveSummary {
   strategyVersion: string | null;
   freezeLabel: string;
   freezeDetail: string;
+  /** Pin classification for Overview chrome (#358). */
+  pin: ScorecardPinClassification;
 }
 
 function byNewestCreated<T extends { created_at: string }>(items: T[]): T[] {
@@ -334,7 +343,7 @@ function finalDecisionCell(
   if (!study) {
     return {
       id: "final-decision",
-      label: "Final Decision",
+      label: "Final Human Decision",
       value: UNAVAILABLE,
       detail: "Keine Validation Studies",
       tone: "muted",
@@ -355,7 +364,7 @@ function finalDecisionCell(
           : "warning";
     return {
       id: "final-decision",
-      label: "Final Decision",
+      label: "Final Human Decision",
       value: outcome.toUpperCase(),
       detail: `${study.name} · ${study.study_id}`,
       tone,
@@ -366,7 +375,7 @@ function finalDecisionCell(
 
   return {
     id: "final-decision",
-    label: "Final Decision",
+    label: "Final Human Decision",
     value: "pending",
     detail: `${study.name} · ${study.study_id}`,
     tone: "warning",
@@ -375,21 +384,145 @@ function finalDecisionCell(
   };
 }
 
+function profileCellToExecutive(
+  cell: {
+    id: string;
+    label: string;
+    value: string;
+    detail: string | null;
+    tone: ExecutiveTone;
+    source: string;
+  },
+  href: string | null,
+): ExecutiveCell {
+  return {
+    id: cell.id,
+    label: cell.label,
+    value: cell.value,
+    detail: cell.detail,
+    tone: cell.tone,
+    href,
+    source: cell.source,
+  };
+}
+
 /**
- * Gate-first executive summary (#299).
- * All Decision / Gates / Strategy / Integrity / robustness inventory cells
- * share one Validation Study evidence identity when present.
+ * Gate-first executive summary (#299 + #358 pinned scorecard).
+ * READY pin → profile fields from sealed scorecard API only.
+ * Legacy / unpinned → honest pin status; never latest-scorecard fallback.
  */
 export function buildExecutiveSummary(input: {
   overview: ResearchOverview;
   gateRuns: GateRunRecord[];
   studies: ValidationStudyDetail[];
   robustnessJobs: RobustnessJobSummary[];
+  /** Pinned study scorecard bind — never a registry "latest" pick. */
+  scorecardBind?: ScorecardBindState | null;
 }): ExecutiveSummary {
-  const { overview, gateRuns, studies, robustnessJobs } = input;
+  const { overview, gateRuns, studies, robustnessJobs, scorecardBind } = input;
   const focus = selectEvidenceStudy(studies);
   const evidence = focus ? toEvidenceAnchor(focus) : null;
+  const pin = classifyStudyScorecardPin(scorecardBind ?? null, focus);
+  const studyHref = pin.studyHref;
 
+  if (
+    scorecardBind?.kind === "ready" &&
+    pin.status === SCORECARD_PIN_STATUS.READY
+  ) {
+    const profile = buildScorecardProfileView(scorecardBind.scorecard, {
+      warnings: scorecardBind.warnings,
+      finalDecision:
+        focus?.decision != null
+          ? {
+              outcome: focus.decision.outcome,
+              detail: `${focus.decision.decided_by} · ${focus.decision.decided_at}`,
+            }
+          : null,
+    });
+    const byId = Object.fromEntries(profile.cells.map((c) => [c.id, c]));
+    if (evidence) {
+      evidence.scorecardId = profile.scorecardId;
+    }
+
+    const fallback = (
+      id: string,
+      label: string,
+    ): {
+      id: string;
+      label: string;
+      value: string;
+      detail: string | null;
+      tone: ExecutiveTone;
+      source: string;
+    } => ({
+      id,
+      label,
+      value: UNAVAILABLE,
+      detail: null,
+      tone: "muted",
+      source: "scorecard",
+    });
+
+    const cells: ExecutiveCell[] = [
+      profileCellToExecutive(
+        byId.integrity ?? fallback("integrity", "Integrity"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["critical-gates"] ?? fallback("critical-gates", "Critical Gates"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["evidence-confidence"] ??
+          fallback("evidence-confidence", "Evidence Confidence"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["worst-regime"] ?? fallback("worst-regime", "Worst Regime"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["worst-transition"] ??
+          fallback("worst-transition", "Worst Transition"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["cost-stress"] ?? fallback("cost-stress", "Cost Stress"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["parameter-area"] ?? fallback("parameter-area", "Parameter Area"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["main-weakness"] ?? fallback("main-weakness", "Main Weakness"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["main-strength"] ?? fallback("main-strength", "Main Strength"),
+        studyHref,
+      ),
+      profileCellToExecutive(
+        byId["final-decision"] ??
+          fallback("final-decision", "Final Human Decision"),
+        studyHref,
+      ),
+    ];
+
+    return {
+      cells,
+      evidence,
+      strategyId: evidence?.strategyId ?? null,
+      strategyVersion: evidence?.strategyVersion ?? null,
+      freezeLabel: UNAVAILABLE,
+      freezeDetail:
+        "P5 Parameter-Freeze / Holdout-Freeze noch nicht als Scorecard-Feld exponiert",
+      pin,
+    };
+  }
+
+  const legacyDetail = pin.cause;
+  const useLegacyScorecardCopy = scorecardBind != null;
   return {
     cells: [
       integrityCellForEvidence(overview.recent_experiments, evidence),
@@ -397,26 +530,60 @@ export function buildExecutiveSummary(input: {
       unavailableScorecardCell(
         "evidence-confidence",
         "Evidence Confidence",
-        "Scorecard Layer 3 noch nicht angebunden",
+        legacyDetail,
+        studyHref,
       ),
       unavailableScorecardCell(
         "worst-regime",
         "Worst Regime",
-        "Regime-Scorecard noch nicht angebunden",
+        legacyDetail,
+        studyHref,
       ),
-      robustnessInventoryCell(
-        "cost-stress",
-        "Cost Stress",
-        robustnessJobs,
-        "cost_stress",
-        evidence,
+      unavailableScorecardCell(
+        "worst-transition",
+        "Worst Transition",
+        legacyDetail,
+        studyHref,
       ),
-      robustnessInventoryCell(
-        "parameter-area",
-        "Parameter Area",
-        robustnessJobs,
-        "parameter_stability",
-        evidence,
+      useLegacyScorecardCopy
+        ? unavailableScorecardCell(
+            "cost-stress",
+            "Cost Stress",
+            legacyDetail,
+            studyHref,
+          )
+        : robustnessInventoryCell(
+            "cost-stress",
+            "Cost Stress",
+            robustnessJobs,
+            "cost_stress",
+            evidence,
+          ),
+      useLegacyScorecardCopy
+        ? unavailableScorecardCell(
+            "parameter-area",
+            "Parameter Area",
+            legacyDetail,
+            studyHref,
+          )
+        : robustnessInventoryCell(
+            "parameter-area",
+            "Parameter Area",
+            robustnessJobs,
+            "parameter_stability",
+            evidence,
+          ),
+      unavailableScorecardCell(
+        "main-weakness",
+        "Main Weakness",
+        legacyDetail,
+        studyHref,
+      ),
+      unavailableScorecardCell(
+        "main-strength",
+        "Main Strength",
+        legacyDetail,
+        studyHref,
       ),
       finalDecisionCell(focus),
     ],
@@ -426,5 +593,6 @@ export function buildExecutiveSummary(input: {
     freezeLabel: UNAVAILABLE,
     freezeDetail:
       "P5 Parameter-Freeze / Holdout-Freeze noch nicht als Scorecard-Feld exponiert",
+    pin,
   };
 }
