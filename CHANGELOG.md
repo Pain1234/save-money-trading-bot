@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 scorecard detail API — #350)
+
+- Read-only `GET /api/v1/research/scorecards/{scorecard_id}/detail` joins sealed
+  `regime_metrics` / behaviour / gate / robustness pins into per-regime rows and
+  forensic blocks. Summary `GET .../scorecards/{id}` unchanged. Missing evidence
+  is `NOT_AVAILABLE` (never coerced to `0`). Docs: `docs/research/SCORECARDS.md`.
+
 ### Added (P4.9 scorecard acceptance matrix — #293)
 
 - Composition acceptance tests for scorecard reproducibility and anti-overfit

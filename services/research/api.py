@@ -603,6 +603,29 @@ def research_evaluate_scorecard(
         ) from exc
 
 
+@router.get("/scorecards/{scorecard_id}/detail")
+def research_scorecard_regime_detail(
+    scorecard_id: str,
+    svc: ScorecardSvc,
+) -> dict[str, Any]:
+    """Per-regime rows + forensic drilldowns from sealed scorecard pins (#350).
+
+    Does not recompute metrics. Missing sealed evidence is ``NOT_AVAILABLE``.
+    Summary ``GET /scorecards/{id}`` remains the coarse #291 payload.
+    """
+    try:
+        return svc.get_detail(scorecard_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(status_code=404, detail="scorecard not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
 @router.get("/scorecards/{scorecard_id}")
 def research_scorecard_detail(
     scorecard_id: str,

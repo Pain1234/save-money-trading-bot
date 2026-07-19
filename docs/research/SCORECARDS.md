@@ -4,6 +4,9 @@ Assembles pinned layer artifacts into a **global evidence profile** and persists
 an append-only scorecard record. No second experiment/gate registry. No
 re-backtest. No auto-promotion.
 
+Detail drilldowns for the dashboard: Issue
+[#350](https://github.com/Pain1234/save-money-trading-bot/issues/350).
+
 Contract: [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md) § Layer 5 / §8.
 Related: [`GATES.md`](GATES.md), [`CONFIDENCE.md`](CONFIDENCE.md),
 [`VALIDATION_STUDIES.md`](VALIDATION_STUDIES.md).
@@ -62,11 +65,84 @@ Optional `robustness_run_ids` are verified via the same #247 path as gates
 |-------|-------|
 | `GET /api/v1/research/scorecard-policies` | versions + content hash |
 | `GET /api/v1/research/scorecards?run_id=` | latest-per-id |
-| `GET /api/v1/research/scorecards/{scorecard_id}` | fail-closed integrity for active |
+| `GET /api/v1/research/scorecards/{scorecard_id}` | coarse #291 summary; fail-closed integrity for active |
+| `GET /api/v1/research/scorecards/{scorecard_id}/detail` | per-regime rows + forensics (#350); summary route unchanged |
 | `POST /api/v1/research/scorecards/evaluate` | idempotent assemble |
 | `POST /api/v1/research/scorecards/{id}/invalidate` | append-only |
 
 `promotion_action` / `auto_promotion` / `decision_binding` are always false/`none`.
+
+## Detail payload (#350)
+
+`GET .../scorecards/{scorecard_id}/detail` joins **already-pinned** seals only
+(`assemble_scorecard_detail` in `services/research/scorecard_detail.py`). It does
+not recompute backtests or invent metrics.
+
+| Block | Contents |
+|-------|----------|
+| `regime_rows[]` | Per `regime_metrics.regimes[]` cell: quality, confidence (scorecard-overall scope), behaviour join, trades, net_pnl, max_drawdown, costs, benchmark_delta |
+| `transition_risk` | From sealed `behavior_profile.transition_risk` (else `NOT_AVAILABLE`) |
+| `cost_stress` | From pinned `robustness_run_ids` with `test_type=cost_stress`; else `NOT_AVAILABLE` |
+| `evidence_inputs` | Bound run/gate/robustness/policy/dataset pins + promotion flags |
+| `gate_failures` | Non-PASS gates from bound `gate_run_id`; empty gate → `no_bound_gate_run` |
+| `raw_artifact_refs` | Layer file names + checksum keys + robustness/scorecard refs |
+| `missing_data_semantics` | Token `NOT_AVAILABLE` — clients must not coerce to `0` / PASS |
+
+Metric cells use `{ "status": "OK"|"NOT_AVAILABLE", "value": ... }`.
+`confidence.scope` is `"scorecard_overall"` when only the scorecard overall label
+exists (no per-regime confidence artifact).
+
+### TypeScript-facing sketch (Bot 3 handoff)
+
+```ts
+type NaMetric<T> = { status: "OK"; value: T } | { status: "NOT_AVAILABLE"; value: null };
+
+type ScorecardDetail = {
+  scorecard_id: string;
+  status: "active" | "invalidated";
+  decision_binding: false;
+  auto_promotion: false;
+  promotion_action: "none";
+  summary: Record<string, unknown>; // #291 record shape
+  regime_rows: Array<{
+    cell_id: string;
+    trend: string | null;
+    vol: string | null;
+    quality: NaMetric<string> & { reason?: string };
+    confidence: { status: string; value: string | null; scope: "scorecard_overall" };
+    behaviour: {
+      status: string;
+      main_weakness: string;
+      main_strength: string;
+      labels: string[];
+    };
+    trades: NaMetric<number>;
+    net_pnl: NaMetric<string>;
+    max_drawdown: NaMetric<string>;
+    costs: NaMetric<{ fees: string; slippage_costs: string; funding_costs: string }>;
+    benchmark_delta: NaMetric<string>;
+    row_status?: string;
+  }>;
+  transition_risk: NaMetric<unknown> | { status: "OK"; value: unknown };
+  cost_stress:
+    | { status: "NOT_AVAILABLE"; value: null; reason: string }
+    | {
+        status: "OK";
+        robustness_run_id: string;
+        verdict?: unknown;
+        summary?: unknown;
+        combined_elevated_child?: unknown;
+        artifact_path: string;
+      };
+  evidence_inputs: Record<string, unknown>;
+  gate_failures: Array<Record<string, unknown>>;
+  raw_artifact_refs: Array<Record<string, unknown>>;
+  missing_data_semantics: { token: "NOT_AVAILABLE"; rule: string };
+  evidence_integrity: { ok: boolean; error: string | null };
+};
+```
+
+Tests: `tests/research/test_scorecard_detail.py`.
 
 ## Validation Study pin (#249 extension)
 

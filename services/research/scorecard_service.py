@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from research.scorecard_detail import assemble_scorecard_detail
 from research.scorecard_evaluator import (
     ScorecardEvaluationError,
     ScorecardEvaluator,
@@ -135,6 +136,37 @@ class ScorecardService:
         if record is None:
             raise KeyError(scorecard_id)
         return _record_to_public_dict(self.root, record)
+
+    def get_detail(self, scorecard_id: str) -> dict[str, Any]:
+        """Read-only regime-row + forensics join (#350). Summary GET stays unchanged."""
+        scorecard_id = assert_safe_id(scorecard_id, field="scorecard_id")
+        record = self.store.get(scorecard_id)
+        if record is None:
+            raise KeyError(scorecard_id)
+        _assert_record_policy_trusted(record)
+        try:
+            detail = assemble_scorecard_detail(self.root, record)
+        except ScorecardEvaluationError as exc:
+            if record.status == "active":
+                raise ResearchWriteError(
+                    str(exc),
+                    field_errors={
+                        "artifact_checksums": (
+                            "mismatch — scorecard detail evidence untrusted"
+                        ),
+                        **exc.field_errors,
+                    },
+                ) from exc
+            # Invalidated: still assemble when possible, else surface integrity error.
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "artifact_checksums": "mismatch — invalidated scorecard unreadable",
+                    **exc.field_errors,
+                },
+            ) from exc
+        detail["evidence_integrity"] = {"ok": True, "error": None}
+        return detail
 
     def list_all(self, *, run_id: str | None = None) -> list[dict[str, Any]]:
         latest: dict[str, ScorecardRecord] = {}
