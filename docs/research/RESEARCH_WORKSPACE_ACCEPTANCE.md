@@ -245,7 +245,7 @@ commit, pass/fail per section, and any deviations with a linked issue.
 
 | Date | Commit | Sections passed | Deviations |
 |------|--------|------------------|------------|
-| 2026-07-19 | _pin after rebase onto main@#301_ | Playwright `test:research-smoke`; API E2E; deploy static wiring; manual A–I **not** closed | #301 on main (§H); #302–#303 open; browser gaps in §I; **no Closes #250** |
+| 2026-07-19 | `96797ed998f6f803081c5d38ae0aed64902d07d2` (post-rebase onto `main` incl. #301) | Playwright `test:research-smoke` (2 passed); API E2E `test_e2e_acceptance.py` (10 passed); `tests/deploy/test_research_playwright_smoke.py` (4 passed); manual A–I **not** closed | #301 on main (§H); #302–#303 open; browser gaps in §I; **no Closes #250** |
 | _fill in after #302–#303_ | _fill in_ | _fill in_ | _fill in_ |
 
 ## Automated coverage cross-reference
