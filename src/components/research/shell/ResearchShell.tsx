@@ -7,19 +7,27 @@ interface ResearchShellProps {
   children: React.ReactNode;
 }
 
-/** Full-width Hyperliquid-style Research chrome (#298). Monitor chrome is separate. */
+/** Full-width Hyperliquid-style Research chrome (#298 / a11y #303). Monitor chrome is separate. */
 export function ResearchShell({ username, children }: ResearchShellProps) {
   return (
     <div
-      className="research-shell flex min-h-screen flex-col bg-bg-base text-text-primary"
+      className="research-shell relative flex min-h-screen flex-col bg-bg-base text-text-primary"
       data-testid="research-shell"
     >
+      <a href="#research-main" className="rs-skip-link" data-testid="research-skip-link">
+        Zum Research-Inhalt springen
+      </a>
       <ResearchTopbar username={username} />
       <ResearchTicker />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <ResearchSidebar />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <main className="min-w-0 flex-1 px-[var(--rs-shell-x)] py-[var(--rs-shell-y)]">
+          <main
+            id="research-main"
+            className="min-w-0 flex-1 px-[var(--rs-shell-x)] py-[var(--rs-shell-y)]"
+            data-testid="research-main"
+            aria-label="Research content"
+          >
             {children}
           </main>
           <footer

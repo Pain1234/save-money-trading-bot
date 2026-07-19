@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 research responsive / a11y — #303)
+
+- Research shell skip link, mint `:focus-visible` rings, Escape-close mobile nav.
+- Playwright a11y/responsive suite + desktop/mobile reference screenshots under
+  `docs/visual-regression/`. Checklist: `docs/research/RESEARCH_RESPONSIVE_A11Y.md`.
+
 ### Added (P4.9 scorecard detail API — #350)
 
 - Read-only `GET /api/v1/research/scorecards/{scorecard_id}/detail` joins sealed
