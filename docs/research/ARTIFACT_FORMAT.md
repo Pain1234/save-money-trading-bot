@@ -16,6 +16,7 @@ artifacts/research/<experiment_id>/<run_id>/
   regime_metrics.json
   confidence_profile.json
   behavior_profile.json
+  parameter_area.json
   events.jsonl
   checksums.json
 ```
@@ -43,3 +44,4 @@ Rules:
 - `regime_metrics.json` (#287): per-regime raw quality metrics; see [REGIME_QUALITY.md](REGIME_QUALITY.md)
 - `confidence_profile.json` (#288): evidence-confidence profile; see [CONFIDENCE.md](CONFIDENCE.md)
 - `behavior_profile.json` (#289): deterministic behaviour + transition risk; see [REGIME_BEHAVIOUR.md](REGIME_BEHAVIOUR.md)
+- `parameter_area.json` (#290): optional post-hoc plateau classification from #247; see [PARAMETER_AREA.md](PARAMETER_AREA.md)

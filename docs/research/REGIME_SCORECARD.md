@@ -272,6 +272,9 @@ Report at least:
 Classification: `BROAD_STABLE_PLATEAU` | `NARROW_STABLE_AREA` |
 `ISOLATED_PEAK` | `UNSTABLE` | `INSUFFICIENT_EVIDENCE`
 
+Implemented: `services/research/parameter_area/` + contract
+[`PARAMETER_AREA.md`](PARAMETER_AREA.md), sealed `parameter_area.json`.
+
 Reuse #247 parameter-stability artefacts. Do not build plateaus from final OOS /
 holdout data. P5 Strategy V1 remains on the frozen point.
 
