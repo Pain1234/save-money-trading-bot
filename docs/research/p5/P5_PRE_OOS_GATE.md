@@ -1,10 +1,13 @@
 # P5 Pre-OOS Gate Checklist (#204 blocker)
 
-**Status:** READY FOR HUMAN PRE-OOS APPROVAL
+**Status:** DOCS MERGED — still blocked on human approval + calendar sufficiency
 **Holdout opened?** `NO` / `SEALED`
 **Do not run #204** until every required box below is checked **and** a human
 comments `PRE-OOS APPROVED` on [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204)
 with the public-core SHA + UTC.
+
+Phase-3 / Pre-OOS docs are on `main` via PR #369 (`c469b65…`). That merge alone
+does **not** open the holdout.
 
 This checklist is process-only. It does **not** contain private economic metrics
 and does **not** decide `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` (#205).
@@ -28,6 +31,8 @@ and does **not** decide `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` (#205).
 | Private artifacts sealed | **Done** | private repo `main` after PR #5 |
 | Holdout still unopened | **SEALED** | `P5_EXECUTION_STATUS.md` / private status |
 | Human Pre-OOS approval | **REQUIRED** | comment on #204 |
+| Forward holdout ≥ 90 calendar days | **NOT MET** (2026-07-19 check) | Clock start `2026-07-19T12:54:01Z`; earliest ~`2026-10-17T12:54:01Z` |
+| Feature warmup at #204 open | **Confirm at open** | Monthly EMA-20 ⇒ ≥20 completed months in feature context |
 
 ## Binding execution pin (for #204 when approved)
 
@@ -42,8 +47,11 @@ holdout_status: "SEALED"   # flips only at approved #204 start
 
 ## Still human / process (not Agent-decided)
 
-- Forward holdout length ≥ sample-sufficiency minimum (proposed 90 days) **and**
-  feature warmup for the evaluation engine — confirm at #204 open.
+- Forward holdout length ≥ 90 calendar days (frozen protocol) — **calendar-blocked
+  until ~2026-10-17** unless a dedicated human protocol change issue amends the rule.
+- Feature warmup for the evaluation engine — confirm at #204 open.
+- Human `PRE-OOS APPROVED` on #204 with SHA + UTC (may be recorded before the
+  calendar gate clears; Agents still must not open holdout until both are true).
 - Decision Log entry for Pre-OOS approval (process only).
 - Exactly one economic OOS run; no threshold/parameter edits after start.
 - Repeat only on documented technical fault found **before** economic result review.

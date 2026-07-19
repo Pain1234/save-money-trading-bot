@@ -1,6 +1,6 @@
 # P5 Execution Status
 
-**Updated:** 2026-07-19
+**Updated:** 2026-07-19 (post PR #369 merge `c469b65…`)
 **Holdout opened?** `NO`
 
 ## Wave completion (public core)
@@ -19,7 +19,7 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 | 5b | #201 | Cost-stress scenarios | Helpers on `main`; execution = #252 |
 | 5c | #202 | Parameter neighborhood | Helpers on `main`; execution = #253 |
 | 5d | #203 | Path bootstrap helper | Helpers on `main`; execution = #254 |
-| 6 | #204 | Pre-OOS gate checklist | **Awaiting human `PRE-OOS APPROVED`** — see `P5_PRE_OOS_GATE.md` |
+| 6 | #204 | Pre-OOS gate checklist | Docs merged (PR #369); **awaiting human `PRE-OOS APPROVED` + ≥90d forward window** — see `P5_PRE_OOS_GATE.md` |
 | 7 | #205 | Decision process / ADR | After #204 once |
 
 ## Pre-OOS hard stop (#204)
@@ -35,8 +35,19 @@ Do **not** open holdout C until all are true:
 - [x] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
 - [x] #363 sealed symbol constraints merged on `main` (PR #366 @ `aa0e232…`; prior private Partition B packs invalidated)
 - [x] Private robustness packs #251–#254 complete on sealed SHA (private PRs #2–#5; Phase-3 cross-check **130/0**)
-- [ ] Forward holdout length ≥ sample-sufficiency min (proposed 90 days) **and** feature warmup satisfied for the evaluation engine
+- [ ] Forward holdout length ≥ sample-sufficiency min (90 calendar days per frozen protocol) **and** feature warmup satisfied for the evaluation engine
 - [ ] Human pre-OOS approval recorded (`PRE-OOS APPROVED` on #204 + Decision Log process note)
+
+### Forward-holdout calendar (status only — no metrics)
+
+| Field | Value |
+|-------|-------|
+| Holdout clock start (Candidate Freeze UTC) | `2026-07-19T12:54:01Z` (`FREEZE APPROVED` on #196 @ `35b4fa6…`) |
+| Pin refresh does **not** reset clock | `FREEZE PIN REFRESHED` 2026-07-19T15:47:02Z on `aa0e232…` |
+| Status check UTC | `2026-07-19` |
+| Elapsed forward calendar days | **~0** (same UTC day as freeze) |
+| Earliest day min-duration (90d) can pass | **≥ `2026-10-17T12:54:01Z`** |
+| Verdict at this check | **NOT MET** — #204 one-shot OOS remains calendar-blocked |
 
 ## Symbol-constraint seal (#363) — private pack invalidation
 
@@ -55,9 +66,10 @@ P5 Partition B private executions that ran **before** sealed
 | Gate 1 | **Complete** |
 | #251–#254 sealed re-runs | **Complete** (private PRs #2–#5 merged) |
 | Phase 3 cross-check | **PASS** (130/0) — `P5_PHASE3_CROSS_CHECK.md` |
-| Pre-OOS checklist | **Ready for human** — `P5_PRE_OOS_GATE.md` |
+| Pre-OOS checklist docs | **Merged** PR #369 → `c469b65…` |
+| Sample-sufficiency (90d) | **NOT MET** (~0d elapsed; earliest ~2026-10-17) |
 | Holdout opened? | `NO` / `SEALED` |
-| #204 OOS execution | **BLOCKED** on human `PRE-OOS APPROVED` + sample-sufficiency ack |
+| #204 OOS execution | **BLOCKED** on `PRE-OOS APPROVED` + ≥90d forward window + warmup ack |
 | #205 final decision | **BLOCKED** by #204 |
 | #47 | Remains open until #205 |
 

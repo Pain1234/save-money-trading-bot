@@ -37,6 +37,7 @@ Canonical live checklist: [`P5_PRE_OOS_GATE.md`](P5_PRE_OOS_GATE.md).
 - [x] Parameter-stability plan fixed + #253 executed (sealed)
 - [x] Bootstrap/MC plan fixed + #254 executed (sealed)
 - [ ] Sample-sufficiency rules confirmed for holdout window at open
+  (90d calendar: **NOT MET** as of 2026-07-19; clock `2026-07-19T12:54:01Z`)
 - [x] Decision rules frozen
 - [x] Seeds fixed
 - [x] Software versions pinned (`aa0e232…` + sealed constraints)
