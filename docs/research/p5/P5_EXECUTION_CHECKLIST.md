@@ -26,21 +26,22 @@ If any item fails: remain PLANNING ONLY; link blocking issue; do not start exper
 
 ## Pre-OOS freezes (required before P5-08)
 
-- [ ] Candidate Freeze signed
-- [ ] Validation Protocol frozen
-- [ ] Dataset partitions locked
-- [ ] Benchmarks versioned
-- [ ] Metrics set fixed
-- [ ] Cost-stress plan fixed
-- [ ] Parameter-stability plan fixed
-- [ ] Bootstrap/MC plan fixed (or N/A justified)
-- [ ] Sample-sufficiency rules approved
-- [ ] Decision rules frozen
-- [ ] Seeds fixed
-- [ ] Software versions pinned
-- [ ] Artifact paths classified public/private
-- [ ] Human pre-OOS approval recorded
+Canonical live checklist: [`P5_PRE_OOS_GATE.md`](P5_PRE_OOS_GATE.md).
 
+- [x] Candidate Freeze signed (`FREEZE PIN REFRESHED` on `aa0e232…`)
+- [x] Validation Protocol frozen
+- [x] Dataset partitions locked
+- [x] Benchmarks versioned
+- [x] Metrics set fixed
+- [x] Cost-stress plan fixed + #252 executed (sealed)
+- [x] Parameter-stability plan fixed + #253 executed (sealed)
+- [x] Bootstrap/MC plan fixed + #254 executed (sealed)
+- [ ] Sample-sufficiency rules confirmed for holdout window at open
+- [x] Decision rules frozen
+- [x] Seeds fixed
+- [x] Software versions pinned (`aa0e232…` + sealed constraints)
+- [x] Artifact paths classified public/private
+- [ ] Human pre-OOS approval recorded (`PRE-OOS APPROVED` on #204)
 ## Final OOS one-shot rules
 
 After holdout open:

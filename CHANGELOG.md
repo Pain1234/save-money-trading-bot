@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (P5 Phase 3 cross-check + Pre-OOS gate — #204 prep)
+
+- Recorded technical Phase-3 cross-check (130/0) for sealed #251–#254 packs on
+  `aa0e232…`. Added `P5_PHASE3_CROSS_CHECK.md` and `P5_PRE_OOS_GATE.md`.
+  Holdout remains `SEALED`; human `PRE-OOS APPROVED` still required before #204.
+
 ### Changed (P5 Gate 1 complete — #196)
 
 - Recorded `FREEZE PIN REFRESHED` (2026-07-19T15:47:02Z) on public-core
