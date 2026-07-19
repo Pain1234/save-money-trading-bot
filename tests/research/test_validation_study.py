@@ -86,6 +86,7 @@ def _record(
         additional_run_ids=tuple(p.run_id for p in snap.additional),
         robustness_ids=tuple(r.robustness_id for r in snap.robustness),
         gate_run_ids=tuple(g.gate_run_id for g in snap.gates),
+        scorecard_ids=tuple(s.scorecard_id for s in snap.scorecards),
         evidence_snapshot=snap,
         notes="fixture",
         status=status,  # type: ignore[arg-type]

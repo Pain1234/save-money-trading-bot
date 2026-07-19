@@ -29,6 +29,7 @@ Public-release gates (#176–#180) may remain open on the milestone after resear
 | `regime` | Versioned deterministic regime + transition classifier + sealed `regime_labels.json` (#285) |
 | `regime_quality` | Per-regime raw metrics + worst/strongest profile + `regime_metrics.json` (#287) |
 | `confidence` | Evidence confidence profile + sealed `confidence_profile.json` (#288) |
+| `scorecard_policy` / `scorecard_evaluator` / `scorecard_service` | Layer-5 scorecard assemble + append-only store + RO API (#291) |
 | `regime_behaviour` | Deterministic behaviour labels + transition risk + `behavior_profile.json` (#289) |
 
 ## End-to-end CLI example

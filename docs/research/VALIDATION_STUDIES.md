@@ -21,7 +21,8 @@ and human-entered text — never private numbers:
 | `additional_experiment_ids` / `additional_run_ids` | Same complete-run pin contract, parallel lists |
 | `robustness_ids` | Robustness test ids (#247); only `completed` jobs with a manifest are accepted; each manifest SHA-256 is snapshotted |
 | `gate_run_ids` | Gate evaluation ids (#248); only `active` gates with a trusted policy content hash are accepted; each gate evidence content hash is snapshotted |
-| `evidence_snapshot` | Immutable binding: run pins + checksum digests + dataset_id/content_hash + git commit + robustness manifest hashes + gate content hashes + `snapshot_id` |
+| `scorecard_ids` | Scorecard ids (#291); only `active` scorecards with trusted policy + artifact seals; each scorecard evidence content hash is snapshotted (schema `1.2`) |
+| `evidence_snapshot` | Immutable binding: run pins + checksum digests + dataset_id/content_hash + git commit + robustness manifest hashes + gate content hashes + scorecard content hashes + `snapshot_id` |
 | `strategy_id` / `strategy_version` | Read from the pinned base run's own artifacts |
 | `decision` | Human-owned final decision bound to `evidence_snapshot_id`; `null` until recorded |
 
@@ -85,16 +86,15 @@ Study is never mutated or re-decided — new evidence requires a new Study
 
 ## Extension path — Regime Evidence Scorecard (P4.9)
 
-Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) will allow a
-Validation Study to **pin** a versioned scorecard artifact
-([#291](https://github.com/Pain1234/save-money-trading-bot/issues/291)) into the
-immutable evidence snapshot, alongside runs / robustness / gates. UI surfaces the
-layered profile (integrity, gates, worst regime, confidence, behaviour, parameter
-area) on study/experiment detail ([#292](https://github.com/Pain1234/save-money-trading-bot/issues/292)).
+[#291](https://github.com/Pain1234/save-money-trading-bot/issues/291) lands scorecard
+pinning on Validation Studies (schema `1.2`): optional `scorecard_ids` on create,
+snapshotted as `PinnedScorecardEvidence` alongside runs / robustness / gates.
+UI surfaces the layered profile on study/experiment detail
+([#292](https://github.com/Pain1234/save-money-trading-bot/issues/292)).
 
 Still **no** second study registry, **no** gate re-evaluation inside the study
 create path beyond existing pins, and **no** auto-promotion from scorecard PASS.
-Contract: [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md).
+Contract: [`REGIME_SCORECARD.md`](REGIME_SCORECARD.md) / [`SCORECARDS.md`](SCORECARDS.md).
 
 ## Tests
 
