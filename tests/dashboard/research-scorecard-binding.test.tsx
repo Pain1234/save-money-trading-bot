@@ -452,6 +452,8 @@ describe("ScorecardBindSection", () => {
           kind: "ready",
           scorecard: syntheticScorecard(),
           warnings: [],
+          detail: null,
+          detailError: null,
         }}
       />,
     );
@@ -464,6 +466,128 @@ describe("ScorecardBindSection", () => {
     expect(html).toContain("ELEVATED");
     expect(html).toContain('data-testid="evidence-confidence-value"');
     expect(html).toContain("LOW");
+    expect(html).toContain('data-testid="research-forensics-section"');
     expect(html).not.toContain('data-testid="regime-scorecard-table"');
+  });
+
+  it("binds scorecard detail regime rows and forensics (#302)", () => {
+    const html = renderToStaticMarkup(
+      <ScorecardBindSection
+        bind={{
+          kind: "ready",
+          scorecard: syntheticScorecard(),
+          warnings: [],
+          detail: {
+            scorecard_id: "sc_synthetic_test",
+            status: "active",
+            decision_binding: false,
+            auto_promotion: false,
+            promotion_action: "none",
+            regime_rows: [
+              {
+                cell_id: "up_low",
+                quality: { status: "OK", value: "GOOD" },
+                confidence: {
+                  status: "OK",
+                  value: "LOW",
+                  scope: "scorecard_overall",
+                },
+                behaviour: {
+                  status: "OK",
+                  main_weakness: "choppy",
+                  main_strength: "trend",
+                  labels: ["trend_ok"],
+                },
+                trades: { status: "OK", value: 12 },
+                net_pnl: { status: "OK", value: "1.5" },
+                max_drawdown: { status: "OK", value: "-0.2" },
+                costs: {
+                  status: "OK",
+                  value: {
+                    fees: "0.1",
+                    slippage_costs: "0.05",
+                    funding_costs: "0.01",
+                  },
+                },
+                benchmark_delta: { status: "NOT_AVAILABLE", value: null },
+              },
+            ],
+            transition_risk: {
+              status: "OK",
+              value: {
+                risk_label: "ELEVATED",
+                transition_count: 2,
+                mae: "NOT_AVAILABLE",
+              },
+            },
+            classifier_transitions: {
+              status: "OK",
+              transitions: [
+                {
+                  transition_id: "t1",
+                  from_trend: "up",
+                  to_trend: "down",
+                  from_vol: "low",
+                  to_vol: "high",
+                },
+              ],
+            },
+            cost_stress: {
+              status: "OK",
+              robustness_run_id: "rob_cs",
+              manifest_content_hash: "mh",
+              boundary: {
+                base_net_pnl: "10",
+                combined_elevated_net_pnl: "1.23",
+              },
+            },
+            evidence_inputs: {
+              run_id: "run_syn",
+              experiment_id: "exp_syn",
+              promotion_action: "none",
+              dataset_id: "ds_syn",
+            },
+            gate_failures: [
+              {
+                name: "min_trades",
+                outcome: "FAIL",
+                passed: false,
+                threshold: "30",
+                measured_value: "12",
+                reason: "too few trades",
+              },
+            ],
+            raw_artifact_refs: [
+              {
+                name: "regime_metrics.json",
+                relative_path: "regime_metrics.json",
+                checksum_sha256: "abc",
+                present: true,
+                status: "OK",
+              },
+            ],
+            missing_data_semantics: {
+              token: "NOT_AVAILABLE",
+              rule: "do not coerce",
+            },
+          },
+          detailError: null,
+        }}
+      />,
+    );
+    expect(html).toContain('data-testid="regime-scorecard-table"');
+    expect(html).toContain("up_low");
+    expect(html).toContain('data-testid="cost-stress-bound"');
+    expect(html).toContain("1.23");
+    expect(html).toContain('data-testid="classifier-transitions-list"');
+    expect(html).toContain('data-testid="evidence-inputs-list"');
+    expect(html).toContain('data-testid="gate-failures-list"');
+    expect(html).toContain("min_trades");
+    expect(html).toContain('data-testid="raw-artifact-refs-table"');
+    expect(html).toContain("regime_metrics.json");
+    expect(html).toContain('data-testid="raw-artifact-path-regime_metrics.json"');
+    expect(html).toContain('data-testid="raw-artifact-download-note"');
+    expect(html).toContain('data-testid="analytics-unavailable-mfe-mae"');
+    expect(html).not.toMatch(/Promote|live.?trading/i);
   });
 });

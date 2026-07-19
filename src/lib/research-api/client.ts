@@ -259,6 +259,9 @@ export interface GateEvaluationResult {
   measured_value: string | null;
   passed: boolean;
   reason: string;
+  /** Present on newer gate payloads (#248/#350). */
+  outcome?: string;
+  category?: string;
 }
 
 export interface GateRunRecord {
@@ -549,6 +552,145 @@ export async function fetchScorecard(
 ): Promise<ScorecardRecord> {
   return fetchPaperApi<ScorecardRecord>(
     `/api/v1/research/scorecards/${encodeURIComponent(scorecardId)}`,
+    { revalidate: 5 },
+  );
+}
+
+/** Metric cell from GET …/scorecards/{id}/detail (#350). */
+export type ScorecardNaMetric<T> =
+  | { status: "OK"; value: T }
+  | { status: "NOT_AVAILABLE"; value: null; reason?: string }
+  | { status: string; value: T | null; reason?: string };
+
+export interface ScorecardDetailRegimeRow {
+  cell_id: string;
+  trend?: string | null;
+  vol?: string | null;
+  quality: ScorecardNaMetric<string | number> & {
+    reason?: string;
+    score_policy_content_hash?: string | null;
+  };
+  confidence: {
+    status: string;
+    value: string | null;
+    scope?: string;
+  };
+  behaviour: {
+    status: string;
+    main_weakness?: string | null;
+    main_strength?: string | null;
+    labels?: string[];
+  };
+  trades: ScorecardNaMetric<number>;
+  net_pnl: ScorecardNaMetric<string>;
+  max_drawdown: ScorecardNaMetric<string>;
+  costs: ScorecardNaMetric<{
+    fees?: string;
+    slippage_costs?: string;
+    funding_costs?: string;
+    [key: string]: unknown;
+  }>;
+  benchmark_delta: ScorecardNaMetric<string>;
+  row_status?: string | null;
+}
+
+export interface ScorecardDetailCostStressOk {
+  status: "OK";
+  robustness_run_id: string;
+  manifest_content_hash: string;
+  artifact_path?: string;
+  boundary: {
+    base_net_pnl: string | null;
+    combined_elevated_net_pnl: string | null;
+    base_child_id?: string;
+    combined_elevated_child_id?: string;
+  };
+}
+
+export interface ScorecardDetailCostStressNa {
+  status: "NOT_AVAILABLE";
+  value?: null;
+  reason?: string;
+  robustness_run_id?: string;
+}
+
+export type ScorecardDetailCostStress =
+  | ScorecardDetailCostStressOk
+  | ScorecardDetailCostStressNa
+  | { status: string; reason?: string; [key: string]: unknown };
+
+export interface ScorecardDetailClassifierTransitionsOk {
+  status: "OK";
+  classification_id?: string;
+  classifier_version?: string;
+  transitions: Array<{
+    transition_id?: string;
+    from_period_id?: string;
+    to_period_id?: string;
+    from_trend?: string;
+    to_trend?: string;
+    from_vol?: string;
+    to_vol?: string;
+  }>;
+  period_labels?: unknown[];
+  calendar_gaps?: unknown[];
+  day_events?: Array<{
+    as_of?: string;
+    period_id?: string;
+    event?: string;
+    transition_id?: string | null;
+  }>;
+}
+
+export interface ScorecardDetailGateFailure {
+  name?: string;
+  outcome?: string;
+  passed?: boolean;
+  threshold?: string;
+  measured_value?: string | null;
+  reason?: string;
+  category?: string;
+  status?: string;
+}
+
+export interface ScorecardDetailRawArtifactRef {
+  name: string;
+  relative_path?: string;
+  checksum_sha256?: string | null;
+  present?: boolean;
+  status?: string;
+}
+
+/** Read-only forensics payload (#350 / #302). */
+export interface ScorecardDetail {
+  scorecard_id: string;
+  status: ScorecardStatus | string;
+  decision_binding: boolean;
+  auto_promotion: boolean;
+  promotion_action: "none" | string;
+  summary?: ScorecardRecord | Record<string, unknown>;
+  regime_rows: ScorecardDetailRegimeRow[];
+  transition_risk: ScorecardNaMetric<Record<string, unknown>> | {
+    status: string;
+    value: unknown;
+  };
+  classifier_transitions:
+    | ScorecardDetailClassifierTransitionsOk
+    | { status: "NOT_AVAILABLE"; value?: null; reason?: string }
+    | { status: string; reason?: string; [key: string]: unknown };
+  cost_stress: ScorecardDetailCostStress;
+  evidence_inputs: Record<string, unknown>;
+  gate_failures: ScorecardDetailGateFailure[];
+  raw_artifact_refs: ScorecardDetailRawArtifactRef[];
+  missing_data_semantics: { token: string; rule: string };
+  evidence_integrity?: ScorecardEvidenceIntegrity;
+}
+
+export async function fetchScorecardDetail(
+  scorecardId: string,
+): Promise<ScorecardDetail> {
+  return fetchPaperApi<ScorecardDetail>(
+    `/api/v1/research/scorecards/${encodeURIComponent(scorecardId)}/detail`,
     { revalidate: 5 },
   );
 }

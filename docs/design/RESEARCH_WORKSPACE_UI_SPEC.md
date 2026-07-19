@@ -227,26 +227,38 @@ transition risk_label, parameter classification, confidence, weakness).
 `evidence_snapshot.scorecards[]` pin hash — never falls back to unpinned
 `GET /scorecards?run_id=` registry hits. Invalidated scorecards and
 `evidence_integrity.ok=false` / pin hash mismatch → fail-closed
-error/unavailable (no ready profile). Regime table rows remain unavailable
-until per-regime metrics are exposed on the scorecard GET payload
-(`regime_metrics.json` is not inlined). No promotion controls.
+error/unavailable (no ready profile). No promotion controls.
 
-UI-05 (#301): Robustness, Validation, and remaining Research routes adopt
-`ResearchPageChrome` dense tokens (`rs`, `ResearchPageHeader`, `ResearchTableFrame`,
-`ResearchApiError`, `ResearchLoadingSkeleton`, `ResearchNotFound`) — aligned with
-Overview / ResearchShell typography; Monitor Card styling unchanged.
-
-**Rest scope (explicit, not in this PR):** Evidence Inputs inventory,
-Gate Failures detail list, and clickable Raw Metric Refs into run artifacts
-are deferred until those fields are exposed on the scorecard/read API (or a
-follow-up UI issue). Cost-stress boundary and full transition matrix likewise
-remain Nicht verfügbar when absent from Layer-5.
-
-UI-05 (#301): Shared `ResearchPageChrome` (`rs` tokens, page header, API
+UI-04 densify (#301): Shared `ResearchPageChrome` (`rs` tokens, page header, API
 error, empty, loading skeleton, table frame, not-found) densifies Strategies,
 Experiments, Lab, Compare, Robustness, and Validation routes to match
 ResearchShell typography (18px titles, 12px body, `rounded-sm`). No new
-routes; API wiring unchanged; Monitor shell untouched.
+routes; Monitor shell untouched.
+
+UI-05 (#302): `ResearchForensicsSection` + Scorecard **detail** binding
+(`GET /api/v1/research/scorecards/{id}/detail`, #350). Binds:
+
+- Regime table rows from `regime_rows[]`
+- Cost-stress sealed boundary when `cost_stress.status=OK`
+- Classifier transitions + transition_risk (MFE/MAE only when present and ≠ `NOT_AVAILABLE`)
+- Evidence Inputs, Gate Failures, Raw Artifact Refs **inventory** (name,
+  `relative_path`, checksum, status)
+- Audit metadata / data lineage from evidence pins
+- Folds from Walk-Forward robustness manifests (Validation)
+- Gate history from study `gates[]` (per-gate expansion)
+- Experiment cost metrics (`fees` / `slippage_costs` / `funding_costs`)
+- Freeze Specification stays `Nicht verfügbar` until Spec-Freeze API exists
+
+**Not claimed as full #292 close:** clickable Raw Metric Refs **into artifact
+contents** need a fail-closed read-only artifact GET (path traversal safe,
+auth-bound) — tracked as
+[#357](https://github.com/Pain1234/save-money-trading-bot/issues/357).
+Until that lands, `relative_path` is shown as sealed inventory only — no fake
+download href. Keep [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292)
+open for that residual.
+
+Missing / fail-closed detail → honest unavailable panels. Trades remain on
+`ResearchTradeChart` (existing chart-data). No promotion / live-trading affordances.
 
 ---
 
@@ -281,6 +293,7 @@ UI-06 owns Playwright + screenshot acceptance across breakpoints.
 | Overview / experiments / charts | Existing Research API |
 | Compare / robustness / validation / gates | Existing endpoints on `main` |
 | Regime scorecard / evidence confidence | `GET /scorecards`, `GET /scorecards/{id}` (#291) bound in UI (#292) |
+| Regime rows / forensics drilldowns | `GET /scorecards/{id}/detail` (#350) bound in UI (#302) |
 | Monitor paper data | Unchanged paper API |
 
 No second Research surface or registry.
