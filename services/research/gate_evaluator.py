@@ -568,6 +568,7 @@ class GateResultStore:
         return True
 
     def list_entries(self) -> list[GateRunRecord]:
+        """Raw append-only history (does not apply sidecar coercion)."""
         if not self.path.exists():
             return []
         entries: list[GateRunRecord] = []
@@ -577,24 +578,51 @@ class GateResultStore:
             entries.append(GateRunRecord.from_dict(json.loads(line)))
         return entries
 
+    def _apply_sidecar(self, entry: GateRunRecord) -> GateRunRecord:
+        if self._sidecar_marks_invalidated(entry.gate_run_id):
+            reason = entry.invalidation_reason or "invalidation_sidecar"
+            return replace(entry, status="invalidated", invalidation_reason=reason)
+        return entry
+
     def get(self, gate_run_id: str) -> GateRunRecord | None:
         """Most recent record for ``gate_run_id`` (sidecar invalidation is binding)."""
         matches = [e for e in self.list_entries() if e.gate_run_id == gate_run_id]
         if not matches:
             return None
-        entry = matches[-1]
-        if self._sidecar_marks_invalidated(gate_run_id):
-            reason = entry.invalidation_reason or "invalidation_sidecar"
-            return replace(entry, status="invalidated", invalidation_reason=reason)
-        return entry
+        return self._apply_sidecar(matches[-1])
+
+    def list_latest(self) -> list[GateRunRecord]:
+        """Latest-per-id view with sidecar-resolved status (API list surface)."""
+        latest: dict[str, GateRunRecord] = {}
+        for entry in self.list_entries():
+            latest[entry.gate_run_id] = entry
+        return [self._apply_sidecar(entry) for entry in latest.values()]
 
     def list_for_run(self, run_id: str) -> list[GateRunRecord]:
-        return [e for e in self.list_entries() if e.run_id == run_id]
+        """Latest-per-id for a run, sidecar-resolved (same semantics as list_latest)."""
+        return [e for e in self.list_latest() if e.run_id == run_id]
 
     def append(self, record: GateRunRecord) -> None:
+        """Append a fresh active evaluation.
+
+        Refuses duplicate actives and any reactivation after invalidation
+        (sidecar is authoritative even if JSONL was rewritten).
+        """
+        if self._sidecar_marks_invalidated(record.gate_run_id):
+            msg = (
+                f"gate_run_id invalidated — reactivation forbidden: "
+                f"{record.gate_run_id}"
+            )
+            raise ValueError(msg)
         existing = self.get(record.gate_run_id)
         if existing is not None and existing.status == "active":
             msg = f"duplicate active gate_run_id forbidden: {record.gate_run_id}"
+            raise ValueError(msg)
+        if existing is not None and existing.status == "invalidated":
+            msg = (
+                f"gate_run_id invalidated — reactivation forbidden: "
+                f"{record.gate_run_id}"
+            )
             raise ValueError(msg)
         self._append_line(record.to_dict())
 
@@ -1411,5 +1439,17 @@ class GateEvaluator:
         existing = self.store.get(gate_run_id)
         if existing is not None and existing.status == "active":
             return existing
-        self.store.append(record)
+        if existing is not None and existing.status == "invalidated":
+            raise GateEvaluationError(
+                f"gate_run_id {gate_run_id} was invalidated; "
+                "re-evaluate of the same evidence is refused",
+                field_errors={"gate_run_id": "invalidated"},
+            )
+        try:
+            self.store.append(record)
+        except ValueError as exc:
+            raise GateEvaluationError(
+                str(exc),
+                field_errors={"gate_run_id": "append rejected"},
+            ) from exc
         return record

@@ -882,6 +882,39 @@ def test_get_honors_invalidation_sidecar_after_jsonl_reactivation(
     assert viewed.status == "invalidated"
 
 
+def test_evaluate_refuses_reactivation_after_invalidate(tmp_path: Path) -> None:
+    root, _experiment_id, run_id = _completed_run(tmp_path)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
+    record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
+    store = GateResultStore(root)
+    store.invalidate(record.gate_run_id, reason="lifecycle", actor="test")
+
+    with pytest.raises(GateEvaluationError, match="invalidated") as exc:
+        evaluator.evaluate(run_id=run_id, policy_version="1.0")
+    assert exc.value.field_errors.get("gate_run_id") == "invalidated"
+
+    got = store.get(record.gate_run_id)
+    assert got is not None and got.status == "invalidated"
+    listed = store.list_latest()
+    match = [e for e in listed if e.gate_run_id == record.gate_run_id]
+    assert len(match) == 1
+    assert match[0].status == "invalidated"
+    # Raw history may still show an active first line; API list must not.
+    raw = [e for e in store.list_entries() if e.gate_run_id == record.gate_run_id]
+    assert any(e.status == "active" for e in raw)
+    assert any(e.status == "invalidated" for e in raw)
+
+
+def test_store_append_rejects_reactivation_after_invalidate(tmp_path: Path) -> None:
+    root, _experiment_id, run_id = _completed_run(tmp_path)
+    evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))
+    record = evaluator.evaluate(run_id=run_id, policy_version="1.0")
+    store = GateResultStore(root)
+    store.invalidate(record.gate_run_id, reason="no revive", actor="test")
+    with pytest.raises(ValueError, match="reactivation forbidden"):
+        store.append(record)
+
+
 def test_double_invalidate_raises(tmp_path: Path) -> None:
     root, _experiment_id, run_id = _completed_run(tmp_path)
     evaluator = GateEvaluator(root, repo_root=_evaluation_image_root(root))

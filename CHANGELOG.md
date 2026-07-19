@@ -17,7 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Cost-stress `OK` only with sealed base + `combined_elevated` net_pnl boundary.
   `GateResultStore.get()` treats invalidation sidecars as binding (JSONL
   reactivation blocked). Cost-stress children matched by `child_id` (production
-  free-text labels).
+  free-text labels). Re-evaluate of an invalidated `gate_run_id` is refused;
+  list APIs use sidecar-resolved latest status.
 
 ### Added (P4.9 scorecard acceptance matrix — #293)
 

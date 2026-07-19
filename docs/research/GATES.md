@@ -70,6 +70,11 @@ hash (`compute_policy_content_hash`), **not** the version string alone:
   "invalidated"` + `invalidation_reason`) plus a sidecar under
   `artifacts/research/gates/invalidations/<gate_run_id>.jsonl` — the
   original record line is never edited or deleted.
+- The invalidation **sidecar is binding**: `get` / list latest resolve
+  `status=invalidated` whenever the sidecar exists (JSONL rewrite to
+  `active` does not revive). Re-evaluate / append of the same
+  deterministic `gate_run_id` after invalidation is refused (same posture
+  as scorecards).
 
 ## No auto-promotion
 
