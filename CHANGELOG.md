@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (P4.8 final acceptance evidence — #250)
+
+- Recorded BOT 3B final acceptance on `main` SHA
+  `1516ddb08efe7fc52452ced9d4c86814db838130`: Railway production
+  dashboard/API/worker deploy parity; Legacy + READY synthetic public-core
+  scenarios PASS; required research/dashboard/visual/CLI suites executed.
+- Updated `docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`, `ROADMAP.md` P4
+  status, and visual-regression reference screenshots. Issues #250/#295 left
+  open with **human close recommendation** (no auto-merge). Holdout remains
+  closed; #345 stays open as non-blocking follow-up.
+
 ### Added (P4.9 safe artifact content GET — #357)
 
 - Auth-bound read-only `GET /api/v1/research/scorecards/{id}/artifacts/content`
