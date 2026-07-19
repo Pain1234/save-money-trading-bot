@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CHART_PERIODS } from "@/lib/dashboard/constants";
+import {
+  computeEquityYDomain,
+  formatEquityAxisTick,
+  formatMoneyDisplay,
+} from "@/lib/dashboard/formatters";
 import { filterEquityByPeriod } from "@/lib/dashboard/view-model";
 import type { EquityChartPointVm } from "@/lib/dashboard/types";
-import { formatCurrency } from "@/lib/utils";
 import { Card } from "@/components/ui/Card";
 import {
   Area,
@@ -34,7 +38,7 @@ function CustomTooltip({
         <p className="text-[9px] text-text-muted">{pointLabel}</p>
       )}
       <p className="font-mono text-[10px] text-mint">
-        {formatCurrency(payload[0].value)}
+        {formatMoneyDisplay(payload[0].value)}
       </p>
     </div>
   );
@@ -63,14 +67,10 @@ export function PerformanceChart({
     [points, activePeriod],
   );
 
-  const yDomain = useMemo(() => {
-    if (filtered.length === 0) return [0, 1] as [number, number];
-    const values = filtered.map((d) => d.equity);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const pad = (max - min) * 0.06 || 1;
-    return [Math.floor(min - pad), Math.ceil(max + pad)] as [number, number];
-  }, [filtered]);
+  const yDomain = useMemo(
+    () => computeEquityYDomain(filtered.map((d) => d.equity)),
+    [filtered],
+  );
 
   return (
     <Card
@@ -83,7 +83,9 @@ export function PerformanceChart({
           <h3 className="text-[13px] font-medium text-text-primary">
             Performance
           </h3>
-          <p className="mt-0.5 text-[11px] text-text-muted">Eigenkapital</p>
+          <p className="mt-0.5 text-[11px] text-text-muted">
+            Absolutes Eigenkapital (USD)
+          </p>
         </div>
         <div className="flex gap-0.5">
           {CHART_PERIODS.map((period) => (
@@ -149,10 +151,8 @@ export function PerformanceChart({
                 axisLine={false}
                 tickLine={false}
                 tick={{ fill: "#6d7a84", fontSize: 11 }}
-                tickFormatter={(v) =>
-                  v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`
-                }
-                width={42}
+                tickFormatter={(v) => formatEquityAxisTick(v, yDomain)}
+                width={64}
                 domain={yDomain}
                 tickCount={5}
               />
