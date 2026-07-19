@@ -15,11 +15,11 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 | 3 | #198 | Protocol + decision rules | `PROTOCOL FROZEN` / `DECISION RULES FROZEN` |
 | 4 | #199 | Benchmarks / regimes | Human approval (metrics 1.2 / Spec cost parity) |
 | 4b | #294 | Scorecard/policy version bind | Human `SCORECARD POLICY BIND FROZEN` (Holdout stays closed) |
-| 5a | #200 | Walk-forward helper | Private B runs after freezes |
-| 5b | #201 | Cost-stress scenarios | Private B runs after freezes |
-| 5c | #202 | Parameter neighborhood | Private B runs after freezes |
-| 5d | #203 | Path bootstrap helper | Private B runs after freezes |
-| 6 | #204 | Pre-OOS gate checklist below | All freezes + sufficiency + pre-OOS approval |
+| 5a | #200 | Walk-forward helper | Helpers on `main`; execution = #251 |
+| 5b | #201 | Cost-stress scenarios | Helpers on `main`; execution = #252 |
+| 5c | #202 | Parameter neighborhood | Helpers on `main`; execution = #253 |
+| 5d | #203 | Path bootstrap helper | Helpers on `main`; execution = #254 |
+| 6 | #204 | Pre-OOS gate checklist | **Awaiting human `PRE-OOS APPROVED`** — see `P5_PRE_OOS_GATE.md` |
 | 7 | #205 | Decision process / ADR | After #204 once |
 
 ## Pre-OOS hard stop (#204)
@@ -28,54 +28,48 @@ Do **not** open holdout C until all are true:
 
 - [x] #181 merged / private store usable
 - [x] Human `FREEZE APPROVED` on #196 (prior pin `35b4fa6…` @ 2026-07-19T12:54:01Z)
-- [x] Human `FREEZE PIN REFRESHED` on #196 for public-core `aa0e232…` (2026-07-19T15:47:02Z; PR #367 docs on `8bb39c1…`)
+- [x] Human `FREEZE PIN REFRESHED` on #196 for public-core `aa0e232…` (2026-07-19T15:47:02Z)
 - [x] Human partition lock on #197 (`PARTITIONS LOCKED` 2026-07-19T12:54:01Z)
 - [x] Human protocol + decision freeze on #198 (`PROTOCOL FROZEN` / `DECISION RULES FROZEN`)
 - [x] Human benchmark/regime approval on #199 (`BENCHMARKS AND REGIMES APPROVED`)
 - [x] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
 - [x] #363 sealed symbol constraints merged on `main` (PR #366 @ `aa0e232…`; prior private Partition B packs invalidated)
-- [ ] Private robustness packs for #251–#254 complete (status on issues; metrics private)
+- [x] Private robustness packs #251–#254 complete on sealed SHA (private PRs #2–#5; Phase-3 cross-check **130/0**)
 - [ ] Forward holdout length ≥ sample-sufficiency min (proposed 90 days) **and** feature warmup satisfied for the evaluation engine
-- [ ] Human pre-OOS approval recorded in Decision Log (process only)
+- [ ] Human pre-OOS approval recorded (`PRE-OOS APPROVED` on #204 + Decision Log process note)
 
 ## Symbol-constraint seal (#363) — private pack invalidation
 
 P5 Partition B private executions that ran **before** sealed
-`ExperimentSpec.symbol_constraints` (Hyperliquid szDecimals v1 pins wired into
-`BacktestConfig` / Spec identity) are **technically invalidated**. Do not treat
-those packs as evidence for #251–#254.
+`ExperimentSpec.symbol_constraints` are **technically invalidated**.
 
-- Re-run only after this fix is on `main` and the public-core SHA is pinned.
-- Holdout remains closed (`NO`); no Strategy V1 parameter changes in #363.
-- Constraint set version: `hl-mainnet-szdecimals-v1` (BTC=5 / ETH=4 / SOL=2).
+- Constraint set: `hl-mainnet-szdecimals-v1` (BTC=5 / ETH=4 / SOL=2).
 - **Merged:** PR #366 → `aa0e232a6a0ea235a8a10682f8c7c4229b15a4d4`.
 - Gate-1 handoff: `docs/research/p5/P5_GATE1_HANDOFF.md`.
 
-## Gate status snapshot (2026-07-19, post #363 merge)
+## Gate status snapshot (2026-07-19, post Phase 3)
 
 | Gate | State |
 |------|-------|
-| Public stack #181 / #196-docs / #197-#203 / #204-prep / #205-prep | On `main` |
-| Human locks #196–#199 + #294 | **Present**; #196 pin refreshed to `aa0e232…` |
-| #250 P4 acceptance evidence | Recorded on `1516ddb…`; **human close pending** |
-| #363 sealed symbol constraints | **Merged** on `aa0e232…`; prior private packs invalidated |
-| Gate 1 | **Open** — Agents 2/3 may execute #251–#254 on pinned SHA |
-| Private Partition B datasets | Templates / private repo; pin file PR pending |
-| Private robustness packs #200-#203 helpers | On `main`; **execution packs not run on sealed SHA** |
-| Next Ready | [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251) + [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253) in parallel |
-| Forward holdout length | **Not started** |
+| #363 sealed constraints | **Merged** `aa0e232…` |
+| Gate 1 | **Complete** |
+| #251–#254 sealed re-runs | **Complete** (private PRs #2–#5 merged) |
+| Phase 3 cross-check | **PASS** (130/0) — `P5_PHASE3_CROSS_CHECK.md` |
+| Pre-OOS checklist | **Ready for human** — `P5_PRE_OOS_GATE.md` |
 | Holdout opened? | `NO` / `SEALED` |
-| #204 OOS execution | **BLOCKED** — do not run |
+| #204 OOS execution | **BLOCKED** on human `PRE-OOS APPROVED` + sample-sufficiency ack |
 | #205 final decision | **BLOCKED** by #204 |
 | #47 | Remains open until #205 |
 
 ## One-shot OOS procedure (when unblocked)
 
-1. Pin public-core SHA in private `PINNED_PUBLIC_CORE.txt`.
-2. Publish/bind DatasetManifest covering holdout C only.
-3. Run frozen private ExperimentSpec once → `artifacts/research/`.
-4. Apply frozen decision rules mechanically.
-5. No retune; invalidate + new version if economic bugfix required.
+1. Human `PRE-OOS APPROVED` on #204 with SHA + UTC.
+2. Confirm sample-sufficiency / warmup for holdout C.
+3. Pin public-core SHA in private `PINNED_PUBLIC_CORE.txt` (already `aa0e232…` unless tip moves with approved re-pin).
+4. Publish/bind DatasetManifest covering holdout C only.
+5. Run frozen private ExperimentSpec **once** → `artifacts/research/`.
+6. Apply frozen decision rules mechanically.
+7. No retune; invalidate + new version if economic bugfix required.
 
 ## Final decision (#205)
 
