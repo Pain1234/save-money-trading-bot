@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Deterministic Paper API stub for Playwright dashboard tests (Issue #238).
+ * Deterministic Paper API stub for Playwright dashboard tests (Issue #238)
+ * and Research Workspace route smoke (Issue #250).
  * Serves read-only JSON fixtures on PORT (default 18080).
  *
  * Scenarios (POST /__test/scenario {"scenario":"..."}):
@@ -9,6 +10,9 @@
  * - stale          — heartbeat older than threshold
  * - summary_error  — dashboard-summary returns 503
  * - section_error  — equity, positions, fills, events, scheduler return 503
+ *
+ * Research routes under /api/v1/research/* return empty/synthetic fixtures only
+ * (no private Strategy V1 economics).
  */
 import http from "node:http";
 
@@ -248,6 +252,126 @@ const server = http.createServer(async (req, res) => {
   if (url.startsWith("/api/v1/market-data")) {
     return json(res, { market_data_ready: true });
   }
+
+  // --- Research Workspace stubs (#250 Playwright route smoke) ---------------
+  // Empty/synthetic fixtures only — no private Strategy V1 economics.
+  if (url === "/api/v1/research/overview" || url.startsWith("/api/v1/research/overview?")) {
+    return json(res, {
+      experiment_count: 0,
+      completed_count: 0,
+      failed_count: 0,
+      invalidated_count: 0,
+      running_count: 0,
+      running_available: true,
+      strategy_version_count: 1,
+      known_strategy_ids: ["trend_v1"],
+      status_distribution: {},
+      recent_experiments: [],
+      unavailable: {},
+    });
+  }
+  if (url === "/api/v1/research/strategies" || url.startsWith("/api/v1/research/strategies?")) {
+    return json(res, {
+      items: [
+        {
+          strategy_id: "trend_v1",
+          strategy_version: "1.0.0",
+          label: "Trend Strategy V1",
+          display_name: "Trend Strategy V1",
+          description: "Public fixture strategy for acceptance smoke.",
+          lifecycle_status: "active",
+          timeframes: ["1D"],
+          timeframe_note: "Daily bars",
+          symbols: ["BTC"],
+          supported_symbols: ["BTC"],
+          required_timeframes: ["1D"],
+          experiment_count: 0,
+          last_run: null,
+        },
+      ],
+      count: 1,
+    });
+  }
+  if (url.match(/^\/api\/v1\/research\/strategies\/[^/]+\/schema/)) {
+    return json(res, {
+      strategy_id: "trend_v1",
+      display_name: "Trend Strategy V1",
+      description: "Public fixture strategy for acceptance smoke.",
+      strategy_version: "1.0.0",
+      parameter_defaults: { atr_period: 14, daily_ema_period: 20 },
+      parameter_descriptions: {},
+      parameters_schema: {
+        properties: {
+          atr_period: { type: "integer", default: 14 },
+          daily_ema_period: { type: "integer", default: 20 },
+        },
+      },
+      symbols: ["BTC"],
+      timeframes: ["1D"],
+    });
+  }
+  if (url.match(/^\/api\/v1\/research\/strategies\/[^/?]+/)) {
+    const match = url.match(/^\/api\/v1\/research\/strategies\/([^/?]+)/);
+    const strategyId = match ? decodeURIComponent(match[1]) : "";
+    if (strategyId !== "trend_v1") {
+      return json(res, { detail: "strategy not found" }, 404);
+    }
+    return json(res, {
+      strategy_id: "trend_v1",
+      display_name: "Trend Strategy V1",
+      description: "Public fixture strategy for acceptance smoke.",
+      strategy_version: "1.0.0",
+      aliases: [],
+      lifecycle_status: "active",
+      supported_symbols: ["BTC"],
+      required_timeframes: ["1D"],
+      monthly_filter: "Fixture monthly filter note.",
+      weekly_filter: "Fixture weekly filter note.",
+      daily_entries: "Fixture daily entries note.",
+      stop_logic: "Fixture stop logic note.",
+      reason_codes: ["ENTRY", "EXIT"],
+      parameter_defaults: { atr_period: 14, daily_ema_period: 20 },
+      parameter_descriptions: {},
+      experiment_count: 0,
+      last_run: null,
+      experiments: [],
+    });
+  }
+  if (url === "/api/v1/research/datasets" || url.startsWith("/api/v1/research/datasets?")) {
+    return json(res, {
+      items: [
+        {
+          id: "local-btc-fixture",
+          label: "Local BTC fixture",
+          dataset_id: "ds_local_btc_fixture",
+          symbols: ["BTC"],
+        },
+      ],
+      count: 1,
+    });
+  }
+  if (
+    url === "/api/v1/research/experiments" ||
+    url.startsWith("/api/v1/research/experiments?")
+  ) {
+    return json(res, { items: [], count: 0 });
+  }
+  if (url.startsWith("/api/v1/research/experiments/compare")) {
+    return json(res, { detail: "run_a and run_b required" }, 422);
+  }
+  if (url === "/api/v1/research/robustness" || url.startsWith("/api/v1/research/robustness?")) {
+    return json(res, { items: [], count: 0 });
+  }
+  if (url === "/api/v1/research/gates" || url.startsWith("/api/v1/research/gates?")) {
+    return json(res, { items: [], count: 0 });
+  }
+  if (url === "/api/v1/research/validation" || url.startsWith("/api/v1/research/validation?")) {
+    return json(res, { items: [], count: 0 });
+  }
+  if (url === "/api/v1/research/scorecards" || url.startsWith("/api/v1/research/scorecards?")) {
+    return json(res, { items: [], count: 0 });
+  }
+
   return json(res, { detail: "not found" }, 404);
 });
 

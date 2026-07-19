@@ -12,36 +12,51 @@ data, and never record private Strategy V1 economic metrics here (see
 
 Covers: Strategy catalog, Strategy Lab, Run start/poll/detail, Kurs & Trades
 chart, Compare, Robustness, Gates (read-only smoke), Validation Studies,
-double-start protection, dataset-integrity fail-closed behavior, and the
-durable job ownership / restart-recovery contract exercised in API E2E —
-everything this branch stack
-(`main → #245-via-#247 → #246 → #247 → #248 → #249 → #250`) ships.
+Scorecard binding (#292), Research route densify (#301), double-start
+protection, dataset-integrity fail-closed behavior, and the durable job
+ownership / restart-recovery contract exercised in API E2E.
 
-## Playwright waiver (explicit)
+**Do not close #250 / mark P4 complete / start P5** until Issues **#302** and
+**#303** are merged and this checklist is re-run on that `main` with
+screenshots + test evidence recorded below. (#301 is on `main`; densify
+checks remain in §H until the final acceptance pass records them.)
 
-Issue #250 asks for Playwright + API E2E + documented manual UI acceptance.
+## Playwright Research smoke (Issue #250)
 
-**Waiver (until a Research Playwright smoke lands or this waiver is
-accepted):** there is **no** Research Workspace Playwright coverage in this
-PR. Rationale:
+Issue #250 requires Playwright + API E2E + documented manual UI acceptance.
 
-- Existing Playwright configs (`playwright.config.ts`,
-  `playwright.perf.config.ts`) drive the **paper-trading** dashboard against
-  `scripts/paper-api-stub.mjs`, which has **no** research API routes or
-  fixtures.
-- Adding a credible Research browser smoke would require stubbing Lab /
-  experiments / chart / compare / validation surfaces (or standing up a real
-  research API + clean git + local_lab catalog in CI) — out of scope for a
-  minimal #250 acceptance fix and not yet wired in this repo.
-- Substitutes for this PR:
-  1. API E2E: `tests/research/test_e2e_acceptance.py` (full Issue #250 matrix,
-     including real Compare `#277` and `recover_orphans` ownership `#245/#276`)
-  2. CLI compat: `tests/research/test_cli_compat.py`
-  3. Frontend unit coverage: vitest (`tests/dashboard/research-*.test.tsx`)
-  4. This manual UI checklist (human-run evidence table below)
+**Shipped (this branch):** stub-backed Research **route smoke** —
 
-Until Playwright is added **or** this waiver is explicitly accepted,
-PR #283 must use **`Refs #250` only** — not `Closes #250`.
+- `tests/visual/research-routes.spec.ts`
+- Research fixtures in `scripts/paper-api-stub.mjs` (GET/HEAD only; POST → 405)
+- Run: `npm run test:research-smoke` (uses `playwright.config.ts` webServers)
+- CI: visible non-required job `research-playwright-smoke` in
+  `.github/workflows/ci-fast.yml` (runs when `research`, `deploy`, or
+  `run_all_fast`; not part of `fast-ci-required`)
+- Static wiring: `tests/deploy/test_research_playwright_smoke.py`
+
+What it covers: login → Monitor regression → Overview / Strategien /
+Strategy detail (scorecard empty bind) / Experiments empty / Lab ready /
+Compare empty / Robustheit empty / Validierung empty — no private metrics.
+
+What it does **not** cover (still manual / API E2E):
+
+- Starting a real Lab job against `local_lab` + clean git
+- Running / Completed / Failed experiment detail polling
+- Compare of two real runs; Robustness / Validation create+detail
+- Scorecard **ready** bind on experiment / strategy / validation
+- Integrity drill (byte-tamper / semantic mismatch)
+- API process restart orphan recovery (covered by API E2E)
+
+**Historical waiver (PR #283):** prior to this smoke, Research Playwright was
+explicitly waived with `Refs #250` only. That waiver is **superseded** by the
+route smoke above for shell/empty-state coverage. Remaining gaps above are
+**not** waived — they stay on the manual checklist and/or API E2E until
+#302–#303 land and the final acceptance pass is recorded.
+
+Until the full manual checklist + final evidence table are complete on
+post-#302–#303 `main`, PRs for this track must use **`Refs #250` only** —
+not `Closes #250`.
 
 ## Prerequisites
 
@@ -190,6 +205,23 @@ The checkboxes below remain the **human browser** residual and close under
 - [ ] No new routes; Monitor shell unchanged; API wiring preserved.
 - [ ] Missing metrics still render as **Nicht verfügbar**.
 
+### I. Open browser gaps (tracked — do not silently waive)
+
+Recorded during the #250 acceptance pass; re-verify after #302–#303 merge.
+(#301 densify is on `main` — checklist §H; residual browser work stays here.)
+
+| Gap | Surface | Status | Notes |
+|-----|---------|--------|-------|
+| Real Lab start → poll → detail | B | Open browser residual | Stub smoke only loads Lab **ready**; full start needs live API + clean git + `local_lab` |
+| Running / Completed / Failed detail panels | B | Open browser residual | API E2E covers job states; human browser pass still required |
+| Compare two real runs | D | Open browser residual | Stub smoke = empty selector/hint only |
+| Robustness create + detail | E | Open browser residual | Stub smoke = empty list |
+| Validation create + detail + scorecard pin | E / G | Open browser residual | Needs completed evidence chain |
+| Scorecard **ready** bind (exp/strategy/study) | G | Open browser residual | Stub smoke = `scorecard-bind-empty` on strategy detail |
+| Research route densify (#301) | H | On `main` — verify in final pass | Code merged; manual §H checkboxes still open until recorded |
+| Forensics / visual acceptance | — | Blocked on #302–#303 | Final #250 close deferred until these merge + re-run |
+| Monitor regression after Research nav | F | Covered by Playwright smoke | Direct `/dashboard` load + UI click `workspace-monitor` → `dashboard-page-ready` |
+
 ## Ownership / restart recovery (#245 / #276)
 
 No dedicated ownership/restart HTTP endpoints exist (and inventing them is
@@ -213,7 +245,8 @@ commit, pass/fail per section, and any deviations with a linked issue.
 
 | Date | Commit | Sections passed | Deviations |
 |------|--------|------------------|------------|
-| _fill in when run_ | _fill in_ | _fill in_ | _fill in_ |
+| 2026-07-19 | _pin after rebase onto main@#301_ | Playwright `test:research-smoke`; API E2E; deploy static wiring; manual A–I **not** closed | #301 on main (§H); #302–#303 open; browser gaps in §I; **no Closes #250** |
+| _fill in after #302–#303_ | _fill in_ | _fill in_ | _fill in_ |
 
 ## Automated coverage cross-reference
 
@@ -230,4 +263,6 @@ commit, pass/fail per section, and any deviations with a linked issue.
 | Robustness / Validation smoke | `test_e2e_acceptance.py::test_robustness_gate_validation_smoke` | Section E |
 | Restart/orphan (#245 / #276) | `test_e2e_acceptance.py::test_recover_orphans_redispatches_queued_and_fails_dead_running` | Ownership section |
 | CLI compatibility | `tests/research/test_cli_compat.py` | — (CLI, not UI) |
-| Playwright Research smoke | **waived** (see Playwright waiver above) | — |
+| Scorecard binding (#292) | Dashboard scorecard vitest + API scorecard suite | Section G |
+| Research route densify (#301) | Dashboard densify vitest (if present) | Section H |
+| Playwright Research route smoke | `tests/visual/research-routes.spec.ts` (`npm run test:research-smoke`) | Shell / empty states; §I for residuals |

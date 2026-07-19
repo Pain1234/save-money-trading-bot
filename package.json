@@ -10,6 +10,7 @@
     "test:unit": "vitest run",
     "test:visual": "playwright test",
     "test:visual:ui": "playwright test --ui",
+    "test:research-smoke": "playwright test tests/visual/research-routes.spec.ts",
     "test:dashboard-perf": "playwright test -c playwright.perf.config.ts"
   },
   "dependencies": {
