@@ -272,6 +272,42 @@ jobs:
             python -m pytest tests/ --ignore=tests/deploy -m "$MARKERS" -q
           fi
 
+  # Visible, non-required Research Playwright smoke (#250).
+  # Not wired into fast-ci-required so it does not block legacy required
+  # aliases, but a red check is still reported on the PR when this runs.
+  research-playwright-smoke:
+    name: research-playwright-smoke
+    needs: plan
+    if: >-
+      needs.plan.outputs.docs_only != 'true' && (
+      needs.plan.outputs.research == 'true' ||
+      needs.plan.outputs.deploy == 'true' ||
+      needs.plan.outputs.run_all_fast == 'true'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build Next.js dashboard
+        run: npm run build
+
+      - name: Run Research route smoke
+        run: npm run test:research-smoke
+
   fast-ci-required:
     name: fast-ci-required
     needs: [plan, quality, targeted-tests]
