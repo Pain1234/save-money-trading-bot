@@ -78,15 +78,26 @@ Decided studies re-verify pins fail-closed.
 
 `SCORECARD_POLICY_1_0_CONTENT_HASH` in `scorecard_policy.py` (literal regression pin).
 
-## Acceptance / anti-overfit (#293)
+## Acceptance matrix (#293)
 
-Composition matrix (no dashboard UI):
+`tests/research/test_scorecard_e2e_acceptance.py` covers reproducibility and
+anti-overfit boundaries against public synthetic fixtures only:
 
 ```text
 python -m pytest tests/research/test_scorecard_e2e_acceptance.py -q
 ```
 
-Covers: same inputs → same `scorecard_id`, evidence tamper fail-closed, bound
-critical gate FAIL preserved, invalidation without reactivation, policy content
-hash under same version string, parameter-area isolated vs broad, Sideways
-defensive inactivity. Auto-promotion flags remain false/`none`.
+- identical inputs → identical `scorecard_id`
+- JSONL / run-artifact tamper fail-closed
+- gate FAIL remains FAIL (not healed by quality layers)
+- invalidation blocks reactivation
+- policy version unknown + silent content mutation under same version
+- insufficient sample cannot yield HIGH confidence
+- parameter-area classifications pin into the scorecard when the artifact exists
+- Sideways zero-trades → `DEFENSIVE_INACTIVE`; Bull whipsaw weakness
+- no auto-promotion / decision_binding
+- Research API evaluate smoke (idempotent, integrity ok)
+
+**UI E2E** for scorecard surfaces is deferred to
+[#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) /
+[#250](https://github.com/Pain1234/save-money-trading-bot/issues/250).

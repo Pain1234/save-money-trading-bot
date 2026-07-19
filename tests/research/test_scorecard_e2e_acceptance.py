@@ -332,3 +332,280 @@ def test_matrix_behaviour_sideways_defensive_and_bull_whipsaw() -> None:
         policy,
     )
     assert "WHIPSAW_PRONE" in bull
+
+
+def _reseal_registry_entry(root: Path, run_id: str) -> None:
+    """Recompute run-dir checksums and rewrite the latest registry line for ``run_id``."""
+    from research.artifacts import compute_artifact_checksums
+
+    registry = ExperimentRegistry(root)
+    entry = registry.show(run_id, verify=False)
+    run_dir = Path(entry.artifact_path)
+    checksums = compute_artifact_checksums(run_dir)
+    (run_dir / "checksums.json").write_text(
+        json.dumps(checksums, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    path = registry.path
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    rewritten: list[str] = []
+    for line in lines:
+        payload = json.loads(line)
+        if payload.get("run_id") == run_id:
+            payload["checksums"] = checksums
+        rewritten.append(json.dumps(payload, sort_keys=True))
+    path.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+
+
+def test_matrix_insufficient_sample_cannot_yield_high_confidence(tmp_path: Path) -> None:
+    """Low closed_trades via derived confidence must not produce HIGH overall."""
+    root, _experiment_id, run_id = te._completed_run(tmp_path)
+    entry = ExperimentRegistry(root).show(run_id, verify=True)
+    run_dir = Path(entry.artifact_path)
+    metrics_path = run_dir / "metrics.json"
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics["closed_trades"] = 3
+    metrics_path.write_text(
+        json.dumps(metrics, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
+    conf = run_dir / "confidence_profile.json"
+    if conf.is_file():
+        conf.unlink()
+    _reseal_registry_entry(root, run_id)
+
+    record = _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
+    label = record.global_profile["confidence"]["overall_label"]
+    assert label in {"INSUFFICIENT", "LOW", "NOT_AVAILABLE", "MEDIUM"}
+    assert label != "HIGH"
+    assert record.auto_promotion is False
+
+
+def test_matrix_parameter_area_pinned_into_scorecard(tmp_path: Path) -> None:
+    from research.parameter_area import (
+        NeighborObservation,
+        evaluate_parameter_area,
+        write_parameter_area_artifact,
+    )
+
+    root, _experiment_id, run_id = te._completed_run(tmp_path)
+    entry = ExperimentRegistry(root).show(run_id, verify=True)
+    run_dir = Path(entry.artifact_path)
+    frozen = {"daily_ema_period": 20}
+    result = evaluate_parameter_area(
+        robustness_id="rob_peak_sc",
+        frozen_parameters=frozen,
+        observations=[
+            NeighborObservation(
+                child_id="frozen",
+                label="baseline",
+                parameters=frozen,
+                status="complete",
+                net_pnl="100",
+                total_costs="5",
+                gate_pass=True,
+            ),
+            NeighborObservation(
+                child_id="neighbor_01",
+                label="daily_ema_period=18",
+                parameters={"daily_ema_period": 18},
+                status="complete",
+                net_pnl="-10",
+                total_costs="5",
+                gate_pass=True,
+            ),
+            NeighborObservation(
+                child_id="neighbor_02",
+                label="daily_ema_period=22",
+                parameters={"daily_ema_period": 22},
+                status="complete",
+                net_pnl="-20",
+                total_costs="5",
+                gate_pass=True,
+            ),
+        ],
+    )
+    assert result.classification == "ISOLATED_PEAK"
+    write_parameter_area_artifact(run_dir, result.artifact)
+    _reseal_registry_entry(root, run_id)
+
+    scorecard = _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
+    pa = scorecard.global_profile["parameter_area"]
+    assert pa.get("classification") == "ISOLATED_PEAK"
+    assert scorecard.layer_refs.get("parameter_area_id")
+    assert scorecard.auto_promotion is False
+
+
+def test_matrix_invalid_integrity_blocks_decision_use_quality(tmp_path: Path) -> None:
+    """Gate FAIL / non-VALID integrity must keep quality_scores_permitted False."""
+    from research.gate_evaluator import quality_scores_permitted
+
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    neg_a = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_qi_a", net_pnl="-10"
+    )
+    neg_b = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_qi_b", net_pnl="-20"
+    )
+    robustness_id = te._save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        fold_run_ids=[neg_a, neg_b, run_id],
+        robustness_id="rob_qi_fail",
+    )
+    gate = GateEvaluator(root, repo_root=te._evaluation_image_root(root)).evaluate(
+        run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+    )
+    assert gate.overall_status == "fail"
+    # Decision-use quality is only permitted when integrity is VALID + active.
+    # FAIL overall and/or NOT_VERIFIABLE integrity must block decision-use.
+    if gate.integrity_status != "VALID":
+        assert quality_scores_permitted(gate) is False
+    scorecard = _evaluator(root).evaluate(
+        run_id=run_id,
+        policy_version="1.0",
+        gate_run_id=gate.gate_run_id,
+        robustness_run_ids=[robustness_id],
+    )
+    assert scorecard.global_profile["gates"]["overall_status"] == "fail"
+    assert scorecard.promotion_action == "none"
+
+
+def test_matrix_public_fixtures_have_no_private_edge_markers() -> None:
+    """Static guard: acceptance fixtures stay on public synthetic BTC paths."""
+    from tests.research.fixtures import btc_bundle
+
+    bundle = btc_bundle()
+    dumped = bundle.model_dump_json().lower()
+    forbidden = ("private-research", "strategy_v1_private", "holdout_calendar_secret")
+    for token in forbidden:
+        assert token not in dumped
+
+
+def test_matrix_api_evaluate_idempotent_and_no_promotion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Thin Research API smoke for the same idempotency / no-promotion contract."""
+    import time
+
+    from fastapi.testclient import TestClient
+    from paper_trading.readonly_api import app
+    from research.api import (
+        get_gate_service,
+        get_research_service,
+        get_research_write_service,
+        get_robustness_service,
+        get_scorecard_service,
+    )
+    from research.gate_service import GateService
+    from research.robustness_service import RobustnessOrchestrationService
+    from research.scorecard_service import ScorecardService
+    from research.service import ResearchReadService
+    from research.write_service import ResearchWriteService
+
+    from tests.research.fixtures import REPO_ROOT, align_spec_to_bundle, btc_bundle
+
+    bundle = btc_bundle()
+    spec = align_spec_to_bundle(tmp_path, bundle, symbols=["BTC"])
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text(bundle.model_dump_json(), encoding="utf-8")
+    ref = spec.dataset_manifest_ref
+    catalog = [
+        {
+            "id": "fixture-btc",
+            "label": "BTC fixture",
+            "dataset_id": ref.dataset_id,
+            "content_hash": ref.content_hash,
+            "manifest_path": ref.manifest_path,
+            "bundle_path": str(bundle_path),
+            "symbols": ["BTC"],
+        }
+    ]
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
+    monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
+    monkeypatch.setenv("RESEARCH_ALLOW_DIRTY_GIT", "1")
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "b" * 40)
+    eval_root = tmp_path / ".evaluation_image_root"
+    eval_root.mkdir()
+
+    app.dependency_overrides[get_research_service] = lambda: ResearchReadService(tmp_path)
+    app.dependency_overrides[get_research_write_service] = lambda: ResearchWriteService(
+        tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True
+    )
+    app.dependency_overrides[get_robustness_service] = (
+        lambda: RobustnessOrchestrationService(
+            tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True
+        )
+    )
+    app.dependency_overrides[get_gate_service] = lambda: GateService(
+        tmp_path, repo_root=eval_root
+    )
+    app.dependency_overrides[get_scorecard_service] = lambda: ScorecardService(
+        tmp_path, repo_root=eval_root
+    )
+    client = TestClient(app)
+    try:
+        payload = {
+            "strategy_id": "trend_v1",
+            "strategy_version": spec.strategy_version,
+            "name": "scorecard e2e api",
+            "notes": "acceptance",
+            "symbols": ["BTC"],
+            "timeframe": "1D",
+            "time_range": {
+                "start": spec.time_range.start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "end": spec.time_range.end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            },
+            "starting_capital": str(spec.starting_capital),
+            "parameters": {k: v for k, v in spec.parameters.items() if k != "strategy_id"},
+            "fee_assumption": {
+                "entry_fee_rate": str(spec.fee_assumption.entry_fee_rate),
+                "exit_fee_rate": str(spec.fee_assumption.exit_fee_rate),
+            },
+            "slippage_assumption": {
+                "slippage_bps": str(spec.slippage_assumption.slippage_bps)
+            },
+            "random_seed": 7,
+            "dataset_catalog_id": "fixture-btc",
+            "owner": "test",
+        }
+        created = client.post("/api/v1/research/experiments", json=payload).json()
+        eid = created["experiment_id"]
+        assert client.post(f"/api/v1/research/experiments/{eid}/start").status_code == 200
+        deadline = time.time() + 60
+        status = "queued"
+        while time.time() < deadline:
+            status = client.get(f"/api/v1/research/experiments/{eid}/status").json()[
+                "status"
+            ]
+            if status in {"completed", "failed"}:
+                break
+            time.sleep(0.2)
+        assert status == "completed", status
+        run_id = client.get(f"/api/v1/research/experiments/{eid}").json()["summary"][
+            "run_id"
+        ]
+        first = client.post(
+            "/api/v1/research/scorecards/evaluate",
+            json={"run_id": run_id, "policy_version": "1.0"},
+        )
+        assert first.status_code == 200, first.text
+        body = first.json()
+        assert body["scorecard_id"].startswith("sc_")
+        assert body["promotion_action"] == "none"
+        assert body["auto_promotion"] is False
+        assert body["evidence_integrity"]["ok"] is True
+        second = client.post(
+            "/api/v1/research/scorecards/evaluate",
+            json={"run_id": run_id, "policy_version": "1.0"},
+        )
+        assert second.status_code == 200
+        assert second.json()["scorecard_id"] == body["scorecard_id"]
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+        app.dependency_overrides.pop(get_research_write_service, None)
+        app.dependency_overrides.pop(get_robustness_service, None)
+        app.dependency_overrides.pop(get_gate_service, None)
+        app.dependency_overrides.pop(get_scorecard_service, None)
