@@ -21,8 +21,8 @@ def _to_decimal(value: object) -> Decimal:
 
 
 def parameters_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
-    """Compare parameter maps; numeric strings/ints compare via Decimal."""
-    keys = (set(left) | set(right)) - {"strategy_id"}
+    """Compare parameter maps including ``strategy_id``; numerics via Decimal."""
+    keys = set(left) | set(right)
     for key in keys:
         if key not in left or key not in right:
             return False
@@ -43,7 +43,7 @@ def changed_axes(
     frozen: Mapping[str, Any], params: Mapping[str, Any]
 ) -> tuple[str, ...]:
     out: list[str] = []
-    for key in sorted((set(frozen) | set(params)) - {"strategy_id"}):
+    for key in sorted(set(frozen) | set(params)):
         if key not in frozen or key not in params:
             out.append(key)
             continue

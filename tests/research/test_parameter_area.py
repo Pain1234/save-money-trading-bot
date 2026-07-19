@@ -193,6 +193,72 @@ def test_frozen_parameter_mismatch_rejected() -> None:
         )
 
 
+def test_direct_api_cannot_mark_evidence_trusted() -> None:
+    """Public evaluate_parameter_area must not accept a trust bypass."""
+    frozen = {"daily_ema_period": 20, "strategy_id": "trend_v1"}
+    observations = [
+        _obs("frozen", params=frozen, net_pnl="50", total_costs="5"),
+        _obs(
+            "neighbor_01",
+            params={"daily_ema_period": 18, "strategy_id": "trend_v1"},
+            net_pnl="40",
+            total_costs="4",
+        ),
+        _obs(
+            "neighbor_02",
+            params={"daily_ema_period": 22, "strategy_id": "trend_v1"},
+            net_pnl="45",
+            total_costs="4",
+        ),
+    ]
+    result = evaluate_parameter_area(
+        robustness_id="rob_untrusted",
+        frozen_parameters=frozen,
+        observations=observations,
+    )
+    assert result.artifact["evidence_trusted"] is False
+    assert result.artifact["trusted_manifest_hash"] is None
+    # Keyword trust flags must not be accepted on the public API.
+    with pytest.raises(TypeError):
+        evaluate_parameter_area(  # type: ignore[call-arg]
+            robustness_id="rob_bypass",
+            frozen_parameters=frozen,
+            observations=observations,
+            evidence_trusted=True,
+            trusted_manifest_hash="deadbeef",
+        )
+
+
+def test_frozen_strategy_id_mismatch_rejected() -> None:
+    frozen = {"daily_ema_period": 20, "strategy_id": "trend_v1"}
+    observations = [
+        _obs(
+            "frozen",
+            params={"daily_ema_period": 20, "strategy_id": "other_strategy"},
+            net_pnl="100",
+            total_costs="1",
+        ),
+        _obs(
+            "neighbor_01",
+            params={"daily_ema_period": 18, "strategy_id": "other_strategy"},
+            net_pnl="40",
+            total_costs="1",
+        ),
+        _obs(
+            "neighbor_02",
+            params={"daily_ema_period": 22, "strategy_id": "other_strategy"},
+            net_pnl="45",
+            total_costs="1",
+        ),
+    ]
+    with pytest.raises(ParameterAreaError, match="frozen observation parameters"):
+        evaluate_parameter_area(
+            robustness_id="rob_strategy",
+            frozen_parameters=frozen,
+            observations=observations,
+        )
+
+
 def test_from_robustness_requires_trusted_manifest_hash(tmp_path) -> None:
     with pytest.raises(ParameterAreaError, match="trusted_manifest_hash"):
         evaluate_parameter_area_from_robustness(

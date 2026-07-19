@@ -61,7 +61,7 @@ def _param_variant_label(base: Mapping[str, Any], variant: Mapping[str, Any]) ->
     changed = [
         f"{key}={variant[key]}"
         for key in sorted(variant)
-        if key != "strategy_id" and not _values_equal(variant.get(key), base.get(key))
+        if not _values_equal(variant.get(key), base.get(key))
     ]
     return "baseline" if not changed else ",".join(changed)
 
@@ -232,17 +232,41 @@ def evaluate_parameter_area(
     neighborhood_config: Mapping[str, Any] | None = None,
     policy_version: str = "1.0",
     require_gate_for_stable: bool = False,
-    evidence_trusted: bool = False,
-    trusted_manifest_hash: str | None = None,
 ) -> ParameterAreaResult:
     """Classify plateau / local stability from neighbor observations.
 
-    Direct callers (tests / offline fixtures) produce ``evidence_trusted=false``
-    unless explicitly marked. Trusted research evidence must use
-    :func:`evaluate_parameter_area_from_robustness` with an external manifest pin.
+    Direct callers (tests / offline fixtures) always produce
+    ``evidence_trusted=false``. Trusted research evidence must use
+    :func:`evaluate_parameter_area_from_robustness`, which alone may mark
+    evidence trusted after verifying an external manifest pin + registry seals.
 
-    Frozen observation parameters must exactly match ``frozen_parameters``.
+    Frozen observation parameters must exactly match ``frozen_parameters``
+    (including ``strategy_id``).
     """
+    return _evaluate_parameter_area(
+        robustness_id=robustness_id,
+        frozen_parameters=frozen_parameters,
+        observations=observations,
+        neighborhood_config=neighborhood_config,
+        policy_version=policy_version,
+        require_gate_for_stable=require_gate_for_stable,
+        evidence_trusted=False,
+        trusted_manifest_hash=None,
+    )
+
+
+def _evaluate_parameter_area(
+    *,
+    robustness_id: str,
+    frozen_parameters: Mapping[str, Any],
+    observations: Sequence[NeighborObservation],
+    neighborhood_config: Mapping[str, Any] | None = None,
+    policy_version: str = "1.0",
+    require_gate_for_stable: bool = False,
+    evidence_trusted: bool = False,
+    trusted_manifest_hash: str | None = None,
+) -> ParameterAreaResult:
+    """Internal evaluator. Trusted flag is reserved for the sealed loader path."""
     policy = get_parameter_area_policy(policy_version)
     policy_hash = compute_policy_content_hash(policy)
     if not robustness_id:
@@ -592,7 +616,7 @@ def evaluate_parameter_area_from_robustness(
         frozen_parameters=frozen_parameters,
         registry=registry,
     )
-    return evaluate_parameter_area(
+    return _evaluate_parameter_area(
         robustness_id=str(manifest.get("robustness_id") or robustness_id),
         frozen_parameters=frozen_parameters,
         observations=observations,

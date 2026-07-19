@@ -43,9 +43,9 @@ BROAD/NARROW require `frozen_stable` and `plateau.includes_frozen`.
 - costs + gate_pass from sealed child `metrics.json` (gate = `net_pnl >= 0`,
   same as #248 `parameter_neighbor_pass_ratio`)
 
-Direct `evaluate_parameter_area` is for fixtures/tests and sets
-`evidence_trusted=false`. Frozen observation parameters must match
-`frozen_parameters` exactly.
+Direct `evaluate_parameter_area` is for fixtures/tests and **always** sets
+`evidence_trusted=false` (no trust-bypass kwargs). Frozen observation
+parameters must match `frozen_parameters` exactly, including `strategy_id`.
 
 ## Output
 
