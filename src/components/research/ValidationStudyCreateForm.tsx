@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { rs } from "@/components/research/chrome/ResearchPageChrome";
 import { Card } from "@/components/ui/Card";
 import type { GateRunRecord, RobustnessJobSummary } from "@/lib/research-api/client";
 
@@ -78,7 +79,7 @@ export function ValidationStudyCreateForm({
   if (experiments.length === 0) {
     return (
       <Card padding="sm" data-testid="validation-create-empty">
-        <p className="text-sm text-text-muted">
+        <p className={rs.muted}>
           Es gibt noch kein abgeschlossenes Experiment. Eine Validierungsstudie
           benötigt mindestens einen abgeschlossenen Basis-Lauf.
         </p>
@@ -88,15 +89,15 @@ export function ValidationStudyCreateForm({
 
   return (
     <Card padding="sm" data-testid="validation-create-form">
-      <h2 className="mb-3 text-sm font-medium">Neue Validierungsstudie</h2>
+      <h2 className={rs.sectionTitle}>Neue Validierungsstudie</h2>
       <form onSubmit={onSubmit} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="mb-1 block text-text-muted">Basis-Experiment</span>
+          <label className="text-[12px]">
+            <span className={`mb-1 block ${rs.label}`}>Basis-Experiment</span>
             <select
               value={experimentId}
               onChange={(e) => setExperimentId(e.target.value)}
-              className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm font-mono"
+              className={`w-full font-mono ${rs.select}`}
               data-testid="validation-base-experiment-select"
             >
               {experiments.map((exp) => (
@@ -106,35 +107,33 @@ export function ValidationStudyCreateForm({
               ))}
             </select>
             {fieldErrors.experiment_id && (
-              <p className="mt-1 text-xs text-red-300">{fieldErrors.experiment_id}</p>
+              <p className="mt-1 text-[11px] text-red-300">{fieldErrors.experiment_id}</p>
             )}
           </label>
 
-          <label className="text-sm">
-            <span className="mb-1 block text-text-muted">Name (optional)</span>
+          <label className="text-[12px]">
+            <span className={`mb-1 block ${rs.label}`}>Name (optional)</span>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="z. B. Trend V1 Studie #1"
-              className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+              className={`w-full ${rs.input}`}
               data-testid="validation-name-input"
             />
           </label>
         </div>
 
-        <fieldset className="rounded border border-border-subtle p-2">
-          <legend className="px-1 text-xs text-text-muted">Robustheitstests</legend>
+        <fieldset className="rounded-sm border border-border-subtle p-2">
+          <legend className={`px-1 ${rs.label}`}>Robustheitstests</legend>
           {robustnessJobs.length === 0 ? (
-            <p className="p-1 text-xs text-text-muted">
-              Keine Robustheitstests verfügbar.
-            </p>
+            <p className={`p-1 ${rs.muted}`}>Keine Robustheitstests verfügbar.</p>
           ) : (
             <div className="grid gap-1 sm:grid-cols-2">
               {robustnessJobs.map((job) => (
                 <label
                   key={job.robustness_id}
-                  className="flex items-center gap-2 text-xs"
+                  className="flex items-center gap-2 text-[11px]"
                   data-testid={`validation-robustness-option-${job.robustness_id}`}
                 >
                   <input
@@ -153,20 +152,20 @@ export function ValidationStudyCreateForm({
             </div>
           )}
           {fieldErrors.robustness_ids && (
-            <p className="mt-1 text-xs text-red-300">{fieldErrors.robustness_ids}</p>
+            <p className="mt-1 text-[11px] text-red-300">{fieldErrors.robustness_ids}</p>
           )}
         </fieldset>
 
-        <fieldset className="rounded border border-border-subtle p-2">
-          <legend className="px-1 text-xs text-text-muted">Gate-Ergebnisse</legend>
+        <fieldset className="rounded-sm border border-border-subtle p-2">
+          <legend className={`px-1 ${rs.label}`}>Gate-Ergebnisse</legend>
           {gateRuns.length === 0 ? (
-            <p className="p-1 text-xs text-text-muted">Keine Gate-Ergebnisse verfügbar.</p>
+            <p className={`p-1 ${rs.muted}`}>Keine Gate-Ergebnisse verfügbar.</p>
           ) : (
             <div className="grid gap-1 sm:grid-cols-2">
               {gateRuns.map((gate) => (
                 <label
                   key={gate.gate_run_id}
-                  className="flex items-center gap-2 text-xs"
+                  className="flex items-center gap-2 text-[11px]"
                   data-testid={`validation-gate-option-${gate.gate_run_id}`}
                 >
                   <input
@@ -185,23 +184,23 @@ export function ValidationStudyCreateForm({
             </div>
           )}
           {fieldErrors.gate_run_ids && (
-            <p className="mt-1 text-xs text-red-300">{fieldErrors.gate_run_ids}</p>
+            <p className="mt-1 text-[11px] text-red-300">{fieldErrors.gate_run_ids}</p>
           )}
         </fieldset>
 
-        <label className="block text-sm">
-          <span className="mb-1 block text-text-muted">Notizen (optional)</span>
+        <label className="block text-[12px]">
+          <span className={`mb-1 block ${rs.label}`}>Notizen (optional)</span>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+            className={`w-full ${rs.input}`}
             data-testid="validation-notes-input"
           />
         </label>
 
         {formError && (
-          <p className="text-sm text-red-300" data-testid="validation-form-error">
+          <p className="text-[12px] text-red-300" data-testid="validation-form-error">
             {formError}
           </p>
         )}
@@ -209,7 +208,7 @@ export function ValidationStudyCreateForm({
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint disabled:opacity-50"
+          className={`${rs.btnPrimary} disabled:opacity-50`}
           data-testid="validation-submit"
         >
           {submitting ? "Wird erstellt…" : "Studie erstellen"}

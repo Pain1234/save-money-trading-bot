@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { Card } from "@/components/ui/Card";
 import {
   labDayEndUtc,
@@ -232,66 +236,67 @@ export function StrategyLabForm({
 
   if (!strategies.length) {
     return (
-      <div data-testid="research-lab-empty">
-        <p className="text-sm text-text-muted">Keine Strategien registriert.</p>
+      <div data-testid="research-lab-empty" className={rs.page}>
+        <ResearchPageHeader title="Neues Experiment" />
+        <p className={rs.muted}>Keine Strategien registriert.</p>
       </div>
     );
   }
 
   if (!datasets.length) {
     return (
-      <div data-testid="research-lab-no-datasets" className="space-y-2">
-        <h1 className="text-2xl font-semibold">Neues Experiment</h1>
-        <p className="text-sm text-text-muted">
+      <div data-testid="research-lab-no-datasets" className={rs.page}>
+        <ResearchPageHeader title="Neues Experiment" />
+        <p className={rs.muted}>
           Kein Dataset-Katalog gefunden. Lokal:{" "}
-          <code className="font-mono text-xs">
+          <code className="font-mono text-[11px]">
             python scripts/prepare_research_lab_local.py
           </code>{" "}
           (schreibt{" "}
-          <code className="font-mono text-xs">
+          <code className="font-mono text-[11px]">
             examples/research/local_lab/catalog.json
           </code>
           ) und Research-API neu starten. Alternativ{" "}
-          <code className="font-mono text-xs">RESEARCH_DATASET_CATALOG_PATH</code>{" "}
+          <code className="font-mono text-[11px]">RESEARCH_DATASET_CATALOG_PATH</code>{" "}
           setzen — freie Dateipfade vom Client sind nicht erlaubt.
         </p>
       </div>
     );
   }
 
+  const labDescription =
+    `Strategy Lab — konfiguriert denselben ExperimentSpec / Runner wie die CLI.${
+      baselineMode
+        ? " Baseline-Modus: eingefrorene Standardparameter vorausgefüllt; Start erst nach Bestätigung."
+        : ""
+    }${strategy?.description ? ` ${strategy.description}` : ""}`;
+
+  const fieldControl = `mt-1 w-full ${rs.input}`;
+  const fieldSelect = `mt-1 w-full ${rs.select}`;
+
   return (
-    <div data-testid="research-lab-ready" className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Neues Experiment</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Strategy Lab — konfiguriert denselben ExperimentSpec / Runner wie die
-            CLI.
-            {baselineMode
-              ? " Baseline-Modus: eingefrorene Standardparameter vorausgefüllt; Start erst nach Bestätigung."
-              : ""}
-          </p>
-          {strategy?.description ? (
-            <p className="mt-2 text-sm text-text-muted">{strategy.description}</p>
-          ) : null}
-        </div>
-      </div>
+    <div data-testid="research-lab-ready" className={rs.page}>
+      <ResearchPageHeader
+        title="Neues Experiment"
+        description={labDescription}
+      />
 
       {formError && (
         <p
-          className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+          className="rounded-sm border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[12px] text-red-200"
           data-testid="research-lab-error"
+          role="alert"
         >
           {formError}
         </p>
       )}
 
       {step === "form" ? (
-        <Card padding="sm" className="space-y-4">
-          <label className="block text-sm">
-            <span className="text-text-muted">Strategie</span>
+        <Card padding="sm" className="space-y-3">
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Strategie</span>
             <select
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+              className={fieldSelect}
               value={strategyId}
               onChange={(e) => void onStrategyChange(e.target.value)}
               data-testid="lab-strategy"
@@ -303,37 +308,37 @@ export function StrategyLabForm({
               ))}
             </select>
             {fieldErrors.strategy_id && (
-              <span className="text-xs text-red-300">{fieldErrors.strategy_id}</span>
+              <span className={rs.fieldError}>{fieldErrors.strategy_id}</span>
             )}
           </label>
 
-          <label className="block text-sm">
-            <span className="text-text-muted">Experimentname</span>
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Experimentname</span>
             <input
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+              className={fieldControl}
               value={name}
               onChange={(e) => setName(e.target.value)}
               data-testid="lab-name"
             />
             {fieldErrors.name && (
-              <span className="text-xs text-red-300">{fieldErrors.name}</span>
+              <span className={rs.fieldError}>{fieldErrors.name}</span>
             )}
           </label>
 
-          <label className="block text-sm">
-            <span className="text-text-muted">Notiz (optional)</span>
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Notiz (optional)</span>
             <textarea
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+              className={fieldControl}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
             />
           </label>
 
-          <label className="block text-sm">
-            <span className="text-text-muted">Dataset</span>
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Dataset</span>
             <select
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+              className={fieldSelect}
               value={datasetId}
               onChange={(e) => setDatasetId(e.target.value)}
               data-testid="lab-dataset"
@@ -345,17 +350,17 @@ export function StrategyLabForm({
               ))}
             </select>
             {fieldErrors.dataset_catalog_id && (
-              <span className="text-xs text-red-300">
+              <span className={rs.fieldError}>
                 {fieldErrors.dataset_catalog_id}
               </span>
             )}
           </label>
 
-          <fieldset className="text-sm">
-            <legend className="text-text-muted">Symbole</legend>
+          <fieldset className="text-[12px]">
+            <legend className={rs.fieldLabel}>Symbole</legend>
             <div className="mt-1 flex flex-wrap gap-3">
               {(strategy?.symbols ?? schema?.symbols ?? ["BTC"]).map((sym) => (
-                <label key={sym} className="flex items-center gap-1.5">
+                <label key={sym} className="flex items-center gap-1.5 text-[12px]">
                   <input
                     type="checkbox"
                     checked={symbols.includes(sym)}
@@ -372,38 +377,38 @@ export function StrategyLabForm({
               ))}
             </div>
             {fieldErrors.symbols && (
-              <span className="text-xs text-red-300">{fieldErrors.symbols}</span>
+              <span className={rs.fieldError}>{fieldErrors.symbols}</span>
             )}
           </fieldset>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-text-muted">Startdatum</span>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className={rs.field}>
+              <span className={rs.fieldLabel}>Startdatum</span>
               <input
                 type="date"
-                className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+                className={fieldControl}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-text-muted">Enddatum</span>
+            <label className={rs.field}>
+              <span className={rs.fieldLabel}>Enddatum</span>
               <input
                 type="date"
-                className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+                className={fieldControl}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </label>
           </div>
           {fieldErrors.time_range && (
-            <span className="text-xs text-red-300">{fieldErrors.time_range}</span>
+            <span className={rs.fieldError}>{fieldErrors.time_range}</span>
           )}
 
-          <label className="block text-sm">
-            <span className="text-text-muted">Timeframe</span>
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Timeframe</span>
             <select
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5"
+              className={fieldSelect}
               value={timeframe}
               onChange={(e) => setTimeframe(e.target.value)}
             >
@@ -413,81 +418,81 @@ export function StrategyLabForm({
                 </option>
               ))}
             </select>
-            <span className="mt-1 block text-xs text-text-muted">
+            <span className={`mt-1 block ${rs.muted}`}>
               {strategy?.timeframe_note}
             </span>
           </label>
 
-          <label className="block text-sm">
-            <span className="text-text-muted">Startkapital</span>
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Startkapital</span>
             <input
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5 font-mono"
+              className={`${fieldControl} font-mono`}
               value={capital}
               onChange={(e) => setCapital(e.target.value)}
             />
             {fieldErrors.starting_capital && (
-              <span className="text-xs text-red-300">
+              <span className={rs.fieldError}>
                 {fieldErrors.starting_capital}
               </span>
             )}
           </label>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block text-sm">
-              <span className="text-text-muted">Entry Fee Rate</span>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className={rs.field}>
+              <span className={rs.fieldLabel}>Entry Fee Rate</span>
               <input
-                className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5 font-mono"
+                className={`${fieldControl} font-mono`}
                 value={entryFee}
                 onChange={(e) => setEntryFee(e.target.value)}
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-text-muted">Exit Fee Rate</span>
+            <label className={rs.field}>
+              <span className={rs.fieldLabel}>Exit Fee Rate</span>
               <input
-                className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5 font-mono"
+                className={`${fieldControl} font-mono`}
                 value={exitFee}
                 onChange={(e) => setExitFee(e.target.value)}
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-text-muted">Slippage (bps)</span>
+            <label className={rs.field}>
+              <span className={rs.fieldLabel}>Slippage (bps)</span>
               <input
-                className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5 font-mono"
+                className={`${fieldControl} font-mono`}
                 value={slippageBps}
                 onChange={(e) => setSlippageBps(e.target.value)}
               />
             </label>
           </div>
 
-          <label className="block text-sm">
-            <span className="text-text-muted">Random Seed</span>
+          <label className={rs.field}>
+            <span className={rs.fieldLabel}>Random Seed</span>
             <input
-              className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5 font-mono"
+              className={`${fieldControl} font-mono`}
               value={seed}
               onChange={(e) => setSeed(e.target.value)}
             />
           </label>
 
           <div>
-            <p className="mb-2 text-sm text-text-muted">Strategieparameter</p>
+            <p className={`mb-2 ${rs.fieldLabel}`}>Strategieparameter</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {paramKeys.map((key) => (
-                <label key={key} className="block text-sm">
-                  <span className="font-mono text-xs text-text-muted">{key}</span>
+                <label key={key} className={rs.field}>
+                  <span className={`font-mono ${rs.fieldLabel}`}>{key}</span>
                   <input
-                    className="mt-1 w-full rounded border border-border bg-bg-elevated px-2 py-1.5 font-mono"
+                    className={`${fieldControl} font-mono`}
                     value={parameters[key] ?? ""}
                     onChange={(e) =>
                       setParameters((prev) => ({ ...prev, [key]: e.target.value }))
                     }
                   />
                   {schema?.parameter_descriptions?.[key] ? (
-                    <span className="mt-1 block text-xs text-text-secondary">
+                    <span className="mt-1 block text-[11px] text-text-secondary">
                       {schema.parameter_descriptions[key]}
                     </span>
                   ) : null}
                   {fieldErrors[`parameters.${key}`] && (
-                    <span className="text-xs text-red-300">
+                    <span className={rs.fieldError}>
                       {fieldErrors[`parameters.${key}`]}
                     </span>
                   )}
@@ -498,7 +503,7 @@ export function StrategyLabForm({
 
           <button
             type="button"
-            className="rounded bg-mint/20 px-3 py-2 text-sm font-medium text-mint hover:bg-mint/30"
+            className={rs.btnPrimary}
             onClick={goSummary}
             data-testid="lab-review"
           >
@@ -506,45 +511,45 @@ export function StrategyLabForm({
           </button>
         </Card>
       ) : (
-        <Card padding="sm" className="space-y-3" data-testid="research-lab-summary">
-          <h2 className="text-sm font-medium">Zusammenfassung</h2>
-          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <Card padding="sm" className="space-y-2" data-testid="research-lab-summary">
+          <h2 className={rs.sectionTitle}>Zusammenfassung</h2>
+          <dl className="grid gap-2 text-[12px] sm:grid-cols-2">
             <div>
-              <dt className="text-text-muted">Strategie</dt>
+              <dt className={rs.fieldLabel}>Strategie</dt>
               <dd>
                 {strategy?.display_name ?? strategy?.label ?? strategyId}{" "}
-                <span className="font-mono text-xs text-text-muted">
+                <span className="font-mono text-[11px] text-text-muted">
                   ({strategyId} @ {strategy?.strategy_version})
                 </span>
               </dd>
             </div>
             <div>
-              <dt className="text-text-muted">Name</dt>
+              <dt className={rs.fieldLabel}>Name</dt>
               <dd>{name}</dd>
             </div>
             <div>
-              <dt className="text-text-muted">Dataset</dt>
+              <dt className={rs.fieldLabel}>Dataset</dt>
               <dd>{datasetId}</dd>
             </div>
             <div>
-              <dt className="text-text-muted">Symbole</dt>
+              <dt className={rs.fieldLabel}>Symbole</dt>
               <dd>{symbols.join(", ")}</dd>
             </div>
             <div>
-              <dt className="text-text-muted">Zeitraum</dt>
-              <dd className="font-mono text-xs">
+              <dt className={rs.fieldLabel}>Zeitraum</dt>
+              <dd className="font-mono text-[11px]">
                 {startDate} → {endDate}
               </dd>
             </div>
             <div>
-              <dt className="text-text-muted">Kapital</dt>
+              <dt className={rs.fieldLabel}>Kapital</dt>
               <dd className="font-mono">{capital}</dd>
             </div>
           </dl>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="rounded border border-border px-3 py-2 text-sm"
+              className={rs.btnSecondary}
               onClick={() => setStep("form")}
               disabled={submitting}
             >
@@ -552,7 +557,7 @@ export function StrategyLabForm({
             </button>
             <button
               type="button"
-              className="rounded bg-mint/20 px-3 py-2 text-sm font-medium text-mint hover:bg-mint/30 disabled:opacity-50"
+              className={`${rs.btnPrimary} disabled:opacity-50`}
               onClick={() => void createAndStart()}
               disabled={submitting}
               data-testid="lab-start"

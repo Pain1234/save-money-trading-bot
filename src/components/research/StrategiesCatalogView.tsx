@@ -1,6 +1,12 @@
 import Link from "next/link";
 
-import { Card } from "@/components/ui/Card";
+import {
+  ResearchApiError,
+  ResearchEmpty,
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
+import { Badge, Card } from "@/components/ui/Card";
 
 export interface StrategyListItem {
   strategy_id: string;
@@ -20,25 +26,16 @@ export interface StrategyListItem {
 
 export function StrategiesCatalogEmpty() {
   return (
-    <div data-testid="research-strategies-empty" className="space-y-4">
-      <h1 className="text-2xl font-semibold">Strategien</h1>
-      <p className="text-sm text-text-muted">
-        Keine Strategien im Resolver-Katalog registriert.
-      </p>
-    </div>
+    <ResearchEmpty
+      testId="research-strategies-empty"
+      title="Strategien"
+      message="Keine Strategien im Resolver-Katalog registriert."
+    />
   );
 }
 
 export function StrategiesCatalogError({ message }: { message: string }) {
-  return (
-    <div
-      data-testid="research-strategies-error"
-      className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-    >
-      <h1 className="text-xl font-semibold text-red-300">Research API Error</h1>
-      <p className="mt-2 text-sm text-red-200/90">{message}</p>
-    </div>
-  );
+  return <ResearchApiError testId="research-strategies-error" message={message} />;
 }
 
 export function StrategiesCatalogView({
@@ -47,73 +44,70 @@ export function StrategiesCatalogView({
   items: StrategyListItem[];
 }) {
   return (
-    <div data-testid="research-strategies-ready" className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Strategien</h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          Registrierte Research-Strategien aus dem Strategy Resolver. Sichtbar
-          auch ohne ausgeführte Experimente.
-        </p>
-      </div>
+    <div data-testid="research-strategies-ready" className={rs.page}>
+      <ResearchPageHeader
+        title="Strategien"
+        description="Registrierte Research-Strategien aus dem Strategy Resolver. Sichtbar auch ohne ausgeführte Experimente."
+      />
 
-      <div className="grid gap-3">
+      <div className="grid gap-2">
         {items.map((strategy) => (
           <Card
             key={strategy.strategy_id}
             padding="sm"
-            className="space-y-3"
+            className="space-y-2"
             data-testid={`strategy-card-${strategy.strategy_id}`}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-medium text-text-primary">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-[14px] font-semibold text-text-primary">
                   {strategy.display_name}
                 </h2>
-                <p className="mt-1 text-sm text-text-secondary">
+                <p className="mt-0.5 text-[12px] text-text-secondary">
                   {strategy.description}
                 </p>
               </div>
-              <span className="rounded bg-bg-elevated px-2 py-1 text-xs text-text-muted">
-                {strategy.lifecycle_status}
-              </span>
+              <Badge variant="neutral">{strategy.lifecycle_status}</Badge>
             </div>
 
-            <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <dl className="grid gap-2 text-[12px] sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <dt className="text-text-muted">Version</dt>
-                <dd>{strategy.strategy_version}</dd>
+                <dt className={rs.label}>Version</dt>
+                <dd className="mt-0.5 font-mono">{strategy.strategy_version}</dd>
               </div>
               <div>
-                <dt className="text-text-muted">Symbole</dt>
-                <dd>{strategy.supported_symbols.join(", ")}</dd>
+                <dt className={rs.label}>Symbole</dt>
+                <dd className="mt-0.5">{strategy.supported_symbols.join(", ")}</dd>
               </div>
               <div>
-                <dt className="text-text-muted">Timeframes</dt>
-                <dd>{strategy.required_timeframes.join(", ")}</dd>
+                <dt className={rs.label}>Timeframes</dt>
+                <dd className="mt-0.5">
+                  {strategy.required_timeframes.join(", ")}
+                </dd>
               </div>
               <div>
-                <dt className="text-text-muted">Experimente</dt>
-                <dd>{strategy.experiment_count}</dd>
+                <dt className={rs.label}>Experimente</dt>
+                <dd className="mt-0.5 font-mono">{strategy.experiment_count}</dd>
               </div>
             </dl>
 
-            <p className="text-xs text-text-muted">
+            <p className="text-[11px] text-text-muted">
               Letzter Run:{" "}
               {strategy.last_run?.created_at
                 ? `${strategy.last_run.status ?? "—"} · ${strategy.last_run.created_at}`
                 : "Noch kein Run"}
             </p>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2">
               <Link
                 href={`/dashboard/research/strategies/${encodeURIComponent(strategy.strategy_id)}`}
-                className="text-sm text-mint hover:underline"
+                className={rs.btnSecondary}
               >
                 Details →
               </Link>
               <Link
                 href={`/dashboard/research/experiments/new?strategy=${encodeURIComponent(strategy.strategy_id)}`}
-                className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint"
+                className={rs.btnPrimary}
                 data-testid={`create-experiment-${strategy.strategy_id}`}
               >
                 Experiment erstellen

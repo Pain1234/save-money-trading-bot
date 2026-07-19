@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+import {
+  ResearchTableFrame,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { displayValue, type RobustnessJobSummary } from "@/lib/research-api/client";
 
 interface RobustnessTableProps {
@@ -16,22 +20,19 @@ const TEST_TYPE_LABELS: Record<string, string> = {
 export function RobustnessTable({ items }: RobustnessTableProps) {
   if (items.length === 0) {
     return (
-      <p className="text-sm text-text-muted" data-testid="robustness-list-empty">
+      <p className={rs.muted} data-testid="robustness-list-empty">
         Noch keine Robustheitstests gestartet.
       </p>
     );
   }
 
   return (
-    <div
-      className="overflow-x-auto rounded-xl border border-border-subtle"
-      data-testid="robustness-list-ready"
-    >
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-bg-elevated text-text-muted">
+    <ResearchTableFrame testId="robustness-list-ready">
+      <table className={rs.table}>
+        <thead>
           <tr>
             {["Test", "Basis-Experiment", "Status", "Erstellt", "Fehler"].map((col) => (
-              <th key={col} className="whitespace-nowrap px-3 py-2 font-medium">
+              <th key={col} className={`whitespace-nowrap ${rs.th}`}>
                 {col}
               </th>
             ))}
@@ -40,7 +41,7 @@ export function RobustnessTable({ items }: RobustnessTableProps) {
         <tbody>
           {items.map((item) => (
             <tr key={item.robustness_id} className="border-t border-border-subtle">
-              <td className="px-3 py-2">
+              <td className={rs.td}>
                 <Link
                   href={`/dashboard/research/robustness/${encodeURIComponent(item.robustness_id)}`}
                   className="text-mint hover:underline"
@@ -48,25 +49,25 @@ export function RobustnessTable({ items }: RobustnessTableProps) {
                   {TEST_TYPE_LABELS[item.test_type] ?? item.test_type}
                 </Link>
               </td>
-              <td className="px-3 py-2">
+              <td className={rs.td}>
                 <Link
                   href={`/dashboard/research/experiments/${encodeURIComponent(item.base_experiment_id)}`}
-                  className="font-mono text-xs text-mint hover:underline"
+                  className="font-mono text-[11px] text-mint hover:underline"
                 >
                   {item.base_experiment_id}
                 </Link>
               </td>
-              <td className="px-3 py-2">{displayValue(item.status)}</td>
-              <td className="px-3 py-2 font-mono text-xs">
+              <td className={rs.td}>{displayValue(item.status)}</td>
+              <td className={`${rs.td} font-mono text-[11px]`}>
                 {displayValue(item.created_at)}
               </td>
-              <td className="px-3 py-2 text-xs text-red-300">
+              <td className={`${rs.td} text-[11px] text-red-300`}>
                 {displayValue(item.error)}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </ResearchTableFrame>
   );
 }

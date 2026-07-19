@@ -177,6 +177,19 @@ The checkboxes below remain the **human browser** residual and close under
 - [ ] Rest scope accepted: Evidence Inputs / Gate Failures / Raw Metric Refs
       not yet rendered (documented in UI spec).
 
+### H. Research route densify (#301)
+
+- [ ] Strategies / Experiments / Lab / Compare / Robustness / Validation
+      share dense ResearchPageChrome tokens (18px titles, rounded-sm,
+      12px body) — no `text-2xl` / `rounded-xl` marketing heroes.
+- [ ] Strategy Lab form fields use shared `rs.input` / `rs.select` /
+      `rs.fieldLabel` (no legacy `text-sm` / bare `rounded` controls).
+- [ ] Embedded `ResearchApiError` is not an `<h1>` (alert title only;
+      page header remains sole document h1).
+- [ ] Loading / Empty / Error / Not-found states use shared chrome.
+- [ ] No new routes; Monitor shell unchanged; API wiring preserved.
+- [ ] Missing metrics still render as **Nicht verfügbar**.
+
 ## Ownership / restart recovery (#245 / #276)
 
 No dedicated ownership/restart HTTP endpoints exist (and inventing them is

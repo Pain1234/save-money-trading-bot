@@ -231,11 +231,22 @@ error/unavailable (no ready profile). Regime table rows remain unavailable
 until per-regime metrics are exposed on the scorecard GET payload
 (`regime_metrics.json` is not inlined). No promotion controls.
 
+UI-05 (#301): Robustness, Validation, and remaining Research routes adopt
+`ResearchPageChrome` dense tokens (`rs`, `ResearchPageHeader`, `ResearchTableFrame`,
+`ResearchApiError`, `ResearchLoadingSkeleton`, `ResearchNotFound`) — aligned with
+Overview / ResearchShell typography; Monitor Card styling unchanged.
+
 **Rest scope (explicit, not in this PR):** Evidence Inputs inventory,
 Gate Failures detail list, and clickable Raw Metric Refs into run artifacts
 are deferred until those fields are exposed on the scorecard/read API (or a
 follow-up UI issue). Cost-stress boundary and full transition matrix likewise
 remain Nicht verfügbar when absent from Layer-5.
+
+UI-05 (#301): Shared `ResearchPageChrome` (`rs` tokens, page header, API
+error, empty, loading skeleton, table frame, not-found) densifies Strategies,
+Experiments, Lab, Compare, Robustness, and Validation routes to match
+ResearchShell typography (18px titles, 12px body, `rounded-sm`). No new
+routes; API wiring unchanged; Monitor shell untouched.
 
 ---
 

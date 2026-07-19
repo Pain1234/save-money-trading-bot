@@ -1,9 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ScorecardBindSection } from "@/components/research/ScorecardBindSection";
 import { ValidationStudyDecisionPanel } from "@/components/research/ValidationStudyDecisionPanel";
 import { ValidationStudyDetailView } from "@/components/research/ValidationStudyDetailView";
+import {
+  ResearchApiError,
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { PaperApiError } from "@/lib/paper-api/client";
 import {
   fetchValidationStudy,
@@ -26,17 +30,13 @@ export default async function ResearchValidationDetailPage({
     const scorecardBind = await loadScorecardForStudy(study);
 
     return (
-      <div data-testid="validation-detail-page-ready" className="space-y-4">
-        <div>
-          <Link
-            href="/dashboard/research/validation"
-            className="text-xs text-text-muted hover:text-mint"
-          >
-            ← Validierungsstudien
-          </Link>
-          <h1 className="mt-2 text-xl font-semibold">{study.name}</h1>
-          <p className="mt-1 font-mono text-xs text-text-muted">{study.study_id}</p>
-        </div>
+      <div data-testid="validation-detail-page-ready" className={rs.page}>
+        <ResearchPageHeader
+          title={study.name}
+          backHref="/dashboard/research/validation"
+          backLabel="← Validierungsstudien"
+        />
+        <p className={`${rs.muted} font-mono`}>{study.study_id}</p>
 
         <ScorecardBindSection
           bind={scorecardBind}
@@ -58,15 +58,10 @@ export default async function ResearchValidationDetailPage({
       notFound();
     }
     return (
-      <div
-        data-testid="validation-detail-page-error"
-        className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-      >
-        <h1 className="text-xl font-semibold text-red-300">Research API Error</h1>
-        <p className="mt-2 text-sm text-red-200/90">
-          {getResearchErrorMessage(error)}
-        </p>
-      </div>
+      <ResearchApiError
+        testId="validation-detail-page-error"
+        message={getResearchErrorMessage(error)}
+      />
     );
   }
 }

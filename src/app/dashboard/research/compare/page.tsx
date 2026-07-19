@@ -5,6 +5,11 @@ import {
   CompareSelector,
   type CompareSelectorItem,
 } from "@/components/research/CompareView";
+import {
+  ResearchApiError,
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { PaperApiError } from "@/lib/paper-api/client";
 import {
   fetchResearchCompare,
@@ -66,22 +71,18 @@ export default async function ResearchComparePage({
   }
 
   return (
-    <div className="space-y-4" data-testid="research-compare-ready">
-      <div>
-        <h1 className="text-2xl font-semibold">Vergleich</h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          Vergleicht zwei Runs über die bestehende Registry-Compare-Semantik —
-          kein zweites Vergleichs-Engine, kein P7-Ranking.
-        </p>
-      </div>
+    <div className={rs.page} data-testid="research-compare-ready">
+      <ResearchPageHeader
+        title="Vergleich"
+        description="Vergleicht zwei Runs über die bestehende Registry-Compare-Semantik — kein zweites Vergleichs-Engine, kein P7-Ranking."
+      />
 
       {listErrorMessage && (
-        <p
-          className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200/90"
-          data-testid="research-compare-list-error"
-        >
-          {listErrorMessage}
-        </p>
+        <ResearchApiError
+          testId="research-compare-list-error"
+          title="Experimentliste nicht verfügbar"
+          message={listErrorMessage}
+        />
       )}
 
       <CompareSelector items={selectorItems} runA={runA} runB={runB} />
