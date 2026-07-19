@@ -129,19 +129,37 @@ export type ScorecardTrustResult =
   | { ok: false; message: string };
 
 /**
- * Fail-closed for untrusted evidence (integrity fail or pin hash mismatch).
- * Soft warnings (e.g. invalidated) may still accompany a trusted ready state.
+ * Fail-closed for untrusted evidence (integrity fail, pin hash mismatch,
+ * or invalidated status). Soft warnings remain empty for ready binds.
  */
 export function evaluateScorecardTrust(
   scorecard: ScorecardRecord,
   pinHash?: string | null,
+  options?: { requirePinHash?: boolean },
 ): ScorecardTrustResult {
+  if (scorecard.status === "invalidated") {
+    return {
+      ok: false,
+      message: `status=invalidated${
+        scorecard.invalidation_reason
+          ? `: ${scorecard.invalidation_reason}`
+          : ""
+      } — Scorecard untrusted`,
+    };
+  }
   if (scorecard.evidence_integrity && scorecard.evidence_integrity.ok === false) {
     return {
       ok: false,
       message:
         scorecard.evidence_integrity.error ??
         "evidence_integrity.ok=false — Scorecard untrusted",
+    };
+  }
+  if (options?.requirePinHash && !pinHash) {
+    return {
+      ok: false,
+      message:
+        "Scorecard ohne evidence_snapshot Pin-Hash — ungepinnt, fail-closed",
     };
   }
   if (
@@ -154,24 +172,15 @@ export function evaluateScorecardTrust(
       message: "pinned scorecard content_hash mismatch — Evidence untrusted",
     };
   }
-  const warnings: string[] = [];
-  if (scorecard.status === "invalidated") {
-    warnings.push(
-      `status=invalidated${
-        scorecard.invalidation_reason
-          ? `: ${scorecard.invalidation_reason}`
-          : ""
-      }`,
-    );
-  }
-  return { ok: true, warnings };
+  return { ok: true, warnings: [] };
 }
 
 function bindTrustedScorecard(
   scorecard: ScorecardRecord,
   pinHash?: string | null,
+  options?: { requirePinHash?: boolean },
 ): ScorecardBindState {
-  const trust = evaluateScorecardTrust(scorecard, pinHash);
+  const trust = evaluateScorecardTrust(scorecard, pinHash, options);
   if (!trust.ok) {
     return { kind: "error", message: trust.message };
   }
@@ -196,6 +205,7 @@ export async function loadScorecardForRun(
         reason: `Keine Scorecards für run_id=${runId}`,
       };
     }
+    // Experiment/strategy path: integrity + active status; no study pin.
     return bindTrustedScorecard(scorecard);
   } catch (error) {
     return { kind: "error", message: getResearchErrorMessage(error) };
@@ -218,53 +228,79 @@ function studyScorecardCandidateIds(study: ValidationStudyDetail): string[] {
   return ids;
 }
 
-export async function loadScorecardForStudy(
-  study: ValidationStudyDetail,
-): Promise<ScorecardBindState> {
+/**
+ * Pure study bind resolution (no network). Never falls back to unpinned
+ * registry scorecards — only primary-run + snapshot-pinned candidates.
+ */
+export function resolveStudyScorecardBind(
+  fetched: ScorecardRecord[],
+  study: Pick<
+    ValidationStudyDetail,
+    "run_id" | "evidence_snapshot" | "scorecard_ids"
+  >,
+  fetchErrors: string[] = [],
+): ScorecardBindState {
   const primaryRunId = studyPrimaryRunId(study);
   const pinned = study.evidence_snapshot?.scorecards ?? [];
-  const ids = studyScorecardCandidateIds(study);
+  const ids = studyScorecardCandidateIds(study as ValidationStudyDetail);
 
-  if (ids.length > 0) {
-    const fetched: ScorecardRecord[] = [];
-    const fetchErrors: string[] = [];
-    const results = await Promise.allSettled(
-      ids.map((id) => fetchScorecard(id)),
-    );
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        fetched.push(result.value);
-      } else {
-        fetchErrors.push(getResearchErrorMessage(result.reason));
-      }
-    }
+  if (ids.length === 0) {
+    return {
+      kind: "empty",
+      reason:
+        "Keine Scorecard an Study gepinnt (scorecard_ids / evidence_snapshot.scorecards) — Registry-Fallback unterdrückt",
+    };
+  }
 
-    const primaryMatch = pickScorecardForPrimaryRun(fetched, primaryRunId);
-    if (primaryMatch) {
-      const pin = pinned.find((p) => p.scorecard_id === primaryMatch.scorecard_id);
-      return bindTrustedScorecard(primaryMatch, pin?.content_hash ?? null);
-    }
-
-    // Do not bind an additional-run scorecard to the primary evidence identity.
-    if (primaryRunId) {
-      return loadScorecardForRun(primaryRunId);
-    }
-
+  const allowedIds = new Set(ids);
+  const pinnedCandidates = fetched.filter((item) =>
+    allowedIds.has(item.scorecard_id),
+  );
+  const primaryMatch = pickScorecardForPrimaryRun(
+    pinnedCandidates,
+    primaryRunId,
+  );
+  if (!primaryMatch) {
     if (fetchErrors.length > 0 && fetched.length === 0) {
       return {
         kind: "error",
         message: fetchErrors[0] ?? "Scorecard-Fetch fehlgeschlagen",
       };
     }
-
     return {
       kind: "empty",
       reason:
-        "Keine Scorecard für den Primary-Run der Study — Additional-Run-Pins werden nicht als Primary-Profil genutzt",
+        "Keine gepinnte Scorecard für den Primary-Run — Additional-Run-Pins und ungepinnte Registry-Treffer werden nicht als Study-Profil genutzt",
     };
   }
 
-  return loadScorecardForRun(primaryRunId);
+  const pin = pinned.find((p) => p.scorecard_id === primaryMatch.scorecard_id);
+  return bindTrustedScorecard(primaryMatch, pin?.content_hash ?? null, {
+    // Study profile requires a sealed snapshot pin — never bind bare ids.
+    requirePinHash: true,
+  });
+}
+
+export async function loadScorecardForStudy(
+  study: ValidationStudyDetail,
+): Promise<ScorecardBindState> {
+  const ids = studyScorecardCandidateIds(study);
+  if (ids.length === 0) {
+    return resolveStudyScorecardBind([], study);
+  }
+
+  const fetched: ScorecardRecord[] = [];
+  const fetchErrors: string[] = [];
+  const results = await Promise.allSettled(ids.map((id) => fetchScorecard(id)));
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      fetched.push(result.value);
+    } else {
+      fetchErrors.push(getResearchErrorMessage(result.reason));
+    }
+  }
+
+  return resolveStudyScorecardBind(fetched, study, fetchErrors);
 }
 
 export async function loadScorecardForExperiment(

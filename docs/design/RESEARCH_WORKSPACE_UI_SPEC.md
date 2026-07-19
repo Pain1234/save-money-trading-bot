@@ -223,9 +223,10 @@ UI-04 (#292): `ScorecardBindSection` + `ScorecardProfileStrip` bind
 `GET /api/v1/research/scorecards` / `{id}` on Validation Study, Experiment,
 and Strategy detail. Maps `global_profile` (integrity, gates, worst regime,
 transition risk_label, parameter classification, confidence, weakness).
-`NOT_AVAILABLE` → `Nicht verfügbar`. Study binding uses the **primary run**
-only (additional-run scorecard pins are never shown as the study profile).
-`evidence_integrity.ok=false` or pin `content_hash` mismatch → fail-closed
+`NOT_AVAILABLE` → `Nicht verfügbar`. Study binding uses the **primary run** only and requires a sealed
+`evidence_snapshot.scorecards[]` pin hash — never falls back to unpinned
+`GET /scorecards?run_id=` registry hits. Invalidated scorecards and
+`evidence_integrity.ok=false` / pin hash mismatch → fail-closed
 error/unavailable (no ready profile). Regime table rows remain unavailable
 until per-regime metrics are exposed on the scorecard GET payload
 (`regime_metrics.json` is not inlined). No promotion controls.

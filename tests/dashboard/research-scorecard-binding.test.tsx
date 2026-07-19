@@ -9,6 +9,7 @@ import {
   buildScorecardProfileView,
   evaluateScorecardTrust,
   pickScorecardForPrimaryRun,
+  resolveStudyScorecardBind,
   scorecardDisplayValue,
   scorecardToneForStatus,
   studyPrimaryRunId,
@@ -162,16 +163,182 @@ describe("evaluateScorecardTrust", () => {
     }
   });
 
-  it("allows ready with soft warning when only invalidated", () => {
+  it("fail-closes when scorecard is invalidated", () => {
     const trust = evaluateScorecardTrust(
       syntheticScorecard({
         status: "invalidated",
         invalidation_reason: "superseded",
       }),
     );
-    expect(trust.ok).toBe(true);
-    if (trust.ok) {
-      expect(trust.warnings[0]).toMatch(/invalidated/);
+    expect(trust.ok).toBe(false);
+    if (!trust.ok) {
+      expect(trust.message).toMatch(/invalidated/);
+    }
+  });
+
+  it("fail-closes when study requires pin hash but none provided", () => {
+    const trust = evaluateScorecardTrust(syntheticScorecard(), null, {
+      requirePinHash: true,
+    });
+    expect(trust.ok).toBe(false);
+    if (!trust.ok) {
+      expect(trust.message).toMatch(/ungepinnt/i);
+    }
+  });
+});
+
+describe("resolveStudyScorecardBind", () => {
+  const primaryPin = {
+    scorecard_id: "sc_primary",
+    content_hash: "hash_evidence",
+  };
+
+  function studyFixture(
+    overrides: Partial<ValidationStudyDetail> = {},
+  ): Pick<
+    ValidationStudyDetail,
+    "run_id" | "evidence_snapshot" | "scorecard_ids"
+  > {
+    return {
+      run_id: "run_primary",
+      scorecard_ids: ["sc_additional", "sc_primary"],
+      evidence_snapshot: {
+        snapshot_id: "snap",
+        primary: {
+          experiment_id: "exp",
+          run_id: "run_primary",
+          checksums_digest: "x",
+          dataset_id: "d",
+          dataset_content_hash: "h",
+          git_commit: "c",
+        },
+        additional: [],
+        robustness: [],
+        gates: [],
+        scorecards: [
+          { scorecard_id: "sc_additional", content_hash: "hash_add" },
+          primaryPin,
+        ],
+      },
+      ...overrides,
+    };
+  }
+
+  it("binds only the pinned primary-run scorecard", () => {
+    const additional = syntheticScorecard({
+      scorecard_id: "sc_additional",
+      run_id: "run_additional",
+      evidence_content_hash: "hash_add",
+    });
+    const primary = syntheticScorecard({
+      scorecard_id: "sc_primary",
+      run_id: "run_primary",
+      evidence_content_hash: "hash_evidence",
+    });
+    const bind = resolveStudyScorecardBind(
+      [additional, primary],
+      studyFixture(),
+    );
+    expect(bind.kind).toBe("ready");
+    if (bind.kind === "ready") {
+      expect(bind.scorecard.scorecard_id).toBe("sc_primary");
+    }
+  });
+
+  it("does not fall back to unpinned registry scorecards for primary run", () => {
+    const unpinnedPrimary = syntheticScorecard({
+      scorecard_id: "sc_unpinned_primary",
+      run_id: "run_primary",
+      evidence_content_hash: "hash_other",
+    });
+    const additionalOnly = syntheticScorecard({
+      scorecard_id: "sc_additional",
+      run_id: "run_additional",
+      evidence_content_hash: "hash_add",
+    });
+    // Fetched list is only the additional pin — must not invent unpinned primary.
+    const bind = resolveStudyScorecardBind(
+      [additionalOnly, unpinnedPrimary],
+      studyFixture({
+        scorecard_ids: ["sc_additional"],
+        evidence_snapshot: {
+          snapshot_id: "snap",
+          primary: {
+            experiment_id: "exp",
+            run_id: "run_primary",
+            checksums_digest: "x",
+            dataset_id: "d",
+            dataset_content_hash: "h",
+            git_commit: "c",
+          },
+          additional: [],
+          robustness: [],
+          gates: [],
+          scorecards: [
+            { scorecard_id: "sc_additional", content_hash: "hash_add" },
+          ],
+        },
+      }),
+    );
+    expect(bind.kind).toBe("empty");
+    if (bind.kind === "empty") {
+      expect(bind.reason).toMatch(/ungepinnte Registry/i);
+    }
+  });
+
+  it("fail-closes when primary match lacks snapshot pin hash", () => {
+    const primary = syntheticScorecard({
+      scorecard_id: "sc_primary",
+      run_id: "run_primary",
+    });
+    const bind = resolveStudyScorecardBind([primary], {
+      run_id: "run_primary",
+      scorecard_ids: ["sc_primary"],
+      evidence_snapshot: {
+        snapshot_id: "snap",
+        primary: {
+          experiment_id: "exp",
+          run_id: "run_primary",
+          checksums_digest: "x",
+          dataset_id: "d",
+          dataset_content_hash: "h",
+          git_commit: "c",
+        },
+        additional: [],
+        robustness: [],
+        gates: [],
+        scorecards: [],
+      },
+    });
+    expect(bind.kind).toBe("error");
+    if (bind.kind === "error") {
+      expect(bind.message).toMatch(/ungepinnt/i);
+    }
+  });
+
+  it("stays empty when study has no scorecard pins (no run_id registry fallback)", () => {
+    const bind = resolveStudyScorecardBind([], {
+      run_id: "run_primary",
+      scorecard_ids: [],
+      evidence_snapshot: {
+        snapshot_id: "snap",
+        primary: {
+          experiment_id: "exp",
+          run_id: "run_primary",
+          checksums_digest: "x",
+          dataset_id: "d",
+          dataset_content_hash: "h",
+          git_commit: "c",
+        },
+        additional: [],
+        robustness: [],
+        gates: [],
+        scorecards: [],
+      },
+    });
+    expect(bind.kind).toBe("empty");
+    if (bind.kind === "empty") {
+      expect(bind.reason).toMatch(/Registry-Fallback unterdrückt/);
     }
   });
 });

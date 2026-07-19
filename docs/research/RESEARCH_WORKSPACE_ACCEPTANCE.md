@@ -163,10 +163,10 @@ The checkboxes below remain the **human browser** residual and close under
 ### G. Scorecard detail binding (#292)
 
 - [ ] Validation Study detail shows Scorecard Evidence Profile when a
-      **primary-run** scorecard resolves (`scorecard_ids` / snapshot pins /
-      `run_id`); additional-run pins alone must not become the study profile.
-- [ ] `evidence_integrity.ok=false` or pin hash mismatch → error/unavailable
-      (no ready profile strip).
+      **primary-run** scorecard is **snapshot-pinned**; no registry
+      `run_id` fallback; additional-run pins alone must not become the profile.
+- [ ] `evidence_integrity.ok=false`, pin hash mismatch, missing pin hash,
+      or `status=invalidated` → error/unavailable (no ready profile strip).
 - [ ] Experiment detail loads scorecards by `run_id`; FAIL / LOW confidence
       remain visually prominent; no Promote button.
 - [ ] Strategy detail soft-binds via last experiment → run → scorecard.
