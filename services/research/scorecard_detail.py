@@ -5,6 +5,8 @@ into per-regime table rows and forensic drilldowns for the dashboard.
 
 This module does **not** re-score regimes, re-open promotion, or invent
 missing metrics. Absent evidence is surfaced as ``NOT_AVAILABLE``.
+Gate forensics are only emitted after verifying the scorecard-pinned
+``gate_evidence_content_hash`` (mutable gate-log rewrites fail closed).
 """
 
 from __future__ import annotations
@@ -13,9 +15,16 @@ import json
 from pathlib import Path
 from typing import Any
 
-from research.gate_evaluator import GateResultStore
+from research.gate_evaluator import (
+    GateEvaluationError,
+    GateResultStore,
+    GateRunRecord,
+    gate_evidence_content_hash,
+    verify_gate_record_artifact_checksums,
+)
+from research.gate_policy import GatePolicyError, verify_policy_content_hash
 from research.registry import ExperimentRegistry
-from research.robustness import load_robustness_manifest
+from research.robustness import load_robustness_manifest, verify_robustness_manifest_seal
 from research.scorecard_evaluator import (
     ScorecardEvaluationError,
     ScorecardRecord,
@@ -186,34 +195,147 @@ def _transition_risk(
     return {"status": "OK", "value": value}
 
 
+def _classifier_transition_refs(labels: dict[str, Any] | None) -> dict[str, Any]:
+    """Expose sealed classifier transition / period / day-event refs (#350)."""
+    if not isinstance(labels, dict):
+        return {
+            "status": NOT_AVAILABLE,
+            "value": None,
+            "reason": "regime_labels_missing",
+        }
+    transitions = labels.get("transitions")
+    if not isinstance(transitions, list):
+        return {
+            "status": NOT_AVAILABLE,
+            "value": None,
+            "reason": "transitions_missing",
+        }
+    day_events = labels.get("day_events")
+    period_labels = labels.get("period_labels")
+    calendar_gaps = labels.get("calendar_gaps")
+    return {
+        "status": "OK",
+        "classification_id": labels.get("classification_id"),
+        "classifier_version": labels.get("classifier_version"),
+        "classifier_content_hash": labels.get("classifier_content_hash"),
+        "transitions": [
+            {
+                "transition_id": t.get("transition_id"),
+                "from_period_id": t.get("from_period_id"),
+                "to_period_id": t.get("to_period_id"),
+                "from_trend": t.get("from_trend"),
+                "to_trend": t.get("to_trend"),
+                "from_vol": t.get("from_vol"),
+                "to_vol": t.get("to_vol"),
+                "trend_changed": t.get("trend_changed"),
+                "vol_changed": t.get("vol_changed"),
+            }
+            for t in transitions
+            if isinstance(t, dict)
+        ],
+        "period_labels": list(period_labels) if isinstance(period_labels, list) else [],
+        "calendar_gaps": list(calendar_gaps) if isinstance(calendar_gaps, list) else [],
+        "day_events": [
+            {
+                "as_of": e.get("as_of"),
+                "period_id": e.get("period_id"),
+                "event": e.get("event"),
+                "transition_id": e.get("transition_id"),
+            }
+            for e in (day_events if isinstance(day_events, list) else [])
+            if isinstance(e, dict)
+        ],
+    }
+
+
+def _child_by_label(
+    children: list[Any], *, needle: str
+) -> dict[str, Any] | None:
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        label = str(child.get("label") or child.get("child_id") or "")
+        if label == needle or needle in label:
+            return child
+    return None
+
+
 def _cost_stress_from_pinned(
     root: Path,
     record: ScorecardRecord,
 ) -> dict[str, Any]:
-    """Surface pinned cost-stress robustness summary; never invent scenarios."""
+    """Sealed cost-stress **boundary** only when base + combined_elevated exist.
+
+    Child-count summaries alone are not a boundary; missing fields →
+    ``NOT_AVAILABLE`` (never ``status=OK`` with null verdict).
+    """
     for rid in record.robustness_run_ids:
+        key = f"robustness/{rid}/manifest.json"
+        expected = record.artifact_checksums.get(key)
+        if not expected:
+            continue
+        try:
+            verify_robustness_manifest_seal(root, rid, expected_hash=str(expected))
+        except (ValueError, FileNotFoundError, OSError):
+            continue
         manifest = load_robustness_manifest(root, rid)
         if not isinstance(manifest, dict):
             continue
         if str(manifest.get("test_type") or "") != "cost_stress":
             continue
-        children = manifest.get("children")
-        elevated: dict[str, Any] | None = None
-        if isinstance(children, list):
-            for child in children:
-                if not isinstance(child, dict):
-                    continue
-                label = str(child.get("label") or child.get("child_id") or "")
-                if "combined_elevated" in label:
-                    elevated = child
-                    break
+        children_raw = manifest.get("children")
+        if not isinstance(children_raw, list):
+            return {
+                "status": NOT_AVAILABLE,
+                "value": None,
+                "reason": "cost_stress_children_missing",
+                "robustness_run_id": rid,
+            }
+        base = _child_by_label(children_raw, needle="base")
+        elevated = _child_by_label(children_raw, needle="combined_elevated")
+        if base is None or elevated is None:
+            return {
+                "status": NOT_AVAILABLE,
+                "value": None,
+                "reason": "cost_stress_boundary_children_missing",
+                "robustness_run_id": rid,
+            }
+        base_pnl = base.get("net_pnl")
+        elev_pnl = elevated.get("net_pnl")
+        if _is_missing(base_pnl) or _is_missing(elev_pnl):
+            return {
+                "status": NOT_AVAILABLE,
+                "value": None,
+                "reason": "cost_stress_boundary_net_pnl_missing",
+                "robustness_run_id": rid,
+            }
+        if str(base.get("status") or "") != "complete":
+            return {
+                "status": NOT_AVAILABLE,
+                "value": None,
+                "reason": "cost_stress_base_not_complete",
+                "robustness_run_id": rid,
+            }
+        if str(elevated.get("status") or "") != "complete":
+            return {
+                "status": NOT_AVAILABLE,
+                "value": None,
+                "reason": "cost_stress_combined_elevated_not_complete",
+                "robustness_run_id": rid,
+            }
         return {
             "status": "OK",
             "robustness_run_id": rid,
-            "verdict": manifest.get("verdict"),
-            "summary": manifest.get("summary"),
-            "combined_elevated_child": elevated,
-            "artifact_path": f"robustness/{rid}/manifest.json",
+            "manifest_content_hash": expected,
+            "artifact_path": key,
+            "boundary": {
+                "base_net_pnl": base_pnl,
+                "combined_elevated_net_pnl": elev_pnl,
+                "base_child_id": base.get("child_id"),
+                "combined_elevated_child_id": elevated.get("child_id"),
+                "base_status": base.get("status"),
+                "combined_elevated_status": elevated.get("status"),
+            },
         }
     return {
         "status": NOT_AVAILABLE,
@@ -222,21 +344,72 @@ def _cost_stress_from_pinned(
     }
 
 
-def _gate_failures(root: Path, gate_run_id: str | None) -> list[dict[str, Any]]:
+def _load_verified_bound_gate(
+    root: Path, record: ScorecardRecord
+) -> GateRunRecord | None:
+    """Return the bound gate only after content-hash verification.
+
+    Raises :class:`ScorecardEvaluationError` on tamper / invalidation.
+    """
+    gate_run_id = record.gate_run_id
     if not gate_run_id:
-        return [
-            {
-                "status": NOT_AVAILABLE,
-                "reason": "no_bound_gate_run",
-            }
-        ]
+        return None
     gate = GateResultStore(root).get(gate_run_id)
+    if gate is None:
+        raise ScorecardEvaluationError(
+            f"bound gate_run_id not found: {gate_run_id}",
+            field_errors={"gate_run_id": "missing"},
+        )
+    if gate.status != "active":
+        raise ScorecardEvaluationError(
+            f"bound gate is not active (status={gate.status})",
+            field_errors={"gate_run_id": f"status={gate.status}"},
+        )
+    try:
+        verify_policy_content_hash(gate.policy_version, gate.policy_content_hash)
+    except GatePolicyError as exc:
+        raise ScorecardEvaluationError(
+            f"bound gate policy untrusted: {exc}",
+            field_errors={"gate_run_id": "policy_content_hash mismatch"},
+        ) from exc
+    try:
+        verify_gate_record_artifact_checksums(root, gate)
+    except GateEvaluationError as exc:
+        raise ScorecardEvaluationError(
+            f"bound gate evidence untrusted: {exc}",
+            field_errors={"gate_run_id": "checksum mismatch"},
+        ) from exc
+
+    expected_hash = str(record.layer_refs.get("gate_evidence_content_hash") or "").strip()
+    if not expected_hash:
+        raise ScorecardEvaluationError(
+            "scorecard missing sealed gate_evidence_content_hash pin",
+            field_errors={"gate_run_id": "gate_evidence_content_hash missing"},
+        )
+    actual = gate_evidence_content_hash(gate)
+    if actual != expected_hash:
+        raise ScorecardEvaluationError(
+            "gate_evidence_content_hash mismatch — refuse mutable gate forensics",
+            field_errors={"gate_run_id": "gate_evidence_content_hash mismatch"},
+        )
+
+    sealed = record.global_profile.get("gates")
+    if isinstance(sealed, dict) and sealed.get("overall_status") is not None:
+        if sealed.get("overall_status") != gate.overall_status:
+            raise ScorecardEvaluationError(
+                "sealed scorecard gate overall_status disagrees with gate store",
+                field_errors={"gate_run_id": "overall_status mismatch"},
+            )
+    return gate
+
+
+def _gate_failures(root: Path, record: ScorecardRecord) -> list[dict[str, Any]]:
+    gate = _load_verified_bound_gate(root, record)
     if gate is None:
         return [
             {
                 "status": NOT_AVAILABLE,
-                "reason": "gate_run_unreadable",
-                "gate_run_id": gate_run_id,
+                "reason": "no_bound_gate_run",
             }
         ]
     failures: list[dict[str, Any]] = []
@@ -316,6 +489,9 @@ def _evidence_inputs(record: ScorecardRecord, global_profile: dict[str, Any]) ->
         "run_id": record.run_id,
         "experiment_id": record.experiment_id,
         "gate_run_id": record.gate_run_id,
+        "gate_evidence_content_hash": record.layer_refs.get(
+            "gate_evidence_content_hash"
+        ),
         "robustness_run_ids": list(record.robustness_run_ids),
         "policy_version": record.policy_version,
         "policy_content_hash": record.policy_content_hash,
@@ -370,6 +546,7 @@ def assemble_scorecard_detail(root: Path, record: ScorecardRecord) -> dict[str, 
     run_dir = Path(entry.artifact_path)
     metrics = _read_json(run_dir / "regime_metrics.json")
     behavior = _read_json(run_dir / "behavior_profile.json")
+    labels = _read_json(run_dir / "regime_labels.json")
     global_profile = dict(record.global_profile)
 
     regime_rows = _build_regime_rows(
@@ -389,9 +566,10 @@ def assemble_scorecard_detail(root: Path, record: ScorecardRecord) -> dict[str, 
         "transition_risk": _transition_risk(
             behavior=behavior, global_profile=global_profile
         ),
+        "classifier_transitions": _classifier_transition_refs(labels),
         "cost_stress": _cost_stress_from_pinned(root, record),
         "evidence_inputs": _evidence_inputs(record, global_profile),
-        "gate_failures": _gate_failures(root, record.gate_run_id),
+        "gate_failures": _gate_failures(root, record),
         "raw_artifact_refs": _raw_artifact_refs(root, record, run_dir=run_dir),
         "missing_data_semantics": {
             "token": NOT_AVAILABLE,

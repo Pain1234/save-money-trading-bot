@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from research.gate_evaluator import GateEvaluator
+from research.gate_evaluator import GateEvaluator, GateResultStore
 from research.registry import ExperimentRegistry
 from research.robustness import (
     ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
@@ -119,6 +119,14 @@ def test_detail_regime_rows_join_sealed_metrics(tmp_path: Path) -> None:
         assert row["confidence"]["scope"] == "scorecard_overall"
 
     assert detail["transition_risk"]["status"] == "OK"
+    assert detail["classifier_transitions"]["status"] == "OK"
+    assert isinstance(detail["classifier_transitions"]["transitions"], list)
+    # Fixture may have zero transitions; when present they must carry IDs / periods.
+    for tr in detail["classifier_transitions"]["transitions"]:
+        assert "transition_id" in tr
+        assert "from_period_id" in tr
+        assert "to_period_id" in tr
+    assert isinstance(detail["classifier_transitions"]["day_events"], list)
     assert detail["cost_stress"]["status"] == NOT_AVAILABLE
     assert detail["gate_failures"][0]["reason"] == "no_bound_gate_run"
     assert any(r["name"] == "regime_metrics.json" for r in detail["raw_artifact_refs"])
@@ -137,10 +145,57 @@ def test_detail_cost_stress_from_pinned_robustness(tmp_path: Path) -> None:
     detail = assemble_scorecard_detail(root, record)
     assert detail["cost_stress"]["status"] == "OK"
     assert detail["cost_stress"]["robustness_run_id"] == rob_id
-    child = detail["cost_stress"]["combined_elevated_child"]
-    assert child is not None
-    assert child["label"] == "combined_elevated"
-    assert child["net_pnl"] == "1.23"
+    boundary = detail["cost_stress"]["boundary"]
+    assert boundary["combined_elevated_net_pnl"] == "1.23"
+    assert boundary["base_net_pnl"] is not None
+    assert "verdict" not in detail["cost_stress"]
+    assert detail["cost_stress"]["manifest_content_hash"]
+
+
+def test_detail_cost_stress_incomplete_is_not_available(tmp_path: Path) -> None:
+    """Child counts alone (no base/elevated net_pnl) must not claim OK."""
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    children = (
+        RobustnessChildResult(
+            child_id="fee_x2",
+            label="fee_x2",
+            experiment_id=experiment_id,
+            run_id=run_id,
+            status="complete",
+            net_pnl="1.0",
+        ),
+    )
+    robustness_id = "rob_cost_incomplete"
+    manifest = RobustnessManifest(
+        schema_version=ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+        robustness_id=robustness_id,
+        test_type="cost_stress",
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        dataset_catalog_id=None,
+        config={},
+        created_at="2024-01-01T00:00:00.000000Z",
+        children=children,
+        bootstrap_result=None,
+        summary={"n_children": 1, "n_complete": 1, "n_failed": 0},
+    )
+    _path, digest = save_robustness_manifest(root, manifest)
+    te._seal_completed_robustness_job(
+        root,
+        robustness_id=robustness_id,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        test_type="cost_stress",
+        digest=digest,
+    )
+    record = _evaluator(root).evaluate(
+        run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+    )
+    detail = assemble_scorecard_detail(root, record)
+    assert detail["cost_stress"]["status"] == NOT_AVAILABLE
+    assert "boundary" not in detail["cost_stress"] or detail["cost_stress"].get(
+        "boundary"
+    ) is None
 
 
 def test_detail_gate_failures_no_promotion(tmp_path: Path) -> None:
@@ -173,8 +228,101 @@ def test_detail_gate_failures_no_promotion(tmp_path: Path) -> None:
     assert detail["promotion_action"] == "none"
     assert detail["gate_failures"]
     assert all(f.get("outcome") != "PASS" for f in detail["gate_failures"])
+    assert record.layer_refs.get("gate_evidence_content_hash")
+    assert detail["evidence_inputs"]["gate_evidence_content_hash"]
     # Cost-stress still NA when only walk-forward is pinned.
     assert detail["cost_stress"]["status"] == NOT_AVAILABLE
+
+
+def test_detail_gate_outcome_tamper_fail_closed(tmp_path: Path) -> None:
+    """Rewriting gate JSONL to PASS must not clear sealed scorecard fail forensics."""
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    neg_a = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_a", net_pnl="-10"
+    )
+    neg_b = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_b", net_pnl="-20"
+    )
+    robustness_id = te._save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        fold_run_ids=[neg_a, neg_b, run_id],
+    )
+    gate = GateEvaluator(root, repo_root=te._evaluation_image_root(root)).evaluate(
+        run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+    )
+    assert gate.overall_status == "fail"
+    svc = ScorecardService(root, repo_root=te._evaluation_image_root(root))
+    created = svc.evaluate(
+        {
+            "run_id": run_id,
+            "policy_version": "1.0",
+            "gate_run_id": gate.gate_run_id,
+            "robustness_run_ids": [robustness_id],
+        }
+    )
+    assert created["global_profile"]["gates"]["overall_status"] == "fail"
+    sid = created["scorecard_id"]
+
+    store_path = GateResultStore(root).path
+    lines = store_path.read_text(encoding="utf-8").strip().splitlines()
+    payload = json.loads(lines[-1])
+    assert payload["overall_status"] == "fail"
+    for g in payload["gates"]:
+        g["outcome"] = "PASS"
+        g["passed"] = True
+    payload["overall_status"] = "pass"
+    # Append a superseding mutated line (mutable log rewrite).
+    with store_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+    mutated = GateResultStore(root).get(gate.gate_run_id)
+    assert mutated is not None
+    assert mutated.overall_status == "pass"
+    assert not [g for g in mutated.gates if g.outcome != "PASS"]
+
+    # Sealed scorecard still says fail; detail must fail closed (not empty failures).
+    stored = ScorecardResultStore(root).get(sid)
+    assert stored is not None
+    assert stored.global_profile["gates"]["overall_status"] == "fail"
+    with pytest.raises(Exception, match="gate_evidence_content_hash|mismatch|untrusted"):
+        svc.get_detail(sid)
+    with pytest.raises(Exception, match="gate_evidence_content_hash|mismatch|untrusted"):
+        svc.get(sid)
+
+
+def test_detail_invalidated_gate_fail_closed(tmp_path: Path) -> None:
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    neg_a = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_a", net_pnl="-10"
+    )
+    neg_b = te._clone_run_with_net_pnl(
+        root, run_id, new_run_id="run_fold_neg_b", net_pnl="-20"
+    )
+    robustness_id = te._save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        fold_run_ids=[neg_a, neg_b, run_id],
+    )
+    gate = GateEvaluator(root, repo_root=te._evaluation_image_root(root)).evaluate(
+        run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
+    )
+    svc = ScorecardService(root, repo_root=te._evaluation_image_root(root))
+    created = svc.evaluate(
+        {
+            "run_id": run_id,
+            "policy_version": "1.0",
+            "gate_run_id": gate.gate_run_id,
+            "robustness_run_ids": [robustness_id],
+        }
+    )
+    GateResultStore(root).invalidate(
+        gate.gate_run_id, reason="fixture", actor="test"
+    )
+    with pytest.raises(Exception, match="not active|status=invalidated|untrusted"):
+        svc.get_detail(created["scorecard_id"])
 
 
 def test_detail_service_and_summary_unchanged(tmp_path: Path) -> None:

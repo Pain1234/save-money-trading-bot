@@ -82,9 +82,10 @@ not recompute backtests or invent metrics.
 |-------|----------|
 | `regime_rows[]` | Per `regime_metrics.regimes[]` cell: quality, confidence (scorecard-overall scope), behaviour join, trades, net_pnl, max_drawdown, costs, benchmark_delta |
 | `transition_risk` | From sealed `behavior_profile.transition_risk` (else `NOT_AVAILABLE`) |
-| `cost_stress` | From pinned `robustness_run_ids` with `test_type=cost_stress`; else `NOT_AVAILABLE` |
-| `evidence_inputs` | Bound run/gate/robustness/policy/dataset pins + promotion flags |
-| `gate_failures` | Non-PASS gates from bound `gate_run_id`; empty gate → `no_bound_gate_run` |
+| `classifier_transitions` | Sealed `regime_labels.json` transitions + period_labels + calendar_gaps + day_events (IDs / period borders / `as_of` time refs) |
+| `cost_stress` | `OK` only with sealed base + `combined_elevated` `net_pnl` boundary; else `NOT_AVAILABLE` (no null-verdict OK) |
+| `evidence_inputs` | Bound run/gate/robustness/policy/dataset pins + `gate_evidence_content_hash` + promotion flags |
+| `gate_failures` | Non-PASS gates **after** verifying scorecard-pinned `gate_evidence_content_hash`; tamper/invalidation → fail-closed (409), not empty list |
 | `raw_artifact_refs` | Layer file names + checksum keys + robustness/scorecard refs |
 | `missing_data_semantics` | Token `NOT_AVAILABLE` — clients must not coerce to `0` / PASS |
 
@@ -124,18 +125,45 @@ type ScorecardDetail = {
     row_status?: string;
   }>;
   transition_risk: NaMetric<unknown> | { status: "OK"; value: unknown };
-  cost_stress:
+  classifier_transitions:
     | { status: "NOT_AVAILABLE"; value: null; reason: string }
     | {
         status: "OK";
-        robustness_run_id: string;
-        verdict?: unknown;
-        summary?: unknown;
-        combined_elevated_child?: unknown;
-        artifact_path: string;
+        classification_id?: string;
+        transitions: Array<{
+          transition_id?: string;
+          from_period_id?: string;
+          to_period_id?: string;
+          from_trend?: string;
+          to_trend?: string;
+          from_vol?: string;
+          to_vol?: string;
+        }>;
+        period_labels: unknown[];
+        calendar_gaps: unknown[];
+        day_events: Array<{
+          as_of?: string;
+          period_id?: string;
+          event?: string;
+          transition_id?: string | null;
+        }>;
       };
-  evidence_inputs: Record<string, unknown>;
-  gate_failures: Array<Record<string, unknown>>;
+  cost_stress:
+    | { status: "NOT_AVAILABLE"; value: null; reason: string; robustness_run_id?: string }
+    | {
+        status: "OK";
+        robustness_run_id: string;
+        manifest_content_hash: string;
+        artifact_path: string;
+        boundary: {
+          base_net_pnl: string;
+          combined_elevated_net_pnl: string;
+          base_child_id?: string;
+          combined_elevated_child_id?: string;
+        };
+      };
+  evidence_inputs: Record<string, unknown>; // includes gate_evidence_content_hash when bound
+  gate_failures: Array<Record<string, unknown>>; // fail-closed on gate tamper / invalidation
   raw_artifact_refs: Array<Record<string, unknown>>;
   missing_data_semantics: { token: "NOT_AVAILABLE"; rule: string };
   evidence_integrity: { ok: boolean; error: string | null };

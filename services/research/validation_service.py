@@ -28,6 +28,7 @@ from research.gate_evaluator import (
     GateEvaluationError,
     GateResultStore,
     GateRunRecord,
+    gate_evidence_content_hash,
     verify_gate_record_artifact_checksums,
 )
 from research.gate_policy import GatePolicyError, verify_policy_content_hash
@@ -59,7 +60,6 @@ from research.validation_study import (
     StudyStore,
     checksums_digest,
     compute_study_id,
-    content_digest,
 )
 from research.write_service import ResearchWriteError, repo_root_from_env
 
@@ -84,26 +84,7 @@ def _clean_id_list(raw: Any, *, field: str) -> list[str]:
     return out
 
 
-def gate_evidence_content_hash(record: GateRunRecord) -> str:
-    """Hash of sealed gate evidence fields (excludes mutable invalidation status)."""
-    return content_digest(
-        {
-            "gate_run_id": record.gate_run_id,
-            "policy_version": record.policy_version,
-            "policy_content_hash": record.policy_content_hash,
-            "run_code_commit": record.run_code_commit,
-            "evaluation_code_commit": record.evaluation_code_commit,
-            "experiment_id": record.experiment_id,
-            "run_id": record.run_id,
-            "robustness_run_ids": list(record.robustness_run_ids),
-            "dataset_id": record.dataset_id,
-            "dataset_content_hash": record.dataset_content_hash,
-            "artifact_checksums": dict(sorted(record.artifact_checksums.items())),
-            "measurements": dict(sorted(record.measurements.items())),
-            "gates": [g.to_dict() for g in record.gates],
-            "overall_status": record.overall_status,
-        }
-    )
+# gate_evidence_content_hash lives in gate_evaluator (single source; #249/#350).
 
 
 # scorecard_evidence_content_hash lives in scorecard_evaluator (single source).

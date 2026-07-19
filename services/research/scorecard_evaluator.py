@@ -25,6 +25,7 @@ from research.gate_evaluator import (
     GateEvaluator,
     GateResultStore,
     _resolve_evaluation_code_commit,
+    gate_evidence_content_hash,
     verify_gate_record_artifact_checksums,
 )
 from research.gate_policy import GatePolicyError, verify_policy_content_hash
@@ -295,12 +296,20 @@ class ScorecardResultStore:
         return sidecar
 
 
-def _verify_bound_gate(root: Path, gate_run_id: str) -> None:
+def _verify_bound_gate(root: Path, record: ScorecardRecord) -> None:
+    gate_run_id = record.gate_run_id
+    if not gate_run_id:
+        return
     gate = GateResultStore(root).get(gate_run_id)
     if gate is None:
         raise ScorecardEvaluationError(
             f"scorecard gate_run_id not found: {gate_run_id}",
             field_errors={"gate_run_id": "missing"},
+        )
+    if gate.status != "active":
+        raise ScorecardEvaluationError(
+            f"scorecard bound gate is not active (status={gate.status})",
+            field_errors={"gate_run_id": f"status={gate.status}"},
         )
     try:
         verify_policy_content_hash(gate.policy_version, gate.policy_content_hash)
@@ -316,6 +325,29 @@ def _verify_bound_gate(root: Path, gate_run_id: str) -> None:
             f"scorecard bound gate evidence untrusted: {exc}",
             field_errors={"gate_run_id": "checksum mismatch"},
         ) from exc
+
+    expected_hash = str(record.layer_refs.get("gate_evidence_content_hash") or "").strip()
+    if not expected_hash:
+        raise ScorecardEvaluationError(
+            "scorecard missing sealed gate_evidence_content_hash pin",
+            field_errors={"gate_run_id": "gate_evidence_content_hash missing"},
+        )
+    actual_hash = gate_evidence_content_hash(gate)
+    if actual_hash != expected_hash:
+        raise ScorecardEvaluationError(
+            "scorecard gate_evidence_content_hash mismatch — gate outcomes "
+            "tampered or unbound",
+            field_errors={"gate_run_id": "gate_evidence_content_hash mismatch"},
+        )
+
+    sealed_gates = record.global_profile.get("gates")
+    if isinstance(sealed_gates, dict):
+        sealed_overall = sealed_gates.get("overall_status")
+        if sealed_overall is not None and sealed_overall != gate.overall_status:
+            raise ScorecardEvaluationError(
+                "scorecard sealed gate overall_status disagrees with gate store",
+                field_errors={"gate_run_id": "overall_status mismatch"},
+            )
 
 
 def _parameter_area_robustness_id(record: ScorecardRecord) -> str | None:
@@ -560,7 +592,7 @@ def verify_scorecard_record_artifact_checksums(root: Path, record: ScorecardReco
             )
 
     if record.gate_run_id:
-        _verify_bound_gate(root, record.gate_run_id)
+        _verify_bound_gate(root, record)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -769,6 +801,7 @@ class ScorecardEvaluator:
             layer_refs["gate_policy_content_hash"] = gate.policy_content_hash
             layer_refs["gate_integrity_status"] = gate.integrity_status
             layer_refs["gate_overall_status"] = gate.overall_status
+            layer_refs["gate_evidence_content_hash"] = gate_evidence_content_hash(gate)
 
         # Reuse #247/#248 robustness verification (job status, base_run_id, seals).
         robustness_checksums: dict[str, str] = {}

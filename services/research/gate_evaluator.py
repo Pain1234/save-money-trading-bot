@@ -68,6 +68,7 @@ from research.robustness import (
 from research.robustness_jobs import RobustnessJobStore
 from research.run_manifest import RunManifest, load_run_manifest
 from research.runner import resolve_git_commit
+from research.validation_study import content_digest
 from research.write_service import load_dataset_catalog
 
 GATE_RUN_RECORD_SCHEMA_VERSION = "1.1"
@@ -256,6 +257,31 @@ class GateRunRecord:
                 IntegrityCheckResult.from_dict(c) for c in raw.get("integrity_checks", [])
             ),
         )
+
+
+def gate_evidence_content_hash(record: GateRunRecord) -> str:
+    """Hash of sealed gate evidence fields (excludes mutable invalidation status).
+
+    Shared by ValidationStudy pins (#249) and scorecard detail forensics (#350).
+    """
+    return content_digest(
+        {
+            "gate_run_id": record.gate_run_id,
+            "policy_version": record.policy_version,
+            "policy_content_hash": record.policy_content_hash,
+            "run_code_commit": record.run_code_commit,
+            "evaluation_code_commit": record.evaluation_code_commit,
+            "experiment_id": record.experiment_id,
+            "run_id": record.run_id,
+            "robustness_run_ids": list(record.robustness_run_ids),
+            "dataset_id": record.dataset_id,
+            "dataset_content_hash": record.dataset_content_hash,
+            "artifact_checksums": dict(sorted(record.artifact_checksums.items())),
+            "measurements": dict(sorted(record.measurements.items())),
+            "gates": [g.to_dict() for g in record.gates],
+            "overall_status": record.overall_status,
+        }
+    )
 
 
 def quality_scores_permitted(record: GateRunRecord) -> bool:

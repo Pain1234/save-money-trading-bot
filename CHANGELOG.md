@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `regime_metrics` / behaviour / gate / robustness pins into per-regime rows and
   forensic blocks. Summary `GET .../scorecards/{id}` unchanged. Missing evidence
   is `NOT_AVAILABLE` (never coerced to `0`). Docs: `docs/research/SCORECARDS.md`.
+- Gate forensics verify scorecard-pinned `gate_evidence_content_hash` (tamper /
+  invalidated gates fail closed). Classifier `regime_labels` transitions exposed.
+  Cost-stress `OK` only with sealed base + `combined_elevated` net_pnl boundary.
 
 ### Added (P4.9 scorecard acceptance matrix — #293)
 
