@@ -442,17 +442,18 @@ def test_matrix_untrusted_parameter_area_fail_closed(tmp_path: Path) -> None:
     assert exc.value.field_errors.get("parameter_area") == "untrusted"
 
 
-def test_matrix_trusted_parameter_area_pins_into_scorecard(tmp_path: Path) -> None:
-    """Sealed robustness pin + evidence_trusted=true may appear on the scorecard."""
+def test_matrix_forged_trusted_parameter_area_fail_closed(tmp_path: Path) -> None:
+    """Hand-built evidence_trusted=true without sealed PS recompute must fail."""
     from research.parameter_area import write_parameter_area_artifact
 
     root, experiment_id, run_id = te._completed_run(tmp_path)
+    # Walk-forward seal alone is not enough — recompute requires parameter_stability.
     robustness_id = te._save_walk_forward_manifest(
         root,
         base_experiment_id=experiment_id,
         base_run_id=run_id,
         fold_run_ids=[run_id, run_id, run_id],
-        robustness_id="rob_pa_trusted",
+        robustness_id="rob_pa_forged",
     )
     job = __import__(
         "research.robustness_jobs", fromlist=["RobustnessJobStore"]
@@ -462,7 +463,7 @@ def test_matrix_trusted_parameter_area_pins_into_scorecard(tmp_path: Path) -> No
     run_dir = Path(entry.artifact_path)
     artifact = {
         "schema_version": "1.0",
-        "parameter_area_id": "pa_acceptance_trusted",
+        "parameter_area_id": "pa_forged",
         "robustness_id": robustness_id,
         "policy_version": "1.0",
         "policy_content_hash": "c" * 64,
@@ -470,7 +471,7 @@ def test_matrix_trusted_parameter_area_pins_into_scorecard(tmp_path: Path) -> No
         "evidence_trusted": True,
         "trusted_manifest_hash": job.manifest_content_hash,
         "classification": "ISOLATED_PEAK",
-        "classification_reason": "acceptance fixture",
+        "classification_reason": "forged",
         "auto_parameter_selection": False,
         "decision_binding": False,
         "oos_holdout_used": False,
@@ -478,15 +479,209 @@ def test_matrix_trusted_parameter_area_pins_into_scorecard(tmp_path: Path) -> No
     write_parameter_area_artifact(run_dir, artifact)
     _reseal_registry_entry(root, run_id)
 
+    with pytest.raises(ScorecardEvaluationError) as exc:
+        _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
+    assert exc.value.field_errors.get("parameter_area") in {
+        "recompute failed",
+        "policy_content_hash mismatch",
+        "parameter_area_id mismatch",
+    }
+
+
+def _save_parameter_stability_neighborhood(
+    root: Path,
+    *,
+    experiment_id: str,
+    base_run_id: str,
+    robustness_id: str = "rob_pa_ps",
+) -> str:
+    """Seal a minimal parameter_stability neighborhood (frozen + ±1 atr_period)."""
+    import shutil
+
+    from research.artifacts import compute_artifact_checksums
+    from research.robustness import (
+        ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+        RobustnessChildResult,
+        RobustnessManifest,
+        save_robustness_manifest,
+    )
+    from research.robustness_jobs import RobustnessJob, RobustnessJobStore
+
+    registry = ExperimentRegistry(root)
+    base = registry.show(base_run_id, verify=True)
+    base_dir = Path(base.artifact_path)
+    experiment = json.loads((base_dir / "experiment.json").read_text(encoding="utf-8"))
+    frozen = dict(experiment["parameters"])
+    assert "atr_period" in frozen
+    atr = int(frozen["atr_period"])
+    config = {
+        "int_deltas": {"atr_period": [-1, 1]},
+        "decimal_relative_steps": {},
+    }
+
+    def _clone_neighbor(child_id: str, atr_value: int) -> str:
+        new_run_id = f"{base_run_id}_{child_id}"
+        dst = base_dir.parent / new_run_id
+        shutil.copytree(base_dir, dst)
+        exp = json.loads((dst / "experiment.json").read_text(encoding="utf-8"))
+        exp["parameters"] = {**frozen, "atr_period": atr_value}
+        (dst / "experiment.json").write_text(
+            json.dumps(exp, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        checksums = compute_artifact_checksums(dst)
+        (dst / "checksums.json").write_text(
+            json.dumps(checksums, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        registry.register_complete(
+            experiment_id=experiment_id,
+            run_id=new_run_id,
+            attempt_id=f"{new_run_id}_attempt",
+            strategy_version=base.strategy_version,
+            dataset_version=base.dataset_version,
+            cost_model_version=base.cost_model_version,
+            benchmark_ref=base.benchmark_ref,
+            artifact_path=dst,
+            checksums=checksums,
+        )
+        return new_run_id
+
+    n1 = _clone_neighbor("neighbor_01", atr - 1)
+    n2 = _clone_neighbor("neighbor_02", atr + 1)
+    children = (
+        RobustnessChildResult(
+            child_id="frozen",
+            label="baseline",
+            experiment_id=experiment_id,
+            run_id=base_run_id,
+            status="complete",
+        ),
+        RobustnessChildResult(
+            child_id="neighbor_01",
+            label=f"atr_period={atr - 1}",
+            experiment_id=experiment_id,
+            run_id=n1,
+            status="complete",
+        ),
+        RobustnessChildResult(
+            child_id="neighbor_02",
+            label=f"atr_period={atr + 1}",
+            experiment_id=experiment_id,
+            run_id=n2,
+            status="complete",
+        ),
+    )
+    manifest = RobustnessManifest(
+        schema_version=ROBUSTNESS_MANIFEST_SCHEMA_VERSION,
+        robustness_id=robustness_id,
+        test_type="parameter_stability",
+        base_experiment_id=experiment_id,
+        base_run_id=base_run_id,
+        dataset_catalog_id=None,
+        config=config,
+        created_at="2024-01-01T00:00:00.000000Z",
+        children=children,
+        bootstrap_result=None,
+        summary={"n_children": 3, "n_complete": 3, "n_failed": 0},
+    )
+    _path, digest = save_robustness_manifest(root, manifest)
+    RobustnessJobStore(root).save(
+        RobustnessJob(
+            robustness_id=robustness_id,
+            base_experiment_id=experiment_id,
+            base_run_id=base_run_id,
+            test_type="parameter_stability",
+            status="completed",
+            created_at="2024-01-01T00:00:00.000000Z",
+            updated_at="2024-01-01T00:00:00.000000Z",
+            finished_at="2024-01-01T00:00:00.000000Z",
+            config=config,
+            manifest_content_hash=digest,
+        )
+    )
+    return robustness_id
+
+
+def test_matrix_trusted_parameter_area_pins_into_scorecard(tmp_path: Path) -> None:
+    """Real from_robustness artifact + permanent seal on the scorecard record."""
+    from research.parameter_area import (
+        evaluate_parameter_area_from_robustness,
+        write_parameter_area_artifact,
+    )
+    from research.robustness_jobs import RobustnessJobStore
+    from research.scorecard_evaluator import verify_scorecard_record_artifact_checksums
+
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    robustness_id = _save_parameter_stability_neighborhood(
+        root,
+        experiment_id=experiment_id,
+        base_run_id=run_id,
+        robustness_id="rob_pa_trusted",
+    )
+    job = RobustnessJobStore(root).get(robustness_id)
+    assert job is not None and job.manifest_content_hash
+    result = evaluate_parameter_area_from_robustness(
+        root,
+        robustness_id,
+        trusted_manifest_hash=job.manifest_content_hash,
+        registry=ExperimentRegistry(root),
+    )
+    assert result.artifact.get("evidence_trusted") is True
+
+    entry = ExperimentRegistry(root).show(run_id, verify=True)
+    run_dir = Path(entry.artifact_path)
+    write_parameter_area_artifact(run_dir, result.artifact)
+    _reseal_registry_entry(root, run_id)
+
     scorecard = _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
     pa = scorecard.global_profile["parameter_area"]
-    assert pa.get("classification") == "ISOLATED_PEAK"
     assert pa.get("evidence_trusted") is True
-    assert scorecard.layer_refs.get("parameter_area_id") == "pa_acceptance_trusted"
-    assert scorecard.layer_refs.get("parameter_area_trusted_manifest_hash") == (
-        job.manifest_content_hash
-    )
+    assert pa.get("parameter_area_id") == result.parameter_area_id
+    assert scorecard.layer_refs.get("parameter_area_id") == result.parameter_area_id
+    seal_key = f"robustness/{robustness_id}/manifest.json"
+    assert scorecard.artifact_checksums.get(seal_key) == job.manifest_content_hash
     assert scorecard.auto_promotion is False
+    # Permanent seal: reverify still ok while manifest exists.
+    verify_scorecard_record_artifact_checksums(root, scorecard)
+
+
+def test_matrix_parameter_area_manifest_missing_breaks_reverify(tmp_path: Path) -> None:
+    """Deleting the sealed PA robustness manifest must fail scorecard reverify."""
+    import shutil
+
+    from research.parameter_area import (
+        evaluate_parameter_area_from_robustness,
+        write_parameter_area_artifact,
+    )
+    from research.robustness import robustness_artifact_dir
+    from research.robustness_jobs import RobustnessJobStore
+    from research.scorecard_evaluator import verify_scorecard_record_artifact_checksums
+
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    robustness_id = _save_parameter_stability_neighborhood(
+        root,
+        experiment_id=experiment_id,
+        base_run_id=run_id,
+        robustness_id="rob_pa_missing",
+    )
+    job = RobustnessJobStore(root).get(robustness_id)
+    assert job is not None and job.manifest_content_hash
+    result = evaluate_parameter_area_from_robustness(
+        root,
+        robustness_id,
+        trusted_manifest_hash=job.manifest_content_hash,
+        registry=ExperimentRegistry(root),
+    )
+    entry = ExperimentRegistry(root).show(run_id, verify=True)
+    write_parameter_area_artifact(Path(entry.artifact_path), result.artifact)
+    _reseal_registry_entry(root, run_id)
+    scorecard = _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
+
+    shutil.rmtree(robustness_artifact_dir(root, robustness_id))
+    with pytest.raises(ScorecardEvaluationError) as exc:
+        verify_scorecard_record_artifact_checksums(root, scorecard)
+    assert "parameter_area" in exc.value.field_errors or "robustness" in str(
+        exc.value
+    ).lower()
 
 
 def test_matrix_invalid_integrity_blocks_decision_use_quality(tmp_path: Path) -> None:

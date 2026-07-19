@@ -28,8 +28,15 @@ from research.gate_evaluator import (
     verify_gate_record_artifact_checksums,
 )
 from research.gate_policy import GatePolicyError, verify_policy_content_hash
+from research.parameter_area import (
+    ParameterAreaError,
+    ParameterAreaPolicyError,
+    evaluate_parameter_area_from_robustness,
+    verify_parameter_area_policy_content_hash,
+)
 from research.registry import ExperimentRegistry, RegistryEntry
 from research.robustness import verify_robustness_manifest_seal
+from research.robustness_jobs import RobustnessJobStore
 from research.run_manifest import load_run_manifest
 from research.scorecard_policy import (
     ScorecardPolicy,
@@ -311,6 +318,147 @@ def _verify_bound_gate(root: Path, gate_run_id: str) -> None:
         ) from exc
 
 
+def _parameter_area_robustness_id(record: ScorecardRecord) -> str | None:
+    raw = record.layer_refs.get("parameter_area_robustness_id")
+    if raw:
+        return str(raw)
+    profile = record.global_profile.get("parameter_area")
+    if isinstance(profile, dict) and profile.get("evidence_trusted") is True:
+        rid = profile.get("robustness_id")
+        return str(rid) if rid else None
+    return None
+
+
+def _verify_parameter_area_job_and_seal(
+    root: Path,
+    *,
+    run_id: str,
+    robustness_id: str,
+    trusted_hash: str,
+) -> None:
+    job = RobustnessJobStore(root).get(robustness_id)
+    if job is None:
+        raise ScorecardEvaluationError(
+            f"parameter_area robustness job missing: {robustness_id}",
+            field_errors={"parameter_area": "job missing"},
+        )
+    if job.status != "completed":
+        raise ScorecardEvaluationError(
+            f"parameter_area robustness job not completed "
+            f"(status={job.status})",
+            field_errors={"parameter_area": f"status={job.status}"},
+        )
+    if job.base_run_id != run_id:
+        raise ScorecardEvaluationError(
+            f"parameter_area robustness base_run_id={job.base_run_id!r} "
+            f"does not match scorecard run_id={run_id!r}",
+            field_errors={"parameter_area": "base_run_id mismatch"},
+        )
+    if (job.manifest_content_hash or "").strip() != trusted_hash:
+        raise ScorecardEvaluationError(
+            "parameter_area trusted_manifest_hash does not match "
+            "completed job.manifest_content_hash",
+            field_errors={"parameter_area": "job seal mismatch"},
+        )
+    try:
+        verify_robustness_manifest_seal(
+            root.resolve(), robustness_id, expected_hash=trusted_hash
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise ScorecardEvaluationError(
+            f"parameter_area trusted_manifest_hash seal failed: {exc}",
+            field_errors={"parameter_area": "manifest seal mismatch"},
+        ) from exc
+
+
+def bind_trusted_parameter_area(
+    root: Path,
+    *,
+    run_id: str,
+    parameter_area: Mapping[str, Any],
+    registry: ExperimentRegistry | None = None,
+) -> dict[str, Any]:
+    """Fail-closed bind of sealed #290 parameter-area evidence.
+
+    Rejects freely constructed artifacts: requires completed robustness job,
+    policy content hash, sealed manifest, and a recompute via
+    :func:`evaluate_parameter_area_from_robustness` whose ``parameter_area_id``
+    matches the on-disk artifact.
+    """
+    if parameter_area.get("evidence_trusted") is not True:
+        raise ScorecardEvaluationError(
+            "parameter_area.json is not trusted evidence "
+            "(evidence_trusted must be true; produce via "
+            "evaluate_parameter_area_from_robustness with a sealed "
+            "manifest pin)",
+            field_errors={"parameter_area": "untrusted"},
+        )
+    trusted_hash = str(parameter_area.get("trusted_manifest_hash") or "").strip()
+    robustness_id = str(parameter_area.get("robustness_id") or "").strip()
+    if not trusted_hash:
+        raise ScorecardEvaluationError(
+            "parameter_area.json missing trusted_manifest_hash pin",
+            field_errors={"parameter_area": "missing trusted_manifest_hash"},
+        )
+    if not robustness_id:
+        raise ScorecardEvaluationError(
+            "parameter_area.json missing robustness_id",
+            field_errors={"parameter_area": "missing robustness_id"},
+        )
+
+    _verify_parameter_area_job_and_seal(
+        root,
+        run_id=run_id,
+        robustness_id=robustness_id,
+        trusted_hash=trusted_hash,
+    )
+
+    policy_version = str(parameter_area.get("policy_version") or "").strip()
+    policy_hash = str(parameter_area.get("policy_content_hash") or "").strip()
+    if not policy_version or not policy_hash:
+        raise ScorecardEvaluationError(
+            "parameter_area.json missing policy_version / policy_content_hash",
+            field_errors={"parameter_area": "missing policy pin"},
+        )
+    try:
+        verify_parameter_area_policy_content_hash(policy_version, policy_hash)
+    except ParameterAreaPolicyError as exc:
+        raise ScorecardEvaluationError(
+            f"parameter_area policy untrusted: {exc}",
+            field_errors={"parameter_area": "policy_content_hash mismatch"},
+        ) from exc
+
+    reg = registry or ExperimentRegistry(root.resolve())
+    try:
+        recomputed = evaluate_parameter_area_from_robustness(
+            root.resolve(),
+            robustness_id,
+            trusted_manifest_hash=trusted_hash,
+            registry=reg,
+            policy_version=policy_version,
+        )
+    except ParameterAreaError as exc:
+        raise ScorecardEvaluationError(
+            f"parameter_area recompute from sealed robustness failed: {exc}",
+            field_errors={"parameter_area": "recompute failed"},
+        ) from exc
+
+    stored_id = str(parameter_area.get("parameter_area_id") or "").strip()
+    if stored_id != recomputed.parameter_area_id:
+        raise ScorecardEvaluationError(
+            "parameter_area_id does not match sealed robustness recompute "
+            f"(stored={stored_id!r} recomputed={recomputed.parameter_area_id!r})",
+            field_errors={"parameter_area": "parameter_area_id mismatch"},
+        )
+    if str(parameter_area.get("classification") or "") != recomputed.classification:
+        raise ScorecardEvaluationError(
+            "parameter_area classification does not match sealed recompute",
+            field_errors={"parameter_area": "classification mismatch"},
+        )
+    # Prefer the recomputed artifact (canonical sealed evidence).
+    return dict(recomputed.artifact)
+
+
 def verify_scorecard_record_artifact_checksums(root: Path, record: ScorecardRecord) -> None:
     """Re-verify seals bound on the scorecard record (run / robustness / gate / self-hash)."""
     if not (record.evidence_content_hash or "").strip():
@@ -383,6 +531,32 @@ def verify_scorecard_record_artifact_checksums(root: Path, record: ScorecardReco
             raise ScorecardEvaluationError(
                 f"scorecard record missing checksum for robustness {robustness_id}",
                 field_errors={"artifact_checksums": "robustness checksum missing"},
+            )
+
+    pa_rob = _parameter_area_robustness_id(record)
+    if pa_rob:
+        key = f"robustness/{pa_rob}/manifest.json"
+        digest = record.artifact_checksums.get(key)
+        if not digest:
+            raise ScorecardEvaluationError(
+                f"scorecard record missing sealed checksum for parameter_area "
+                f"robustness {pa_rob}",
+                field_errors={"parameter_area": "robustness checksum missing"},
+            )
+        _verify_parameter_area_job_and_seal(
+            root,
+            run_id=record.run_id,
+            robustness_id=pa_rob,
+            trusted_hash=str(digest),
+        )
+        profile = record.global_profile.get("parameter_area")
+        if isinstance(profile, dict) and profile.get("evidence_trusted") is True:
+            # Recompute still matches — catches free construction + stale files.
+            bind_trusted_parameter_area(
+                root,
+                run_id=record.run_id,
+                parameter_area=profile,
+                registry=registry,
             )
 
     if record.gate_run_id:
@@ -523,43 +697,24 @@ class ScorecardEvaluator:
         )
         layer_refs["confidence_overall_label"] = confidence_payload.get("overall_label")
 
-        # Parameter area (#290) — optional / NOT_AVAILABLE; trusted sealed only.
+        # Parameter area (#290) — optional / NOT_AVAILABLE; full sealed recompute.
         parameter_area: dict[str, Any]
+        parameter_area_seal: dict[str, str] = {}
         if (artifact_path / "parameter_area.json").is_file():
             _layer_file_digest(artifact_path, "parameter_area.json", checksums)
-            parameter_area = _load_json(artifact_path / "parameter_area.json")
-            if parameter_area.get("evidence_trusted") is not True:
-                raise ScorecardEvaluationError(
-                    "parameter_area.json is not trusted evidence "
-                    "(evidence_trusted must be true; produce via "
-                    "evaluate_parameter_area_from_robustness with a sealed "
-                    "manifest pin)",
-                    field_errors={"parameter_area": "untrusted"},
-                )
-            trusted_hash = str(parameter_area.get("trusted_manifest_hash") or "").strip()
-            robustness_id = str(parameter_area.get("robustness_id") or "").strip()
-            if not trusted_hash:
-                raise ScorecardEvaluationError(
-                    "parameter_area.json missing trusted_manifest_hash pin",
-                    field_errors={"parameter_area": "missing trusted_manifest_hash"},
-                )
-            if not robustness_id:
-                raise ScorecardEvaluationError(
-                    "parameter_area.json missing robustness_id",
-                    field_errors={"parameter_area": "missing robustness_id"},
-                )
-            try:
-                verify_robustness_manifest_seal(
-                    self.root, robustness_id, expected_hash=trusted_hash
-                )
-            except (ValueError, FileNotFoundError) as exc:
-                raise ScorecardEvaluationError(
-                    f"parameter_area trusted_manifest_hash seal failed: {exc}",
-                    field_errors={"parameter_area": "manifest seal mismatch"},
-                ) from exc
+            raw_pa = _load_json(artifact_path / "parameter_area.json")
+            parameter_area = bind_trusted_parameter_area(
+                self.root,
+                run_id=run_id,
+                parameter_area=raw_pa,
+                registry=self.registry,
+            )
+            pa_rob = str(parameter_area["robustness_id"])
+            pa_hash = str(parameter_area["trusted_manifest_hash"])
+            parameter_area_seal[f"robustness/{pa_rob}/manifest.json"] = pa_hash
             layer_refs["parameter_area_id"] = parameter_area.get("parameter_area_id")
-            layer_refs["parameter_area_robustness_id"] = robustness_id
-            layer_refs["parameter_area_trusted_manifest_hash"] = trusted_hash
+            layer_refs["parameter_area_robustness_id"] = pa_rob
+            layer_refs["parameter_area_trusted_manifest_hash"] = pa_hash
         else:
             parameter_area = {
                 "classification": None,
@@ -695,6 +850,7 @@ class ScorecardEvaluator:
 
         sealed_checksums = dict(checksums)
         sealed_checksums.update(robustness_checksums)
+        sealed_checksums.update(parameter_area_seal)
 
         record = ScorecardRecord(
             schema_version=SCORECARD_RECORD_SCHEMA_VERSION,

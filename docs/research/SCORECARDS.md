@@ -54,7 +54,7 @@ Optional `robustness_run_ids` are verified via the same #247 path as gates
 | `regime_metrics.json` | required |
 | `behavior_profile.json` | required |
 | `confidence_profile.json` | optional — if missing, derived at evaluate time (not written back) |
-| `parameter_area.json` | optional — if missing → `NOT_AVAILABLE`; if present must have `evidence_trusted=true` + sealed `trusted_manifest_hash` or evaluate fail-closed |
+| `parameter_area.json` | optional — if missing → `NOT_AVAILABLE`; if present must pass full sealed bind (`evidence_trusted`, completed #247 job + `base_run_id`, policy hash, `evaluate_parameter_area_from_robustness` recompute of `parameter_area_id` / classification). Manifest seal is persisted under `artifact_checksums["robustness/{id}/manifest.json"]` and re-checked on verify |
 
 ## API
 
