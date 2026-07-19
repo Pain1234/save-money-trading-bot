@@ -1,7 +1,7 @@
 # P5 Pre-OOS Gate Checklist (#204 blocker)
 
-**Status:** READY FOR HUMAN PRE-OOS APPROVAL  
-**Holdout opened?** `NO` / `SEALED`  
+**Status:** READY FOR HUMAN PRE-OOS APPROVAL
+**Holdout opened?** `NO` / `SEALED`
 **Do not run #204** until every required box below is checked **and** a human
 comments `PRE-OOS APPROVED` on [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204)
 with the public-core SHA + UTC.
