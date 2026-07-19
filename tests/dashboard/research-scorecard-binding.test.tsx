@@ -560,6 +560,7 @@ describe("ScorecardBindSection", () => {
             raw_artifact_refs: [
               {
                 name: "regime_metrics.json",
+                relative_path: "regime_metrics.json",
                 checksum_sha256: "abc",
                 present: true,
                 status: "OK",
@@ -584,6 +585,8 @@ describe("ScorecardBindSection", () => {
     expect(html).toContain("min_trades");
     expect(html).toContain('data-testid="raw-artifact-refs-table"');
     expect(html).toContain("regime_metrics.json");
+    expect(html).toContain('data-testid="raw-artifact-path-regime_metrics.json"');
+    expect(html).toContain('data-testid="raw-artifact-download-note"');
     expect(html).toContain('data-testid="analytics-unavailable-mfe-mae"');
     expect(html).not.toMatch(/Promote|live.?trading/i);
   });

@@ -146,7 +146,7 @@ export function ResearchForensicsSection({
       <AnalyticsPanel
         id="raw-artifact-refs"
         title="Raw Metric / Artifact Refs"
-        subtitle="Layer-Dateien + Checksums — keine erfundenen Regime-Zellen"
+        subtitle="Layer-Dateien + relative_path + Checksums — Inhalt-Download folgt sicherem Artefakt-GET"
         unavailable={refs.length === 0}
         unavailableReason={
           detailError
@@ -162,6 +162,7 @@ export function ResearchForensicsSection({
             <thead className="text-text-muted">
               <tr>
                 <th className="px-2 py-1 font-medium">Name</th>
+                <th className="px-2 py-1 font-medium">Path</th>
                 <th className="px-2 py-1 font-medium">Checksum</th>
                 <th className="px-2 py-1 font-medium">Status</th>
               </tr>
@@ -170,6 +171,13 @@ export function ResearchForensicsSection({
               {refs.map((ref) => (
                 <tr key={ref.name} className="border-t border-border-subtle">
                   <td className="px-2 py-1 font-mono text-mint">{ref.name}</td>
+                  <td
+                    className="max-w-[16rem] truncate px-2 py-1 font-mono text-[10px]"
+                    title={ref.relative_path ?? undefined}
+                    data-testid={`raw-artifact-path-${ref.name}`}
+                  >
+                    {displayValue(ref.relative_path)}
+                  </td>
                   <td className="max-w-[14rem] truncate px-2 py-1 font-mono">
                     {displayValue(ref.checksum_sha256)}
                   </td>
@@ -182,6 +190,11 @@ export function ResearchForensicsSection({
             </tbody>
           </table>
         </div>
+        <p className="text-[10px] text-text-muted" data-testid="raw-artifact-download-note">
+          relative_path ist Inventar aus Scorecard-Detail. Inhalt / Download bleibt{" "}
+          {UNAVAILABLE} bis ein sicherer read-only Artefakt-Endpunkt existiert
+          (Folge-Issue #357 — kein Fake-Link).
+        </p>
       </AnalyticsPanel>
 
       <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">

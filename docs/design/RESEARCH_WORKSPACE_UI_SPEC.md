@@ -241,12 +241,21 @@ UI-05 (#302): `ResearchForensicsSection` + Scorecard **detail** binding
 - Regime table rows from `regime_rows[]`
 - Cost-stress sealed boundary when `cost_stress.status=OK`
 - Classifier transitions + transition_risk (MFE/MAE only when present and ≠ `NOT_AVAILABLE`)
-- Evidence Inputs, Gate Failures, Raw Artifact Refs
+- Evidence Inputs, Gate Failures, Raw Artifact Refs **inventory** (name,
+  `relative_path`, checksum, status)
 - Audit metadata / data lineage from evidence pins
 - Folds from Walk-Forward robustness manifests (Validation)
 - Gate history from study `gates[]` (per-gate expansion)
 - Experiment cost metrics (`fees` / `slippage_costs` / `funding_costs`)
 - Freeze Specification stays `Nicht verfügbar` until Spec-Freeze API exists
+
+**Not claimed as full #292 close:** clickable Raw Metric Refs **into artifact
+contents** need a fail-closed read-only artifact GET (path traversal safe,
+auth-bound) — tracked as
+[#357](https://github.com/Pain1234/save-money-trading-bot/issues/357).
+Until that lands, `relative_path` is shown as sealed inventory only — no fake
+download href. Keep [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292)
+open for that residual.
 
 Missing / fail-closed detail → honest unavailable panels. Trades remain on
 `ResearchTradeChart` (existing chart-data). No promotion / live-trading affordances.

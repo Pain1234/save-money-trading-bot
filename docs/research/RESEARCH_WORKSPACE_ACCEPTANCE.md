@@ -187,10 +187,14 @@ The checkboxes below remain the **human browser** residual and close under
 - [ ] Strategy detail soft-binds via last experiment → run → scorecard.
 - [ ] Missing / `NOT_AVAILABLE` fields render as **Nicht verfügbar**.
 - [ ] `ISOLATED_PEAK` is warning-toned in profile strip **and** Parameter panel.
-- [ ] Regime table stays unavailable until per-regime rows exist on GET
-      (document reason in UI).
-- [ ] Rest scope accepted: Evidence Inputs / Gate Failures / Raw Metric Refs
-      not yet rendered (documented in UI spec).
+- [ ] Regime table binds `regime_rows[]` from `GET …/scorecards/{id}/detail`
+      (#350 / #302); empty → Nicht verfügbar with reason.
+- [ ] Partial rest via #302: Evidence Inputs / Gate Failures / Raw Artifact
+      Refs **inventory** (incl. `relative_path`) rendered from detail.
+- [ ] **Residual (keeps #292 open):** clickable Raw Metric Refs **into**
+      artifact contents require a fail-closed read-only artifact GET —
+      [#357](https://github.com/Pain1234/save-money-trading-bot/issues/357);
+      no fake download href until that endpoint exists.
 
 ### H. Research route densify (#301)
 
