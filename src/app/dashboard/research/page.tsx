@@ -9,6 +9,10 @@ import {
   sanitizeEquitySeries,
 } from "@/lib/research/analytics-series";
 import {
+  loadScorecardForStudy,
+  type ScorecardBindState,
+} from "@/lib/research/scorecard-binding";
+import {
   fetchGateRuns,
   fetchResearchExperiment,
   fetchResearchOverview,
@@ -31,9 +35,16 @@ export default async function ResearchOverviewPage() {
 
     let pinnedEquity: ResearchSeriesPoint[] | null = null;
     let pinnedDrawdown: ResearchSeriesPoint[] | null = null;
+    let scorecardBind: ScorecardBindState | null = null;
 
     const focus = selectEvidenceStudy(studies.items);
     const evidence = focus ? toEvidenceAnchor(focus) : null;
+
+    if (focus) {
+      // Study → primary run → sealed pin → exact scorecard_id/hash/run_id.
+      // Never search scorecards by experiment/strategy "latest".
+      scorecardBind = await loadScorecardForStudy(focus);
+    }
 
     if (evidence?.experimentId && evidence.runId) {
       try {
@@ -56,6 +67,7 @@ export default async function ResearchOverviewPage() {
         gateRuns={gateRuns.items}
         studies={studies.items}
         robustnessJobs={robustnessJobs.items}
+        scorecardBind={scorecardBind}
         pinnedEquity={pinnedEquity}
         pinnedDrawdown={pinnedDrawdown}
       />

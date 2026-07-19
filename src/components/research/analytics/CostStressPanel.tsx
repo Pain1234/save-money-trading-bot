@@ -8,6 +8,8 @@ interface CostStressPanelProps {
   /** Bound from GET …/scorecards/{id}/detail (#350/#302). */
   bound?: CostStressView | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 /**
@@ -18,6 +20,8 @@ export function CostStressPanel({
   jobInventoryDetail,
   bound = null,
   reason = "Cost-Stress-Boundary Nicht verfügbar",
+  compactEmpty = false,
+  detailHref = null,
 }: CostStressPanelProps) {
   if (bound?.available) {
     return (
@@ -77,6 +81,8 @@ export function CostStressPanel({
       subtitle="Scorecard-Boundary — kein erfundenes Stress-Niveau"
       unavailable
       unavailableReason={unavailableReason}
+      compactEmpty={compactEmpty}
+      detailHref={detailHref}
     />
   );
 }

@@ -8,6 +8,8 @@ interface TransitionMatrixPanelProps {
   transitions?: Array<{ id: string; from: string; to: string }> | null;
   transitionsReason?: string | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 /**
@@ -19,6 +21,8 @@ export function TransitionMatrixPanel({
   transitions = null,
   transitionsReason = null,
   reason = "Transition-Matrix Nicht verfügbar — Scorecard Detail-API",
+  compactEmpty = false,
+  detailHref = null,
 }: TransitionMatrixPanelProps) {
   const hasValue =
     riskLabel != null &&
@@ -34,6 +38,8 @@ export function TransitionMatrixPanel({
         subtitle="Regime-Übergänge — keine Look-ahead-Labels als Live-Signal"
         unavailable
         unavailableReason={transitionsReason ?? reason}
+        compactEmpty={compactEmpty}
+        detailHref={detailHref}
       />
     );
   }

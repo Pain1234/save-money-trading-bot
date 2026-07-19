@@ -7,6 +7,8 @@ interface EvidenceSummaryPanelProps {
   evidence?: ExecutiveEvidenceAnchor | null;
   confidenceLabel?: string | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 /**
@@ -17,6 +19,8 @@ export function EvidenceSummaryPanel({
   evidence,
   confidenceLabel = null,
   reason = "Evidence-Confidence-Profil Nicht verfügbar — Scorecard-API (#291/#288)",
+  compactEmpty = false,
+  detailHref = null,
 }: EvidenceSummaryPanelProps) {
   if (!evidence && confidenceLabel == null) {
     return (
@@ -25,6 +29,8 @@ export function EvidenceSummaryPanel({
         title="Evidence Summary"
         unavailable
         unavailableReason={reason}
+        compactEmpty={compactEmpty}
+        detailHref={detailHref}
       />
     );
   }
