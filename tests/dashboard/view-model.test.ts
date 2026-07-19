@@ -53,8 +53,8 @@ function baseSummary(
 
 describe("formatters", () => {
   it("formats decimal strings without inventing values", () => {
-    expect(formatDecimalDisplay("1234.5")).toBe("1.234,5");
-    expect(formatMoneyDisplay("10.00")).toBe("$10,00");
+    expect(formatDecimalDisplay("1234.5")).toBe("1,234.5");
+    expect(formatMoneyDisplay("10.00")).toBe("$10.00");
     expect(formatMoneyDisplay(null)).toBe("—");
     expect(parseDecimalForChart("not-a-number")).toBeNull();
     expect(parseDecimalForChart("12.5")).toBe(12.5);
@@ -77,7 +77,7 @@ describe("buildSummaryViewModel", () => {
   it("maps summary into KPI view models", () => {
     const vm = buildSummaryViewModel(baseSummary());
     expect(vm.kpis.find((k) => k.id === "balance")?.label).toBe("Cash");
-    expect(vm.kpis.find((k) => k.id === "balance")?.value).toContain("100.000");
+    expect(vm.kpis.find((k) => k.id === "balance")?.value).toBe("$100,000.00");
     expect(vm.kpis.find((k) => k.id === "pnl")?.label).toBe("Realized PnL");
     expect(vm.kpis.find((k) => k.id === "pnl")?.accent).toBe("mint");
     expect(vm.kpis.find((k) => k.id === "positions")?.value).toBe("2");
@@ -228,5 +228,23 @@ describe("equity chart", () => {
 
   it("returns empty list for empty history", () => {
     expect(buildEquityChartPoints([])).toEqual([]);
+  });
+
+  it("parses scientific equity strings for the Overview/Equity chart path", () => {
+    const points = buildEquityChartPoints([
+      {
+        evaluation_time: "2026-07-01T00:00:00Z",
+        equity: "0E-18",
+        cash: "0",
+      },
+      {
+        evaluation_time: "2026-07-02T00:00:00Z",
+        equity: "100000.000000",
+        cash: "100000",
+      },
+    ]);
+    expect(points).toHaveLength(2);
+    expect(points[0]?.equity).toBe(0);
+    expect(points[1]?.equity).toBe(100000);
   });
 });
