@@ -18,11 +18,15 @@ import type { ResearchSeriesPoint } from "@/lib/research-api/client";
 interface UnderwaterDrawdownChartProps {
   drawdown?: ResearchSeriesPoint[] | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 export function UnderwaterDrawdownChart({
   drawdown,
   reason = "Drawdown-Serie Nicht verfügbar",
+  compactEmpty = false,
+  detailHref = null,
 }: UnderwaterDrawdownChartProps) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -38,6 +42,8 @@ export function UnderwaterDrawdownChart({
         title="Underwater Drawdown"
         unavailable
         unavailableReason={reason}
+        compactEmpty={compactEmpty}
+        detailHref={detailHref}
       />
     );
   }

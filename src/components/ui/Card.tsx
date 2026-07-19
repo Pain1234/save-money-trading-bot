@@ -7,6 +7,7 @@ interface CardProps {
   padding?: "none" | "xs" | "sm" | "md" | "lg";
   id?: string;
   "data-testid"?: string;
+  "data-compact-empty"?: string;
 }
 
 const paddingMap = {
@@ -23,11 +24,17 @@ export function Card({
   padding = "md",
   id,
   "data-testid": dataTestId,
-}: CardProps) {
+  "data-compact-empty": dataCompactEmpty,
+  ...rest
+}: CardProps & Record<string, unknown>) {
   return (
     <div
+      {...rest}
       {...(id ? { id } : {})}
       {...(dataTestId ? { "data-testid": dataTestId } : {})}
+      {...(dataCompactEmpty
+        ? { "data-compact-empty": dataCompactEmpty }
+        : {})}
       className={cn("card-surface", paddingMap[padding], className)}
     >
       {children}

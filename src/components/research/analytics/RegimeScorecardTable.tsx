@@ -23,6 +23,8 @@ export interface RegimeScorecardRow {
 interface RegimeScorecardTableProps {
   rows?: RegimeScorecardRow[] | null;
   reason?: string;
+  compactEmpty?: boolean;
+  detailHref?: string | null;
 }
 
 const COLUMNS = [
@@ -44,6 +46,8 @@ const COLUMNS = [
 export function RegimeScorecardTable({
   rows,
   reason = "Regime-Zeilen nicht in Scorecard Layer-5 Payload",
+  compactEmpty = false,
+  detailHref = null,
 }: RegimeScorecardTableProps) {
   const hasRows = Array.isArray(rows) && rows.length > 0;
 
@@ -54,6 +58,8 @@ export function RegimeScorecardTable({
       subtitle="Pro Regime — raw metrics only, keine erfundenen Scores"
       unavailable={!hasRows}
       unavailableReason={reason}
+      compactEmpty={compactEmpty && !hasRows}
+      detailHref={!hasRows ? detailHref : null}
     >
       {hasRows ? (
         <div className="overflow-x-auto">

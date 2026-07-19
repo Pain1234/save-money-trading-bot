@@ -9,6 +9,16 @@ import {
   filterJobsForEvidence,
 } from "@/lib/research/executive-summary";
 import {
+  mapCostStressFromDetail,
+  mapRegimeRowsFromDetail,
+  mapTransitionFromDetail,
+} from "@/lib/research/scorecard-detail-binding";
+import {
+  buildScorecardProfileView,
+  SCORECARD_PIN_STATUS,
+  type ScorecardBindState,
+} from "@/lib/research/scorecard-binding";
+import {
   displayValue,
   type GateRunRecord,
   type ResearchExperimentSummary,
@@ -30,11 +40,13 @@ function recentRows(items: ResearchExperimentSummary[]) {
   }));
 }
 
-interface ResearchOverviewViewProps {
+export interface ResearchOverviewViewProps {
   overview: ResearchOverview;
   gateRuns: GateRunRecord[];
   studies: ValidationStudyDetail[];
   robustnessJobs: RobustnessJobSummary[];
+  /** Sealed pin bind for evidence study — never registry latest (#358). */
+  scorecardBind?: ScorecardBindState | null;
   /** Equity for evidence-pinned experiment — optional existing API series. */
   pinnedEquity?: ResearchSeriesPoint[] | null;
   pinnedDrawdown?: ResearchSeriesPoint[] | null;
@@ -45,6 +57,7 @@ export function ResearchOverviewView({
   gateRuns,
   studies,
   robustnessJobs,
+  scorecardBind = null,
   pinnedEquity = null,
   pinnedDrawdown = null,
 }: ResearchOverviewViewProps) {
@@ -53,6 +66,7 @@ export function ResearchOverviewView({
     gateRuns,
     studies,
     robustnessJobs,
+    scorecardBind,
   });
 
   const costJobs = executive.evidence
@@ -66,6 +80,28 @@ export function ResearchOverviewView({
     costJobs.length > 0
       ? `${costJobs.length} gepinnte cost_stress-Jobs`
       : null;
+
+  const pinReady =
+    scorecardBind?.kind === "ready" &&
+    executive.pin.status === SCORECARD_PIN_STATUS.READY;
+
+  const profile =
+    pinReady && scorecardBind?.kind === "ready"
+      ? buildScorecardProfileView(scorecardBind.scorecard)
+      : null;
+  const detail =
+    pinReady && scorecardBind?.kind === "ready" ? scorecardBind.detail : null;
+  const regimeRows = mapRegimeRowsFromDetail(detail);
+  const costStressBound = detail
+    ? mapCostStressFromDetail(detail.cost_stress)
+    : null;
+  const transition = mapTransitionFromDetail(detail);
+  const regimeReason =
+    pinReady && scorecardBind?.kind === "ready" && scorecardBind.detailError
+      ? `Scorecard-Detail-Fehler — Regime-Zeilen Nicht verfügbar (${scorecardBind.detailError})`
+      : pinReady && regimeRows.length === 0
+        ? "Keine regime_rows im Scorecard-Detail (sealed regime_metrics fehlen oder leer)"
+        : undefined;
 
   const empty = overview.experiment_count === 0;
 
@@ -111,17 +147,18 @@ export function ResearchOverviewView({
   return (
     <div
       data-testid={empty ? "research-overview-empty" : "research-overview-ready"}
+      data-pin-status={executive.pin.status}
       className="space-y-3"
     >
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-[18px] font-semibold tracking-tight text-text-primary">
             Research Overview
           </h1>
           <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-text-secondary">
-            Gate-first Evidence-Konsole. Registry-Zähler und Listen sind
-            sekundär — zuerst Integrity, Critical Gates und menschliche
-            Decision. Scorecard-Felder ohne API bleiben „Nicht verfügbar“.
+            Gate-first Evidence-Konsole. Scorecard-Felder nur über Validation
+            Study → Primary Run → sealed Pin (scorecard_id + evidence_content_hash).
+            Kein Latest-Fallback, Keine Auto-Promotion.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -154,12 +191,27 @@ export function ResearchOverviewView({
         equity={pinnedEquity}
         drawdown={pinnedDrawdown}
         costStressInventoryDetail={costInventory}
+        costStressBound={costStressBound}
+        confidenceLabel={profile?.confidenceLabel ?? null}
+        parameterClassification={profile?.parameterClassification ?? null}
+        parameterDetail={profile?.parameterDetail ?? null}
+        transitionRiskLabel={
+          transition.riskLabel ?? profile?.transitionRiskLabel ?? null
+        }
+        transitionDetail={
+          transition.detail ?? profile?.transitionDetail ?? null
+        }
+        classifierTransitions={transition.transitions}
+        classifierTransitionsReason={transition.transitionsReason}
+        regimeRows={regimeRows}
+        regimeTableReason={regimeReason}
+        pin={executive.pin}
       />
 
       {empty ? (
-        <p className="text-[12px] text-text-muted">
+        <p className="text-[12px] text-text-secondary">
           Keine Experimente in der Registry. Strategy Lab starten — fehlende
-          Scorecard-Felder bleiben trotzdem sichtbar als „Nicht verfügbar“.
+          Scorecard-Felder bleiben sichtbar als „Nicht verfügbar“.
         </p>
       ) : (
         <>
@@ -171,17 +223,17 @@ export function ResearchOverviewView({
 
           <div className="grid gap-2 lg:grid-cols-2">
             <Card padding="sm">
-              <h2 className="mb-2 text-[12px] font-medium text-text-primary">
+              <h2 className="mb-2 text-[13px] font-medium text-text-primary">
                 Status-Verteilung
               </h2>
               {statusRows.length === 0 ? (
-                <p className="text-[12px] text-text-muted">Keine Statusdaten</p>
+                <p className="text-[12px] text-text-secondary">Keine Statusdaten</p>
               ) : (
                 <table className="min-w-full text-left text-[12px]">
-                  <thead className="text-text-muted">
+                  <thead className="text-text-secondary">
                     <tr>
-                      <th className="py-1 pr-3 font-medium">Status</th>
-                      <th className="py-1 font-medium">Anzahl</th>
+                      <th className="py-1.5 pr-3 font-medium">Status</th>
+                      <th className="py-1.5 font-medium">Anzahl</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -190,8 +242,8 @@ export function ResearchOverviewView({
                         key={row.Status}
                         className="border-t border-border-subtle"
                       >
-                        <td className="py-1.5 pr-3">{row.Status}</td>
-                        <td className="py-1.5 font-mono">{row.Anzahl}</td>
+                        <td className="py-2 pr-3">{row.Status}</td>
+                        <td className="py-2 font-mono">{row.Anzahl}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -200,18 +252,18 @@ export function ResearchOverviewView({
             </Card>
 
             <Card padding="sm">
-              <h2 className="mb-2 text-[12px] font-medium text-text-primary">
+              <h2 className="mb-2 text-[13px] font-medium text-text-primary">
                 Registry: noch nicht verfügbar
               </h2>
-              <ul className="space-y-1 text-[12px] text-text-muted">
+              <ul className="space-y-1 text-[12px] text-text-secondary">
                 {Object.entries(overview.unavailable).map(([key, label]) => (
                   <li key={key}>
-                    <span className="text-text-secondary">{key}</span>: {label}
+                    <span className="text-text-primary">{key}</span>: {label}
                   </li>
                 ))}
               </ul>
               {overview.known_strategy_ids.length > 0 ? (
-                <p className="mt-3 text-[11px] text-text-muted">
+                <p className="mt-3 text-[12px] text-text-secondary">
                   Bekannte Strategy-IDs:{" "}
                   <span className="font-mono">
                     {overview.known_strategy_ids.join(", ")}
@@ -222,12 +274,12 @@ export function ResearchOverviewView({
           </div>
 
           <Card padding="sm">
-            <h2 className="mb-2 text-[12px] font-medium text-text-primary">
+            <h2 className="mb-2 text-[13px] font-medium text-text-primary">
               Letzte Experimente
             </h2>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-[12px]">
-                <thead className="text-text-muted">
+                <thead className="text-text-secondary">
                   <tr>
                     {[
                       "Experiment-ID",
@@ -237,7 +289,7 @@ export function ResearchOverviewView({
                       "Erstellt",
                       "Net PnL",
                     ].map((col) => (
-                      <th key={col} className="px-2 py-1 font-medium">
+                      <th key={col} className="px-2 py-1.5 font-medium">
                         {col}
                       </th>
                     ))}
@@ -249,7 +301,7 @@ export function ResearchOverviewView({
                       key={row["Experiment-ID"]}
                       className="border-t border-border-subtle"
                     >
-                      <td className="px-2 py-1.5">
+                      <td className="px-2 py-2">
                         <Link
                           href={`/dashboard/research/experiments/${encodeURIComponent(row["Experiment-ID"])}`}
                           className="font-mono text-mint hover:underline"
@@ -257,13 +309,13 @@ export function ResearchOverviewView({
                           {row["Experiment-ID"]}
                         </Link>
                       </td>
-                      <td className="px-2 py-1.5">{row.Strategie}</td>
-                      <td className="px-2 py-1.5">{row.Status}</td>
-                      <td className="px-2 py-1.5 font-mono">{row.Integrity}</td>
-                      <td className="px-2 py-1.5 font-mono text-[11px]">
+                      <td className="px-2 py-2">{row.Strategie}</td>
+                      <td className="px-2 py-2 font-medium">{row.Status}</td>
+                      <td className="px-2 py-2 font-mono">{row.Integrity}</td>
+                      <td className="px-2 py-2 font-mono text-[12px]">
                         {row.Erstellt}
                       </td>
-                      <td className="px-2 py-1.5 font-mono">
+                      <td className="px-2 py-2 font-mono">
                         {row["Net PnL"]}
                       </td>
                     </tr>

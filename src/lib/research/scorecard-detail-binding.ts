@@ -1,9 +1,9 @@
 import type { RegimeScorecardRow } from "@/components/research/analytics/RegimeScorecardTable";
+import { UNAVAILABLE } from "@/lib/research/labels";
 import {
   BACKEND_NOT_AVAILABLE,
   scorecardDisplayValue,
 } from "@/lib/research/scorecard-binding";
-import { UNAVAILABLE } from "@/lib/research/executive-summary";
 import type {
   ScorecardDetail,
   ScorecardDetailCostStress,
