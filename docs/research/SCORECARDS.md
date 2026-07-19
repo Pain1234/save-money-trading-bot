@@ -25,11 +25,26 @@ hold layer sidecars). Invalidation supersedes; originals are never rewritten.
 `sc_{sha256}` over:
 
 - `run_id`, optional `gate_run_id`, sorted `robustness_run_ids`
+- sealed `robustness_manifest_hashes` (id → #247 manifest content hash)
 - scorecard `policy_version` + `policy_content_hash`
 - `dataset_id` + `dataset_content_hash`
 - `layer_refs` (classification/quality/behaviour/confidence/parameter_area pins)
 
-Re-evaluating the same evidence under the same policy is idempotent.
+Re-evaluating the same **active** evidence under the same policy is idempotent.
+If the same `scorecard_id` was **invalidated**, evaluate fails closed (no silent
+reactivation without new evidence / policy).
+
+## Evidence seal
+
+Each record persists `evidence_content_hash` over immutable fields (profile,
+layer refs, limitations, commits, promotion flags, checksums, … — not status /
+`evaluated_at`). Reads and ValidationStudy pins recompute and compare; tampering
+the JSONL record fails closed.
+
+Optional `robustness_run_ids` are verified via the same #247 path as gates
+(completed job, `base_run_id`, sealed manifest hash) and stored under
+`artifact_checksums["robustness/{id}/manifest.json"]`. Optional gates also run
+`verify_policy_content_hash`.
 
 ## Required / optional layers (policy 1.0)
 

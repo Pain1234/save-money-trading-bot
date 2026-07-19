@@ -41,6 +41,7 @@ from research.scorecard_evaluator import (
     ScorecardEvaluationError,
     ScorecardRecord,
     ScorecardResultStore,
+    scorecard_evidence_content_hash,
     verify_scorecard_record_artifact_checksums,
 )
 from research.scorecard_policy import ScorecardPolicyError, verify_scorecard_policy_content_hash
@@ -105,27 +106,7 @@ def gate_evidence_content_hash(record: GateRunRecord) -> str:
     )
 
 
-def scorecard_evidence_content_hash(record: ScorecardRecord) -> str:
-    """Hash of sealed scorecard evidence fields (excludes invalidation status)."""
-    return content_digest(
-        {
-            "artifact_checksums": dict(sorted(record.artifact_checksums.items())),
-            "dataset_content_hash": record.dataset_content_hash,
-            "dataset_id": record.dataset_id,
-            "evaluation_code_commit": record.evaluation_code_commit,
-            "experiment_id": record.experiment_id,
-            "gate_run_id": record.gate_run_id,
-            "global_profile": record.global_profile,
-            "layer_refs": record.layer_refs,
-            "limitations": [lim.to_dict() for lim in record.limitations],
-            "policy_content_hash": record.policy_content_hash,
-            "policy_version": record.policy_version,
-            "robustness_run_ids": list(record.robustness_run_ids),
-            "run_code_commit": record.run_code_commit,
-            "run_id": record.run_id,
-            "scorecard_id": record.scorecard_id,
-        }
-    )
+# scorecard_evidence_content_hash lives in scorecard_evaluator (single source).
 
 
 class ValidationStudyService:

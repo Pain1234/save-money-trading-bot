@@ -22,10 +22,12 @@ from research.api import (
     get_research_service,
     get_research_write_service,
     get_robustness_service,
+    get_scorecard_service,
     get_validation_service,
 )
 from research.gate_service import GateService
 from research.robustness_service import RobustnessOrchestrationService
+from research.scorecard_service import ScorecardService
 from research.service import ResearchReadService
 from research.validation_service import ValidationStudyService
 from research.write_service import ResearchWriteService
@@ -109,6 +111,9 @@ def validation_client(
     def _gate() -> GateService:
         return GateService(tmp_path, repo_root=eval_image_root)
 
+    def _scorecard() -> ScorecardService:
+        return ScorecardService(tmp_path, repo_root=eval_image_root)
+
     def _validation() -> ValidationStudyService:
         return ValidationStudyService(tmp_path, repo_root=REPO_ROOT)
 
@@ -116,6 +121,7 @@ def validation_client(
     app.dependency_overrides[get_research_write_service] = _write
     app.dependency_overrides[get_robustness_service] = _robustness
     app.dependency_overrides[get_gate_service] = _gate
+    app.dependency_overrides[get_scorecard_service] = _scorecard
     app.dependency_overrides[get_validation_service] = _validation
     client = TestClient(app)
 
@@ -169,11 +175,24 @@ def validation_client(
     gate_created = gate_resp.json()
     gate_run_id = gate_created["gate_run_id"]
 
+    scorecard_resp = client.post(
+        "/api/v1/research/scorecards/evaluate",
+        json={
+            "run_id": run_id,
+            "policy_version": "1.0",
+            "gate_run_id": gate_run_id,
+            "robustness_run_ids": [robustness_id],
+        },
+    )
+    assert scorecard_resp.status_code == 200, scorecard_resp.text
+    scorecard_id = scorecard_resp.json()["scorecard_id"]
+
     ids = {
         "base_experiment_id": base_experiment_id,
         "run_id": run_id,
         "robustness_id": robustness_id,
         "gate_run_id": gate_run_id,
+        "scorecard_id": scorecard_id,
     }
     try:
         yield client, ids
@@ -182,6 +201,7 @@ def validation_client(
         app.dependency_overrides.pop(get_research_write_service, None)
         app.dependency_overrides.pop(get_robustness_service, None)
         app.dependency_overrides.pop(get_gate_service, None)
+        app.dependency_overrides.pop(get_scorecard_service, None)
         app.dependency_overrides.pop(get_validation_service, None)
 
 
@@ -196,6 +216,7 @@ def test_create_validation_study_aggregates_evidence(
             "experiment_id": ids["base_experiment_id"],
             "robustness_ids": [ids["robustness_id"]],
             "gate_run_ids": [ids["gate_run_id"]],
+            "scorecard_ids": [ids["scorecard_id"]],
             "notes": "fixture-driven aggregate",
         },
     )
@@ -210,6 +231,7 @@ def test_create_validation_study_aggregates_evidence(
     assert study["run_id"] == ids["run_id"]
     assert study["robustness_ids"] == [ids["robustness_id"]]
     assert study["gate_run_ids"] == [ids["gate_run_id"]]
+    assert study["scorecard_ids"] == [ids["scorecard_id"]]
 
     # Aggregated from the immutable evidence snapshot — not re-computed.
     assert study["experiments"][0]["experiment_id"] == ids["base_experiment_id"]
@@ -223,6 +245,8 @@ def test_create_validation_study_aggregates_evidence(
     assert snapshot["snapshot_id"].startswith("evsnap_")
     assert snapshot["primary"]["run_id"] == ids["run_id"]
     assert len(snapshot["primary"]["checksums_digest"]) == 64
+    assert snapshot["scorecards"][0]["scorecard_id"] == ids["scorecard_id"]
+    assert len(snapshot["scorecards"][0]["content_hash"]) == 64
     assert study["evidence_integrity"]["ok"] is True
 
     progress = study["progress"]
@@ -236,6 +260,52 @@ def test_create_validation_study_aggregates_evidence(
     assert len(repro["dataset_content_hash"]) == 64
     assert repro["policy_version"] == "1.0"
     assert len(repro["policy_content_hash"]) == 64
+
+
+def test_create_validation_study_rejects_invalidated_scorecard(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, ids = validation_client
+    inv = client.post(
+        f"/api/v1/research/scorecards/{ids['scorecard_id']}/invalidate",
+        json={"reason": "fixture invalidate before study pin", "actor": "test"},
+    )
+    assert inv.status_code == 200, inv.text
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": ids["base_experiment_id"],
+            "scorecard_ids": [ids["scorecard_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "scorecard_ids" in fields
+    assert "status=invalidated" in fields["scorecard_ids"]
+
+
+def test_create_validation_study_rejects_tampered_scorecard_record(
+    validation_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, ids = validation_client
+    root = Path(os.environ["RESEARCH_ARTIFACTS_ROOT"])
+    path = root / "artifacts" / "research" / "scorecards" / "registry.jsonl"
+    lines = path.read_text(encoding="utf-8").strip().splitlines()
+    payload = json.loads(lines[-1])
+    payload["global_profile"] = {**payload["global_profile"], "tampered": True}
+    path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+    resp = client.post(
+        "/api/v1/research/validation",
+        json={
+            "experiment_id": ids["base_experiment_id"],
+            "scorecard_ids": [ids["scorecard_id"]],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    fields = resp.json()["detail"]["fields"]
+    assert "scorecard_ids" in fields
+    assert "untrusted" in fields["scorecard_ids"] or "evidence" in fields["scorecard_ids"]
 
 
 def test_create_validation_study_is_idempotent(

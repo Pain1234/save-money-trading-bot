@@ -21,11 +21,15 @@ from research.confidence import (
     evaluate_confidence,
 )
 from research.gate_evaluator import (
+    GateEvaluationError,
+    GateEvaluator,
     GateResultStore,
     _resolve_evaluation_code_commit,
     verify_gate_record_artifact_checksums,
 )
+from research.gate_policy import GatePolicyError, verify_policy_content_hash
 from research.registry import ExperimentRegistry, RegistryEntry
+from research.robustness import verify_robustness_manifest_seal
 from research.run_manifest import load_run_manifest
 from research.scorecard_policy import (
     ScorecardPolicy,
@@ -33,6 +37,7 @@ from research.scorecard_policy import (
     compute_scorecard_policy_content_hash,
     get_scorecard_policy,
 )
+from research.validation_study import content_digest
 
 SCORECARD_RECORD_SCHEMA_VERSION = "1.0"
 ScorecardStatus = Literal["active", "invalidated"]
@@ -76,6 +81,7 @@ class ScorecardRecord:
     scorecard_id: str
     policy_version: str
     policy_content_hash: str
+    evidence_content_hash: str
     evaluated_at: str
     run_code_commit: str
     evaluation_code_commit: str
@@ -104,6 +110,7 @@ class ScorecardRecord:
             "decision_binding": self.decision_binding,
             "evaluated_at": self.evaluated_at,
             "evaluation_code_commit": self.evaluation_code_commit,
+            "evidence_content_hash": self.evidence_content_hash,
             "experiment_id": self.experiment_id,
             "gate_run_id": self.gate_run_id,
             "global_profile": self.global_profile,
@@ -128,6 +135,7 @@ class ScorecardRecord:
             scorecard_id=str(raw["scorecard_id"]),
             policy_version=str(raw["policy_version"]),
             policy_content_hash=str(raw["policy_content_hash"]),
+            evidence_content_hash=str(raw.get("evidence_content_hash") or ""),
             evaluated_at=str(raw["evaluated_at"]),
             run_code_commit=str(raw["run_code_commit"]),
             evaluation_code_commit=str(raw["evaluation_code_commit"]),
@@ -153,6 +161,36 @@ class ScorecardRecord:
         )
 
 
+def scorecard_evidence_payload(record: ScorecardRecord) -> dict[str, Any]:
+    """Canonical immutable scorecard fields (excludes status / timestamps / self-hash)."""
+    return {
+        "artifact_checksums": dict(sorted(record.artifact_checksums.items())),
+        "auto_promotion": record.auto_promotion,
+        "dataset_content_hash": record.dataset_content_hash,
+        "dataset_id": record.dataset_id,
+        "decision_binding": record.decision_binding,
+        "evaluation_code_commit": record.evaluation_code_commit,
+        "experiment_id": record.experiment_id,
+        "gate_run_id": record.gate_run_id,
+        "global_profile": record.global_profile,
+        "layer_refs": record.layer_refs,
+        "limitations": [lim.to_dict() for lim in record.limitations],
+        "policy_content_hash": record.policy_content_hash,
+        "policy_version": record.policy_version,
+        "promotion_action": record.promotion_action,
+        "robustness_run_ids": list(record.robustness_run_ids),
+        "run_code_commit": record.run_code_commit,
+        "run_id": record.run_id,
+        "schema_version": record.schema_version,
+        "scorecard_id": record.scorecard_id,
+    }
+
+
+def scorecard_evidence_content_hash(record: ScorecardRecord) -> str:
+    """SHA-256 over sealed scorecard evidence fields (excludes invalidation status)."""
+    return content_digest(scorecard_evidence_payload(record))
+
+
 def compute_scorecard_id(
     *,
     run_id: str,
@@ -163,6 +201,7 @@ def compute_scorecard_id(
     layer_refs: Mapping[str, Any],
     gate_run_id: str | None = None,
     robustness_run_ids: Sequence[str] = (),
+    robustness_manifest_hashes: Mapping[str, str] | None = None,
 ) -> str:
     payload = {
         "dataset_content_hash": dataset_content_hash,
@@ -171,6 +210,9 @@ def compute_scorecard_id(
         "layer_refs": layer_refs,
         "policy_content_hash": policy_content_hash,
         "policy_version": policy_version,
+        "robustness_manifest_hashes": dict(
+            sorted((robustness_manifest_hashes or {}).items())
+        ),
         "robustness_run_ids": sorted(robustness_run_ids),
         "run_id": run_id,
     }
@@ -213,6 +255,15 @@ class ScorecardResultStore:
         if existing is not None and existing.status == "active":
             msg = f"duplicate active scorecard_id forbidden: {record.scorecard_id}"
             raise ValueError(msg)
+        if (
+            existing is not None
+            and existing.status == "invalidated"
+            and record.status == "active"
+        ):
+            msg = (
+                f"cannot reactivate invalidated scorecard_id: {record.scorecard_id}"
+            )
+            raise ValueError(msg)
         self._append_line(record.to_dict())
 
     def invalidate(self, scorecard_id: str, *, reason: str, actor: str) -> Path:
@@ -237,8 +288,43 @@ class ScorecardResultStore:
         return sidecar
 
 
+def _verify_bound_gate(root: Path, gate_run_id: str) -> None:
+    gate = GateResultStore(root).get(gate_run_id)
+    if gate is None:
+        raise ScorecardEvaluationError(
+            f"scorecard gate_run_id not found: {gate_run_id}",
+            field_errors={"gate_run_id": "missing"},
+        )
+    try:
+        verify_policy_content_hash(gate.policy_version, gate.policy_content_hash)
+    except GatePolicyError as exc:
+        raise ScorecardEvaluationError(
+            f"scorecard bound gate policy untrusted: {exc}",
+            field_errors={"gate_run_id": "policy_content_hash mismatch"},
+        ) from exc
+    try:
+        verify_gate_record_artifact_checksums(root, gate)
+    except GateEvaluationError as exc:
+        raise ScorecardEvaluationError(
+            f"scorecard bound gate evidence untrusted: {exc}",
+            field_errors={"gate_run_id": "checksum mismatch"},
+        ) from exc
+
+
 def verify_scorecard_record_artifact_checksums(root: Path, record: ScorecardRecord) -> None:
-    """Re-verify run artifact checksums bound on the scorecard record."""
+    """Re-verify seals bound on the scorecard record (run / robustness / gate / self-hash)."""
+    if not (record.evidence_content_hash or "").strip():
+        raise ScorecardEvaluationError(
+            "scorecard record missing evidence_content_hash",
+            field_errors={"evidence_content_hash": "missing"},
+        )
+    actual_hash = scorecard_evidence_content_hash(record)
+    if actual_hash != record.evidence_content_hash:
+        raise ScorecardEvaluationError(
+            "scorecard evidence_content_hash mismatch — record fields tampered",
+            field_errors={"evidence_content_hash": "mismatch"},
+        )
+
     registry = ExperimentRegistry(root.resolve())
     try:
         entry = registry.show(record.run_id, verify=True)
@@ -254,7 +340,9 @@ def verify_scorecard_record_artifact_checksums(root: Path, record: ScorecardReco
         ) from exc
 
     run_checksums = {
-        k: v for k, v in record.artifact_checksums.items() if not k.startswith("scorecard/")
+        k: v
+        for k, v in record.artifact_checksums.items()
+        if not k.startswith("scorecard/") and not k.startswith("robustness/")
     }
     if not run_checksums:
         raise ScorecardEvaluationError(
@@ -269,20 +357,36 @@ def verify_scorecard_record_artifact_checksums(root: Path, record: ScorecardReco
             field_errors={"artifact_checksums": "run file mismatch"},
         ) from exc
 
-    if record.gate_run_id:
-        gate = GateResultStore(root).get(record.gate_run_id)
-        if gate is None:
+    for key, digest in record.artifact_checksums.items():
+        if not key.startswith("robustness/") or not key.endswith("/manifest.json"):
+            continue
+        parts = key.split("/")
+        if len(parts) != 3:
             raise ScorecardEvaluationError(
-                f"scorecard gate_run_id not found: {record.gate_run_id}",
-                field_errors={"gate_run_id": "missing"},
+                f"scorecard record has malformed robustness checksum key: {key!r}",
+                field_errors={"artifact_checksums": "malformed robustness key"},
             )
+        robustness_id = parts[1]
         try:
-            verify_gate_record_artifact_checksums(root, gate)
-        except Exception as exc:  # GateEvaluationError
+            verify_robustness_manifest_seal(
+                root.resolve(), robustness_id, expected_hash=digest
+            )
+        except (ValueError, FileNotFoundError) as exc:
             raise ScorecardEvaluationError(
-                f"scorecard bound gate evidence untrusted: {exc}",
-                field_errors={"gate_run_id": "checksum mismatch"},
+                f"scorecard robustness manifest seal failed for {robustness_id}: {exc}",
+                field_errors={"artifact_checksums": "robustness seal mismatch"},
             ) from exc
+
+    for robustness_id in record.robustness_run_ids:
+        key = f"robustness/{robustness_id}/manifest.json"
+        if key not in record.artifact_checksums:
+            raise ScorecardEvaluationError(
+                f"scorecard record missing checksum for robustness {robustness_id}",
+                field_errors={"artifact_checksums": "robustness checksum missing"},
+            )
+
+    if record.gate_run_id:
+        _verify_bound_gate(root, record.gate_run_id)
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -460,8 +564,15 @@ class ScorecardEvaluator:
                     field_errors={"gate_run_id": f"status={gate.status}"},
                 )
             try:
+                verify_policy_content_hash(gate.policy_version, gate.policy_content_hash)
+            except GatePolicyError as exc:
+                raise ScorecardEvaluationError(
+                    f"gate policy untrusted: {exc}",
+                    field_errors={"gate_run_id": "policy_content_hash mismatch"},
+                ) from exc
+            try:
                 verify_gate_record_artifact_checksums(self.root, gate)
-            except Exception as exc:
+            except GateEvaluationError as exc:
                 raise ScorecardEvaluationError(
                     f"gate evidence untrusted: {exc}",
                     field_errors={"gate_run_id": "checksum mismatch"},
@@ -473,7 +584,37 @@ class ScorecardEvaluator:
             layer_refs["gate_integrity_status"] = gate.integrity_status
             layer_refs["gate_overall_status"] = gate.overall_status
 
+        # Reuse #247/#248 robustness verification (job status, base_run_id, seals).
+        robustness_checksums: dict[str, str] = {}
+        if robustness_run_ids:
+            try:
+                _manifests, robustness_checksums = GateEvaluator(
+                    self.root, repo_root=self.repo_root
+                )._load_robustness_evidence(
+                    robustness_run_ids,
+                    run_id=run_id,
+                    base_manifest=manifest,
+                )
+            except GateEvaluationError as exc:
+                raise ScorecardEvaluationError(
+                    f"robustness evidence untrusted: {exc}",
+                    field_errors={
+                        "robustness_run_ids": exc.field_errors.get(
+                            "robustness_run_ids", "verification failed"
+                        ),
+                        **{
+                            k: v
+                            for k, v in exc.field_errors.items()
+                            if k != "robustness_run_ids"
+                        },
+                    },
+                ) from exc
+
         sorted_rob = tuple(sorted(robustness_run_ids))
+        robustness_manifest_hashes = {
+            rid: robustness_checksums[f"robustness/{rid}/manifest.json"]
+            for rid in sorted_rob
+        }
         evaluation_code_commit = _resolve_evaluation_code_commit(self.repo_root)
 
         global_profile = {
@@ -505,6 +646,7 @@ class ScorecardEvaluator:
                 "classification_id": labels.get("classification_id"),
                 "classifier_version": labels.get("classifier_version"),
             },
+            "robustness_manifest_hashes": dict(sorted(robustness_manifest_hashes.items())),
             "robustness_run_ids": list(sorted_rob),
         }
 
@@ -517,13 +659,18 @@ class ScorecardEvaluator:
             layer_refs=layer_refs,
             gate_run_id=gate_run_id,
             robustness_run_ids=sorted_rob,
+            robustness_manifest_hashes=robustness_manifest_hashes,
         )
+
+        sealed_checksums = dict(checksums)
+        sealed_checksums.update(robustness_checksums)
 
         record = ScorecardRecord(
             schema_version=SCORECARD_RECORD_SCHEMA_VERSION,
             scorecard_id=scorecard_id,
             policy_version=policy.version,
             policy_content_hash=policy_hash,
+            evidence_content_hash="",  # filled after immutable fields are set
             evaluated_at=_utc_now(),
             run_code_commit=manifest.git_commit,
             evaluation_code_commit=evaluation_code_commit,
@@ -533,7 +680,7 @@ class ScorecardEvaluator:
             robustness_run_ids=sorted_rob,
             dataset_id=manifest.dataset_id,
             dataset_content_hash=manifest.dataset_content_hash,
-            artifact_checksums=checksums,
+            artifact_checksums=sealed_checksums,
             layer_refs=layer_refs,
             global_profile=global_profile,
             limitations=tuple(limitations),
@@ -542,10 +689,19 @@ class ScorecardEvaluator:
             promotion_action="none",
             status="active",
         )
+        record = replace(
+            record, evidence_content_hash=scorecard_evidence_content_hash(record)
+        )
 
         existing = self.store.get(scorecard_id)
         if existing is not None and existing.status == "active":
             return existing
+        if existing is not None and existing.status == "invalidated":
+            raise ScorecardEvaluationError(
+                f"scorecard_id {scorecard_id} was invalidated; "
+                "re-evaluate of the same evidence is refused",
+                field_errors={"scorecard_id": "invalidated"},
+            )
         self.store.append(record)
         return record
 
