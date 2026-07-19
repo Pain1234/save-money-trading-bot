@@ -54,7 +54,7 @@ Optional `robustness_run_ids` are verified via the same #247 path as gates
 | `regime_metrics.json` | required |
 | `behavior_profile.json` | required |
 | `confidence_profile.json` | optional — if missing, derived at evaluate time (not written back) |
-| `parameter_area.json` | optional — if missing → `NOT_AVAILABLE` (#290) |
+| `parameter_area.json` | optional — if missing → `NOT_AVAILABLE`; if present must pass full sealed bind (`evidence_trusted`, completed #247 job + `base_run_id`, policy hash, `evaluate_parameter_area_from_robustness` recompute of `parameter_area_id` / classification). Manifest seal is persisted under `artifact_checksums["robustness/{id}/manifest.json"]` and re-checked on verify |
 
 ## API
 
@@ -77,3 +77,29 @@ Decided studies re-verify pins fail-closed.
 ## Policy hash
 
 `SCORECARD_POLICY_1_0_CONTENT_HASH` in `scorecard_policy.py` (literal regression pin).
+
+## Acceptance matrix (#293)
+
+`tests/research/test_scorecard_e2e_acceptance.py` covers reproducibility and
+anti-overfit boundaries against public synthetic fixtures only:
+
+```text
+python -m pytest tests/research/test_scorecard_e2e_acceptance.py -q
+```
+
+- identical inputs → identical `scorecard_id`
+- JSONL / run-artifact tamper fail-closed
+- gate FAIL remains FAIL (not healed by quality layers)
+- invalidation blocks reactivation
+- policy version unknown + silent content mutation under same version
+- insufficient sample cannot yield HIGH confidence
+- untrusted `parameter_area.json` fail-closed; trusted sealed PA pins into scorecard
+- `integrity_status=INVALID` blocks `quality_scores_permitted`
+- Sideways zero-trades → `DEFENSIVE_INACTIVE`; Bull whipsaw weakness
+- no auto-promotion / decision_binding
+- Research API evaluate smoke **without** `RESEARCH_ALLOW_DIRTY_GIT` (clean temp git)
+
+**UI E2E** for scorecard surfaces is deferred to
+[#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) /
+[#250](https://github.com/Pain1234/save-money-trading-bot/issues/250)
+(issue #293 AC “Research API und UI E2E” is satisfied for API only until UI lands).

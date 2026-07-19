@@ -381,7 +381,7 @@ ValidationStudy schema `1.2` pins `scorecard_ids` into the evidence snapshot.
 | [#290](https://github.com/Pain1234/save-money-trading-bot/issues/290) | Parameter area stability |
 | [#291](https://github.com/Pain1234/save-money-trading-bot/issues/291) | Artifacts + API |
 | [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) | Research Workspace UI |
-| [#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) | E2E / anti-overfit acceptance |
+| [#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) | E2E / anti-overfit acceptance — API matrix in `test_scorecard_e2e_acceptance.py`; UI deferred to #292/#250 |
 | [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) | P5 binding / freeze (P5 milestone) |
 
 ### Dependency chain
