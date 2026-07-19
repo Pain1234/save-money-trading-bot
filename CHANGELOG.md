@@ -14,8 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   path injects the sealed set when omitted. Enables honest P5 re-runs without
   private monkeypatches.
 
-### Added (P4.9 research forensics UI — #302)
-
 ### Added (P4.9 safe artifact content GET — #357)
 
 - Auth-bound read-only `GET /api/v1/research/scorecards/{id}/artifacts/content`
