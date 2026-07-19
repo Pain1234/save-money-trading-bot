@@ -242,17 +242,8 @@ def _config_from_spec(spec: ExperimentSpec, params: StrategyParameters) -> Backt
         raise ValueError(
             f"ExperimentSpec.symbol_constraints missing symbols: {missing}"
         )
-    from research.symbol_constraints import symbol_constraints_for_backtest
+    from risk_engine.models import SymbolConstraints
 
-    pins = {
-        sym: {
-            "quantity_step": pin.quantity_step,
-            "minimum_quantity": pin.minimum_quantity,
-            "minimum_notional": pin.minimum_notional,
-            "price_tick_size": pin.price_tick_size,
-        }
-        for sym, pin in spec.symbol_constraints.items()
-    }
     return BacktestConfig(
         symbols=symbols,
         initial_cash=spec.starting_capital,
@@ -260,7 +251,15 @@ def _config_from_spec(spec: ExperimentSpec, params: StrategyParameters) -> Backt
         fee_model=fee,
         slippage_model=slip,
         funding_model=funding,
-        symbol_constraints=symbol_constraints_for_backtest(pins),
+        symbol_constraints={
+            sym: SymbolConstraints(
+                quantity_step=pin.quantity_step,
+                minimum_quantity=pin.minimum_quantity,
+                minimum_notional=pin.minimum_notional,
+                price_tick_size=pin.price_tick_size,
+            )
+            for sym, pin in spec.symbol_constraints.items()
+        },
     )
 
 
