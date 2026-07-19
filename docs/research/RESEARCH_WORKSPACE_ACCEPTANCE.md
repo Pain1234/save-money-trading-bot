@@ -160,6 +160,23 @@ The checkboxes below remain the **human browser** residual and close under
       (e.g. visit a route before any experiments exist, throttle network in
       devtools once, and request an unknown experiment id).
 
+### G. Scorecard detail binding (#292)
+
+- [ ] Validation Study detail shows Scorecard Evidence Profile when a
+      **primary-run** scorecard is **snapshot-pinned**; no registry
+      `run_id` fallback; additional-run pins alone must not become the profile.
+- [ ] `evidence_integrity.ok=false`, pin hash mismatch, missing pin hash,
+      or `status=invalidated` → error/unavailable (no ready profile strip).
+- [ ] Experiment detail loads scorecards by `run_id`; FAIL / LOW confidence
+      remain visually prominent; no Promote button.
+- [ ] Strategy detail soft-binds via last experiment → run → scorecard.
+- [ ] Missing / `NOT_AVAILABLE` fields render as **Nicht verfügbar**.
+- [ ] `ISOLATED_PEAK` is warning-toned in profile strip **and** Parameter panel.
+- [ ] Regime table stays unavailable until per-regime rows exist on GET
+      (document reason in UI).
+- [ ] Rest scope accepted: Evidence Inputs / Gate Failures / Raw Metric Refs
+      not yet rendered (documented in UI spec).
+
 ## Ownership / restart recovery (#245 / #276)
 
 No dedicated ownership/restart HTTP endpoints exist (and inventing them is

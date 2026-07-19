@@ -64,16 +64,21 @@ describe("RegimeScorecardTable", () => {
         rows={[
           {
             regime: "trend_up",
+            quality: null,
+            confidence: null,
+            behaviour: null,
             trades: null,
             netPnl: null,
             maxDd: null,
-            label: null,
+            costs: null,
+            benchmarkDelta: null,
           },
         ]}
       />,
     );
     expect(html).toContain('data-testid="regime-scorecard-table"');
     expect(html).toContain("trend_up");
+    expect(html).toContain("Quality");
     expect(html).toContain(UNAVAILABLE);
     expect(html).not.toMatch(/>\s*0\s*</);
   });

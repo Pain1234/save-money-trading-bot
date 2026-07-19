@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ExperimentJobPanel } from "@/components/research/ExperimentJobPanel";
 import { ResearchCharts } from "@/components/research/ResearchCharts";
 import { ResearchTradeChart } from "@/components/research/ResearchTradeChart";
+import { ScorecardBindSection } from "@/components/research/ScorecardBindSection";
 import { Card } from "@/components/ui/Card";
 import { PaperApiError } from "@/lib/paper-api/client";
 import {
@@ -11,6 +12,7 @@ import {
   fetchResearchExperiment,
   getResearchErrorMessage,
 } from "@/lib/research-api/client";
+import { loadScorecardForExperiment } from "@/lib/research/scorecard-binding";
 import { RESEARCH_METRIC_LABELS } from "@/lib/research/metrics";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +38,7 @@ export default async function ResearchExperimentDetailPage({
   try {
     const detail = await fetchResearchExperiment(experimentId);
     const metadata = detail.metadata;
+    const scorecardBind = await loadScorecardForExperiment(metadata.run_id);
     const config = {
       symbols: detail.config?.symbols ?? [],
       time_range_start: detail.config?.time_range_start ?? null,
@@ -213,6 +216,12 @@ export default async function ResearchExperimentDetailPage({
         </Card>
 
         <ResearchCharts equity={detail.equity} drawdown={detail.drawdown} />
+
+        <ScorecardBindSection
+          bind={scorecardBind}
+          equity={detail.integrity.ok ? detail.equity : null}
+          drawdown={detail.integrity.ok ? detail.drawdown : null}
+        />
 
         <ResearchTradeChart
           experimentId={metadata.experiment_id}

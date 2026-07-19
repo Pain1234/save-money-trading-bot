@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ScorecardBindSection } from "@/components/research/ScorecardBindSection";
 import { ValidationStudyDecisionPanel } from "@/components/research/ValidationStudyDecisionPanel";
 import { ValidationStudyDetailView } from "@/components/research/ValidationStudyDetailView";
 import { PaperApiError } from "@/lib/paper-api/client";
@@ -8,6 +9,8 @@ import {
   fetchValidationStudy,
   getResearchErrorMessage,
 } from "@/lib/research-api/client";
+import { loadScorecardForStudy } from "@/lib/research/scorecard-binding";
+import { toEvidenceAnchor } from "@/lib/research/executive-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +23,7 @@ export default async function ResearchValidationDetailPage({
 
   try {
     const study = await fetchValidationStudy(studyId);
+    const scorecardBind = await loadScorecardForStudy(study);
 
     return (
       <div data-testid="validation-detail-page-ready" className="space-y-4">
@@ -33,6 +37,12 @@ export default async function ResearchValidationDetailPage({
           <h1 className="mt-2 text-xl font-semibold">{study.name}</h1>
           <p className="mt-1 font-mono text-xs text-text-muted">{study.study_id}</p>
         </div>
+
+        <ScorecardBindSection
+          bind={scorecardBind}
+          evidence={toEvidenceAnchor(study)}
+          finalDecision={study.decision}
+        />
 
         <ValidationStudyDetailView study={study} />
 
