@@ -336,23 +336,31 @@ Binding rules:
 
 ## 8. Proposed artifacts and API (implementation issues)
 
-Artifacts (names may refine under [#291](https://github.com/Pain1234/save-money-trading-bot/issues/291)):
+**Status (#291):** Append-only scorecard store + Research API are implemented —
+see [`SCORECARDS.md`](SCORECARDS.md). Layer inputs are sealed run-dir artifacts
+and/or sibling stores (gates, robustness); aggregate scorecards live under
+`artifacts/research/scorecards/` (not a second experiment registry).
+`parameter_area` remains `NOT_AVAILABLE` until #290 lands.
+
+Layer input artifacts (produced by earlier issues; names may refine):
 
 - `regime_labels.json`
 - `regime_metrics.json`
 - `confidence_profile.json`
 - `behavior_profile.json`
-- `parameter_area.json`
-- `scorecard.json` / `scorecard.md`
+- `parameter_area.json` (pending #290)
+- Aggregate: `scorecard_id` `sc_{sha256…}` in `registry.jsonl` (not run-dir `scorecard.json`)
 
 API (extend existing Research API; no second registry):
 
+- `GET /api/v1/research/scorecards/policies`
 - `GET /api/v1/research/scorecards`
 - `GET /api/v1/research/scorecards/{scorecard_id}`
-- optional `POST /api/v1/research/scorecards/evaluate` — idempotent evidence evaluation only
+- `POST /api/v1/research/scorecards/evaluate` — idempotent evidence evaluation only
+- `POST /api/v1/research/scorecards/{scorecard_id}/invalidate` — append-only
 
-`scorecard_id` must be deterministic from pinned inputs + policy/classifier content hashes.
-ValidationStudy must be able to pin a scorecard into its evidence snapshot (#249 extension).
+`scorecard_id` is deterministic from pinned inputs + policy content hash.
+ValidationStudy schema `1.2` pins `scorecard_ids` into the evidence snapshot.
 
 ---
 
