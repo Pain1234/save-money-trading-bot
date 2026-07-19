@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from research.gate_service import GateService
 from research.robustness_service import RobustnessOrchestrationService
+from research.scorecard_service import ScorecardService
 from research.service import ResearchReadService, research_root_from_env
 from research.validation_service import ValidationStudyService
 from research.write_service import (
@@ -39,6 +40,10 @@ def get_gate_service() -> GateService:
     return GateService(research_root_from_env())
 
 
+def get_scorecard_service() -> ScorecardService:
+    return ScorecardService(research_root_from_env())
+
+
 def get_validation_service() -> ValidationStudyService:
     return ValidationStudyService(research_root_from_env())
 
@@ -49,6 +54,7 @@ RobustnessSvc = Annotated[
     RobustnessOrchestrationService, Depends(get_robustness_service)
 ]
 GateSvc = Annotated[GateService, Depends(get_gate_service)]
+ScorecardSvc = Annotated[ScorecardService, Depends(get_scorecard_service)]
 ValidationSvc = Annotated[ValidationStudyService, Depends(get_validation_service)]
 
 
@@ -557,6 +563,84 @@ def research_invalidate_gate(
         ) from exc
 
 
+@router.get("/scorecard-policies")
+def research_list_scorecard_policies(svc: ScorecardSvc) -> dict[str, Any]:
+    """Registered scorecard policy versions + content hash (read-only)."""
+    items = svc.list_policies()
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/scorecards")
+def research_list_scorecards(
+    svc: ScorecardSvc,
+    run_id: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    try:
+        items = svc.list_all(run_id=run_id)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+    return {"items": items, "count": len(items)}
+
+
+@router.post("/scorecards/evaluate")
+def research_evaluate_scorecard(
+    payload: dict[str, Any],
+    svc: ScorecardSvc,
+) -> dict[str, Any]:
+    """Assemble a Layer-5 scorecard from sealed run (+ optional gate) evidence.
+
+    Idempotent append-only persistence; no live/paper promotion (#291).
+    """
+    try:
+        return svc.evaluate(payload)
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.get("/scorecards/{scorecard_id}")
+def research_scorecard_detail(
+    scorecard_id: str,
+    svc: ScorecardSvc,
+) -> dict[str, Any]:
+    try:
+        return svc.get(scorecard_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(status_code=404, detail="scorecard not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
+@router.post("/scorecards/{scorecard_id}/invalidate")
+def research_invalidate_scorecard(
+    scorecard_id: str,
+    payload: dict[str, Any],
+    svc: ScorecardSvc,
+) -> dict[str, Any]:
+    """Append-only invalidation (never mutates the original scorecard record)."""
+    try:
+        return svc.invalidate(scorecard_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except KeyError:
+        raise HTTPException(status_code=404, detail="scorecard not found") from None
+    except ResearchWriteError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": str(exc), "fields": exc.field_errors},
+        ) from exc
+
+
 @router.get("/validation")
 def research_list_validation_studies(
     svc: ValidationSvc,
@@ -645,6 +729,10 @@ def is_research_write_path(path: str) -> bool:
     if path.rstrip("/") == "/api/v1/research/gates/evaluate":
         return True
     if path.startswith("/api/v1/research/gates/") and path.endswith("/invalidate"):
+        return True
+    if path.rstrip("/") == "/api/v1/research/scorecards/evaluate":
+        return True
+    if path.startswith("/api/v1/research/scorecards/") and path.endswith("/invalidate"):
         return True
     if path.rstrip("/") == "/api/v1/research/validation":
         return True

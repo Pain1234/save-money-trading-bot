@@ -37,12 +37,22 @@ from research.robustness import robustness_manifest_path, verify_robustness_mani
 from research.robustness_jobs import RobustnessJobStore
 from research.robustness_service import RobustnessOrchestrationService
 from research.run_manifest import load_run_manifest
+from research.scorecard_evaluator import (
+    ScorecardEvaluationError,
+    ScorecardRecord,
+    ScorecardResultStore,
+    scorecard_evidence_content_hash,
+    verify_scorecard_record_artifact_checksums,
+)
+from research.scorecard_policy import ScorecardPolicyError, verify_scorecard_policy_content_hash
+from research.scorecard_service import ScorecardService
 from research.service import ResearchReadService, assert_safe_id
 from research.validation_study import (
     VALIDATION_STUDY_SCHEMA_VERSION,
     PinnedGateEvidence,
     PinnedRobustnessEvidence,
     PinnedRunEvidence,
+    PinnedScorecardEvidence,
     StudyDecision,
     StudyEvidenceSnapshot,
     StudyRecord,
@@ -96,6 +106,9 @@ def gate_evidence_content_hash(record: GateRunRecord) -> str:
     )
 
 
+# scorecard_evidence_content_hash lives in scorecard_evaluator (single source).
+
+
 class ValidationStudyService:
     def __init__(self, root: Path, *, repo_root: Path | None = None) -> None:
         self.root = root.resolve()
@@ -104,11 +117,13 @@ class ValidationStudyService:
         self.registry = ExperimentRegistry(self.root)
         self.robustness_jobs = RobustnessJobStore(self.root)
         self.gates = GateResultStore(self.root)
+        self.scorecards = ScorecardResultStore(self.root)
         self.read_service = ResearchReadService(self.root)
         self.robustness_service = RobustnessOrchestrationService(
             self.root, repo_root=self.repo_root
         )
         self.gate_service = GateService(self.root, repo_root=self.repo_root)
+        self.scorecard_service = ScorecardService(self.root, repo_root=self.repo_root)
 
     # --- reference resolution (fail closed; never invent evidence) --------
 
@@ -267,6 +282,59 @@ class ValidationStudyService:
             content_hash=gate_evidence_content_hash(record),
         )
 
+    def _pin_scorecard(
+        self, scorecard_id: str, *, pinned_run_ids: set[str]
+    ) -> PinnedScorecardEvidence:
+        record = self.scorecards.get(scorecard_id)
+        if record is None:
+            raise ResearchWriteError(
+                f"Scorecard {scorecard_id!r} ist unbekannt",
+                field_errors={"scorecard_ids": f"unbekannt: {scorecard_id}"},
+            )
+        if record.status != "active":
+            raise ResearchWriteError(
+                f"Scorecard {scorecard_id!r} ist nicht active "
+                f"(status={record.status})",
+                field_errors={"scorecard_ids": f"status={record.status}"},
+            )
+        if record.run_id not in pinned_run_ids:
+            raise ResearchWriteError(
+                f"Scorecard {scorecard_id!r} gehört zu run_id "
+                f"{record.run_id!r}, der nicht in dieser Study gepinnt ist",
+                field_errors={
+                    "scorecard_ids": (
+                        f"run_id {record.run_id} not in study pinned runs"
+                    )
+                },
+            )
+        try:
+            verify_scorecard_policy_content_hash(
+                record.policy_version, record.policy_content_hash
+            )
+        except ScorecardPolicyError as exc:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "scorecard_ids": "policy_content_hash mismatch — scorecard untrusted"
+                },
+            ) from exc
+        try:
+            verify_scorecard_record_artifact_checksums(self.root, record)
+        except ScorecardEvaluationError as exc:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "scorecard_ids": (
+                        "artifact_checksums mismatch — scorecard evidence untrusted"
+                    ),
+                    **exc.field_errors,
+                },
+            ) from exc
+        return PinnedScorecardEvidence(
+            scorecard_id=scorecard_id,
+            content_hash=scorecard_evidence_content_hash(record),
+        )
+
     def _build_snapshot(
         self,
         *,
@@ -274,15 +342,18 @@ class ValidationStudyService:
         additional: list[PinnedRunEvidence],
         robustness: list[PinnedRobustnessEvidence],
         gates: list[PinnedGateEvidence],
+        scorecards: list[PinnedScorecardEvidence] | None = None,
     ) -> StudyEvidenceSnapshot:
         additional_t = tuple(additional)
         robustness_t = tuple(robustness)
         gates_t = tuple(gates)
+        scorecards_t = tuple(scorecards or [])
         snapshot_id = StudyEvidenceSnapshot.compute_snapshot_id(
             primary=primary,
             additional=additional_t,
             robustness=robustness_t,
             gates=gates_t,
+            scorecards=scorecards_t,
         )
         return StudyEvidenceSnapshot(
             snapshot_id=snapshot_id,
@@ -290,6 +361,7 @@ class ValidationStudyService:
             additional=additional_t,
             robustness=robustness_t,
             gates=gates_t,
+            scorecards=scorecards_t,
         )
 
     # --- create --------------------------------------------------------
@@ -338,11 +410,20 @@ class ValidationStudyService:
             self._pin_gate(gid, pinned_run_ids=pinned_run_ids) for gid in gate_run_ids
         ]
 
+        scorecard_ids = _clean_id_list(
+            payload.get("scorecard_ids"), field="scorecard_ids"
+        )
+        scorecard_pins = [
+            self._pin_scorecard(sid, pinned_run_ids=pinned_run_ids)
+            for sid in scorecard_ids
+        ]
+
         snapshot = self._build_snapshot(
             primary=primary_pin,
             additional=additional_pins,
             robustness=robustness_pins,
             gates=gate_pins,
+            scorecards=scorecard_pins,
         )
 
         strategy_version = primary_entry.strategy_version or None
@@ -363,6 +444,7 @@ class ValidationStudyService:
             additional_run_ids=additional_run_ids,
             robustness_ids=robustness_ids,
             gate_run_ids=gate_run_ids,
+            scorecard_ids=scorecard_ids,
             evidence_snapshot_id=snapshot.snapshot_id,
         )
 
@@ -387,6 +469,7 @@ class ValidationStudyService:
             additional_run_ids=tuple(additional_run_ids),
             robustness_ids=tuple(robustness_ids),
             gate_run_ids=tuple(gate_run_ids),
+            scorecard_ids=tuple(scorecard_ids),
             evidence_snapshot=snapshot,
             notes=notes,
             status="open",
@@ -504,6 +587,48 @@ class ValidationStudyService:
             ) from exc
         return record
 
+    def _verify_scorecard_pin(self, pin: PinnedScorecardEvidence) -> ScorecardRecord:
+        record = self.scorecards.get(pin.scorecard_id)
+        if record is None:
+            raise ResearchWriteError(
+                f"pinned scorecard {pin.scorecard_id!r} fehlt",
+                field_errors={"scorecard_ids": "missing"},
+            )
+        if record.status != "active":
+            raise ResearchWriteError(
+                f"pinned scorecard {pin.scorecard_id!r} is not active "
+                f"(status={record.status})",
+                field_errors={"scorecard_ids": f"status={record.status}"},
+            )
+        actual = scorecard_evidence_content_hash(record)
+        if actual != pin.content_hash:
+            raise ResearchWriteError(
+                f"pinned scorecard {pin.scorecard_id!r} content hash mismatch",
+                field_errors={"scorecard_ids": "content_hash mismatch"},
+            )
+        try:
+            verify_scorecard_policy_content_hash(
+                record.policy_version, record.policy_content_hash
+            )
+        except ScorecardPolicyError as exc:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={"scorecard_ids": "policy_content_hash mismatch"},
+            ) from exc
+        try:
+            verify_scorecard_record_artifact_checksums(self.root, record)
+        except ScorecardEvaluationError as exc:
+            raise ResearchWriteError(
+                str(exc),
+                field_errors={
+                    "scorecard_ids": (
+                        "artifact_checksums mismatch — scorecard evidence untrusted"
+                    ),
+                    **exc.field_errors,
+                },
+            ) from exc
+        return record
+
     def verify_snapshot(self, snapshot: StudyEvidenceSnapshot) -> None:
         """Re-verify every pin in ``snapshot``; raise ``ResearchWriteError`` on drift."""
         self._verify_run_pin(snapshot.primary, field="experiment_id")
@@ -513,6 +638,8 @@ class ValidationStudyService:
             self._verify_robustness_pin(pin)
         for pin in snapshot.gates:
             self._verify_gate_pin(pin)
+        for pin in snapshot.scorecards:
+            self._verify_scorecard_pin(pin)
 
     # --- resolution helpers (snapshot-pinned, no second engine) ----------
 

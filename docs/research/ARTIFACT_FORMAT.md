@@ -43,5 +43,8 @@ Rules:
 - `regime_labels.json` (#285): versioned classifier labels + transitions; see [REGIME_CLASSIFIER.md](REGIME_CLASSIFIER.md)
 - `regime_metrics.json` (#287): per-regime raw quality metrics; see [REGIME_QUALITY.md](REGIME_QUALITY.md)
 - `confidence_profile.json` (#288): evidence-confidence profile; see [CONFIDENCE.md](CONFIDENCE.md)
+- Scorecard aggregate store (#291): `artifacts/research/scorecards/registry.jsonl`
+  (+ invalidation sidecars); see [SCORECARDS.md](SCORECARDS.md) — not a second
+  experiment registry; not written into the run directory
 - `behavior_profile.json` (#289): deterministic behaviour + transition risk; see [REGIME_BEHAVIOUR.md](REGIME_BEHAVIOUR.md)
 - `parameter_area.json` (#290): optional post-hoc plateau classification from #247; see [PARAMETER_AREA.md](PARAMETER_AREA.md)

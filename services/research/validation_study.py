@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-VALIDATION_STUDY_SCHEMA_VERSION = "1.1"
+VALIDATION_STUDY_SCHEMA_VERSION = "1.2"
 StudyStatus = Literal["open", "decided"]
 StudyDecisionOutcome = Literal["accept", "reject", "inconclusive"]
 
@@ -137,6 +137,25 @@ class PinnedGateEvidence:
 
 
 @dataclass(frozen=True)
+class PinnedScorecardEvidence:
+    scorecard_id: str
+    content_hash: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "content_hash": self.content_hash,
+            "scorecard_id": self.scorecard_id,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> PinnedScorecardEvidence:
+        return cls(
+            scorecard_id=str(raw["scorecard_id"]),
+            content_hash=str(raw["content_hash"]),
+        )
+
+
+@dataclass(frozen=True)
 class StudyEvidenceSnapshot:
     """Immutable evidence binding captured at study create time.
 
@@ -150,6 +169,7 @@ class StudyEvidenceSnapshot:
     additional: tuple[PinnedRunEvidence, ...]
     robustness: tuple[PinnedRobustnessEvidence, ...]
     gates: tuple[PinnedGateEvidence, ...]
+    scorecards: tuple[PinnedScorecardEvidence, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -158,6 +178,7 @@ class StudyEvidenceSnapshot:
             "additional": [p.to_dict() for p in self.additional],
             "robustness": [r.to_dict() for r in self.robustness],
             "gates": [g.to_dict() for g in self.gates],
+            "scorecards": [s.to_dict() for s in self.scorecards],
         }
 
     @classmethod
@@ -172,6 +193,9 @@ class StudyEvidenceSnapshot:
                 PinnedRobustnessEvidence.from_dict(r) for r in raw.get("robustness", [])
             ),
             gates=tuple(PinnedGateEvidence.from_dict(g) for g in raw.get("gates", [])),
+            scorecards=tuple(
+                PinnedScorecardEvidence.from_dict(s) for s in raw.get("scorecards", [])
+            ),
         )
 
     @staticmethod
@@ -181,12 +205,14 @@ class StudyEvidenceSnapshot:
         additional: tuple[PinnedRunEvidence, ...],
         robustness: tuple[PinnedRobustnessEvidence, ...],
         gates: tuple[PinnedGateEvidence, ...],
+        scorecards: tuple[PinnedScorecardEvidence, ...] = (),
     ) -> str:
         payload = {
             "primary": primary.to_dict(),
             "additional": [p.to_dict() for p in additional],
             "robustness": [r.to_dict() for r in robustness],
             "gates": [g.to_dict() for g in gates],
+            "scorecards": [s.to_dict() for s in scorecards],
         }
         return f"evsnap_{content_digest(payload)}"
 
@@ -246,6 +272,7 @@ class StudyRecord:
     additional_run_ids: tuple[str, ...]
     robustness_ids: tuple[str, ...]
     gate_run_ids: tuple[str, ...]
+    scorecard_ids: tuple[str, ...]
     evidence_snapshot: StudyEvidenceSnapshot
     notes: str
     status: StudyStatus
@@ -265,6 +292,7 @@ class StudyRecord:
             "additional_run_ids": list(self.additional_run_ids),
             "robustness_ids": list(self.robustness_ids),
             "gate_run_ids": list(self.gate_run_ids),
+            "scorecard_ids": list(self.scorecard_ids),
             "evidence_snapshot": self.evidence_snapshot.to_dict(),
             "notes": self.notes,
             "status": self.status,
@@ -298,6 +326,7 @@ class StudyRecord:
             additional_run_ids=additional_run_ids,
             robustness_ids=tuple(str(x) for x in raw.get("robustness_ids", [])),
             gate_run_ids=tuple(str(x) for x in raw.get("gate_run_ids", [])),
+            scorecard_ids=tuple(str(x) for x in raw.get("scorecard_ids", [])),
             evidence_snapshot=StudyEvidenceSnapshot.from_dict(snapshot_raw),
             notes=str(raw.get("notes") or ""),
             status=raw.get("status", "open"),
@@ -314,6 +343,7 @@ def compute_study_id(
     robustness_ids: list[str],
     gate_run_ids: list[str],
     evidence_snapshot_id: str,
+    scorecard_ids: list[str] | None = None,
 ) -> str:
     """Deterministic study_id — idempotent create on the same pinned evidence set."""
     if len(additional_experiment_ids) != len(additional_run_ids):
@@ -331,6 +361,7 @@ def compute_study_id(
         ],
         "robustness_ids": sorted(robustness_ids),
         "gate_run_ids": sorted(gate_run_ids),
+        "scorecard_ids": sorted(scorecard_ids or []),
         "evidence_snapshot_id": evidence_snapshot_id,
     }
     digest = content_digest(payload)
