@@ -594,6 +594,53 @@ results stay out of the public repo (#181).
 
 ---
 
+## ADR-020 – Strategy V1 validation binds frozen P4.9 scorecard policy versions
+
+**Status:** Accepted (governance; Human Freeze sign-off **pending** on #294)
+**Date:** 2026-07-19
+
+**Context:** P4.9 delivered versioned, content-hashed scorecard / classifier /
+confidence / behaviour (and related) policies on `main`. Strategy V1 honest
+validation (#198/#199 protocol) must not silently drift when those policies are
+edited under the same version string, and must not treat the final holdout as
+an optimization target. Epic ADR-019 deferred Strategy-specific binding to #294.
+
+**Decision:**
+
+1. Bind Strategy V1 validation evidence assembly to the pinned versions and
+   content hashes in
+   [`docs/research/p5/P5_SCORECARD_POLICY_BIND.md`](research/p5/P5_SCORECARD_POLICY_BIND.md)
+   against freeze `main` SHA `5cb3a7bf2b310b15f932ccf24e934025990ebf6d`.
+2. Primary pins: scorecard policy `1.0`, confidence `1.0`, behaviour `1.0`,
+   regime classifier `1.0` (transitions included), gate policy `1.1` when gates
+   are bound. Quality-score and parameter-area policies `1.0` are documented
+   companions (not standalone ACCEPT gates).
+3. Extend #198/#199; do **not** replace their proposed numeric ACCEPT/REJECT
+   rules. Those remain human-frozen on their own issues.
+4. **Holdout C stays closed.** #204 / #205 remain blocked. No automatic
+   `ACCEPT_FOR_P6` from scorecard PASS / high quality / confidence.
+5. Silent same-version policy mutation fails closed via content hash. New
+   thresholds or taxonomy require a new version + dedicated issue/PR.
+6. Human sign-off on #294 (`SCORECARD POLICY BIND FROZEN`) is required before
+   treating this bind as execution-ready; until then status is
+   `PENDING_HUMAN_SIGN_OFF`.
+
+**Alternatives:**
+
+- Leave P4.9 policies unbound for P5 — rejected (drift / post-hoc retune risk).
+- Open holdout when documenting the bind — rejected (violates one-shot OOS).
+- Encode private Strategy V1 economic thresholds into public scorecard policy —
+  rejected (ADR-019 / #181).
+
+**Consequences:** Private robustness packs (#251–#254) and one-shot OOS (#204)
+must cite these pins. UI/scorecard surfaces remain non-promotional. Candidate
+freeze (#196), partitions (#197), and #198/#199 human locks remain separate
+gates.
+
+**Related Issues / PRs:** #294, #295, #198, #199, #181, #204, #205, ADR-019
+
+---
+
 ## Template for new entries
 
 ```text

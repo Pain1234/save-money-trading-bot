@@ -1,6 +1,6 @@
 # P5 Execution Status
 
-**Updated:** 2026-07-17
+**Updated:** 2026-07-19
 **Holdout opened?** `NO`
 
 ## Wave completion (public core)
@@ -14,6 +14,7 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 | 2 | #197 | Partitions / exposure audit | `PARTITIONS LOCKED` + embargo + monthly warmup ack |
 | 3 | #198 | Protocol + decision rules | `PROTOCOL FROZEN` / `DECISION RULES FROZEN` |
 | 4 | #199 | Benchmarks / regimes | Human approval (metrics 1.2 / Spec cost parity) |
+| 4b | #294 | Scorecard/policy version bind | Human `SCORECARD POLICY BIND FROZEN` (Holdout stays closed) |
 | 5a | #200 | Walk-forward helper | Private B runs after freezes |
 | 5b | #201 | Cost-stress scenarios | Private B runs after freezes |
 | 5c | #202 | Parameter neighborhood | Private B runs after freezes |
@@ -30,6 +31,7 @@ Do **not** open holdout C until all are true:
 - [ ] Human partition lock on #197 (embargo **and** completed-monthly warmup acknowledged)
 - [ ] Human protocol + decision freeze on #198
 - [ ] Human benchmark/regime approval on #199 (metrics 1.2 / Spec cost parity)
+- [ ] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
 - [ ] Private robustness packs for #200–#203 complete (status on issues; metrics private)
 - [ ] Forward holdout length ≥ sample-sufficiency min (proposed 90 days) **and** feature warmup satisfied for the evaluation engine
 - [ ] Human pre-OOS approval recorded in Decision Log (process only)
@@ -41,6 +43,7 @@ Do **not** open holdout C until all are true:
 | Public stack #181 / #196-docs / #197-#203 / #204-prep / #205-prep | On `main` |
 | Freeze evidence refresh | PR #236 merged; **human FREEZE APPROVED pending** on #196 |
 | Human locks #197-#199 | **Pending** (requested on issues) |
+| #294 scorecard/policy bind | Docs on branch/PR; **PENDING_HUMAN_SIGN_OFF**; Holdout `NO` |
 | Private Partition B datasets | **Missing** (templates only) |
 | Private robustness packs #200-#203 | **Not run** (blocked) |
 | Forward holdout length | **Not started** until freeze UTC |

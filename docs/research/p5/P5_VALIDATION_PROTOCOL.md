@@ -108,6 +108,7 @@ As in original protocol: fail-closed, quarantine, sufficiency→INCONCLUSIVE, on
 | Primary random seed | `42` |
 | Metrics schema | `1.2` |
 | Cost model | `1.1` |
+| P4.9 scorecard/policy bind | [P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md) (#294); Holdout closed; Human Freeze pending |
 
 ## Protocol freeze sign-off
 

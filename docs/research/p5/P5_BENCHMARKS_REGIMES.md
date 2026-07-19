@@ -41,7 +41,10 @@ labels used in private P5 reporting. Generic, versioned Research Engine
 classification (including explicit transitions and content-hashed
 `classifier_version`) is implemented under P4.9 [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285)
 (`services/research/regime/`, docs: [`REGIME_CLASSIFIER.md`](../REGIME_CLASSIFIER.md))
-and bound for Strategy V1 freeze via [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294).
+and bound for Strategy V1 freeze via
+[P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md) /
+[#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
+(classifier `1.0` content hash pinned; Holdout remains closed; ADR-020).
 
 Classifier `1.0` reuses the public +5% / −5% trend thresholds from this
 document and adds a three-way vol axis (`LOW_VOL` / `NORMAL_VOL` / `HIGH_VOL`)

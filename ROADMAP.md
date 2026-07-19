@@ -456,7 +456,7 @@ Studies — **no** second registry, **no** auto-promotion. Contract:
 - [x] [#291](https://github.com/Pain1234/save-money-trading-bot/issues/291) feat: scorecard artifacts + read-only API
 - [ ] [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) feat: Research Workspace scorecard UI
 - [x] [#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) test: reproducibility + anti-overfit E2E
-- [ ] [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) docs(p5): bind Strategy V1 freeze to scorecard policy versions (P5 milestone)
+- [ ] [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) docs(p5): bind Strategy V1 freeze to scorecard policy versions (P5 milestone) — docs + ADR-020; **Human Freeze pending**; Holdout closed
 
 Dependency chain (binding):
 
