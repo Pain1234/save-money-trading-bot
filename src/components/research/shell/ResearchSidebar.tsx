@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { RESEARCH_NAV, isResearchNavActive } from "@/lib/research/navigation";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,17 @@ import { cn } from "@/lib/utils";
 export function ResearchSidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
 
   function renderNav(testIdPrefix: string) {
     return (
@@ -53,7 +64,12 @@ export function ResearchSidebar() {
           {mobileOpen ? "Navigation schließen" : "Research-Navigation"}
         </button>
         {mobileOpen ? (
-          <div id="research-sidebar-nav" className="mt-2">
+          <div
+            id="research-sidebar-nav"
+            className="mt-2"
+            role="dialog"
+            aria-label="Research navigation"
+          >
             {renderNav("research-nav-mobile")}
           </div>
         ) : null}

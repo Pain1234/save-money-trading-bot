@@ -6,6 +6,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_SPEC = REPO_ROOT / "tests" / "visual" / "research-routes.spec.ts"
+RESEARCH_A11Y_SPEC = (
+    REPO_ROOT / "tests" / "visual" / "research-a11y-responsive.spec.ts"
+)
 PLAYWRIGHT_CONFIG = REPO_ROOT / "playwright.config.ts"
 PAPER_API_STUB = REPO_ROOT / "scripts" / "paper-api-stub.mjs"
 PACKAGE_JSON = REPO_ROOT / "package.json"
@@ -14,6 +17,7 @@ CI_FAST = REPO_ROOT / ".github" / "workflows" / "ci-fast.yml"
 
 def test_research_playwright_smoke_files_exist() -> None:
     assert RESEARCH_SPEC.is_file()
+    assert RESEARCH_A11Y_SPEC.is_file()
     assert PLAYWRIGHT_CONFIG.is_file()
     assert PAPER_API_STUB.is_file()
     package = PACKAGE_JSON.read_text(encoding="utf-8")
@@ -43,7 +47,19 @@ def test_research_smoke_spec_covers_workspace_switch_and_routes() -> None:
     assert "405" in source
 
 
+def test_research_a11y_responsive_spec_exists() -> None:
+    assert RESEARCH_A11Y_SPEC.is_file()
+    source = RESEARCH_A11Y_SPEC.read_text(encoding="utf-8")
+    assert "research-skip-link" in source
+    assert "research-nav-toggle" in source
+    assert "research-shell-desktop.png" in source
+    assert "research-shell-mobile.png" in source
+    assert "workspace-monitor" in source
+
+
 def test_ci_fast_wires_research_playwright_smoke_job() -> None:
     workflow = CI_FAST.read_text(encoding="utf-8")
     assert "research-playwright-smoke:" in workflow
     assert "npm run test:research-smoke" in workflow
+    package = PACKAGE_JSON.read_text(encoding="utf-8")
+    assert "research-a11y-responsive.spec.ts" in package

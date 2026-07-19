@@ -266,12 +266,14 @@ Missing / fail-closed detail → honest unavailable panels. Trades remain on
 
 | Viewport | Behavior |
 |----------|----------|
-| Desktop ≥1280 | Sidebar + main |
-| Laptop | Narrower sidebar; ticker scrolls horizontally |
-| Tablet | Collapsible sidebar / drawer; topbar persists |
-| Mobile review | Stacked; nav as select or drawer; tables horizontal-scroll |
+| Desktop ≥1280 | Sidebar + main; wider Research shell tokens |
+| Laptop (~1280) | Persistent sidebar; ticker scrolls horizontally |
+| Tablet (&lt;1024) | Collapsible Research nav (`research-nav-toggle`); topbar persists |
+| Mobile review | Stacked; nav drawer; tables horizontal-scroll inside frames |
 
-UI-06 owns Playwright + screenshot acceptance across breakpoints.
+UI-06 (#303): Playwright breakpoint + landmark coverage in
+`tests/visual/research-a11y-responsive.spec.ts`; checklist
+`docs/research/RESEARCH_RESPONSIVE_A11Y.md`.
 
 ---
 
@@ -312,11 +314,15 @@ No second Research surface or registry.
 ## 11. Accessibility
 
 - Landmark roles: `banner`, `navigation`, `main`, `contentinfo`
-- Keyboard: all nav links focusable; visible focus rings
-- `aria-current="page"` on active Research nav items
+- Skip link: `Zum Research-Inhalt springen` → `#research-main` with `tabIndex={-1}` so the target receives keyboard focus (#303)
+- Keyboard: all nav links focusable; visible mint `:focus-visible` rings in `.research-shell`
+- Mobile nav: `aria-expanded` / Escape closes drawer
+- `aria-current="page"` on active Research nav items and workspace switch
 - Contrast: mint/red/yellow on dark base meets WCAG AA for text ≥12px where feasible
 - Screenreader labels on workspace switch and ticker (`aria-label`)
 - Do not rely on color alone for pass/fail (include text status)
+
+Acceptance evidence: `docs/research/RESEARCH_RESPONSIVE_A11Y.md` + Playwright a11y spec.
 
 ---
 
@@ -325,12 +331,12 @@ No second Research surface or registry.
 | Shot | Path (UI-06) | Notes |
 |------|----------------|-------|
 | Style reference (pre-rebuild) | `docs/design/research-workspace-hyperliquid-reference.png` | Density / color / chrome target |
-| Shell desktop | `docs/visual-regression/research-shell-desktop.png` | After UI-01 |
-| Overview gate-first | `docs/visual-regression/research-overview-gates.png` | After UI-02 |
-| Regime / analytics | `docs/visual-regression/research-regime-scorecard.png` | After UI-03 |
-| Mobile review | `docs/visual-regression/research-shell-mobile.png` | After UI-06 |
+| Shell desktop | `docs/visual-regression/research-shell-desktop.png` | After UI-06 (#303) |
+| Overview gate-first | `docs/visual-regression/research-overview-gates.png` | Optional when stub has gate fixtures |
+| Regime / analytics | `docs/visual-regression/research-regime-scorecard.png` | Optional when stub has scorecard detail |
+| Mobile review | `docs/visual-regression/research-shell-mobile.png` | After UI-06 (#303) |
 
-Until UI-06 lands, only the style reference PNG is required in-repo.
+Shell desktop/mobile PNGs are produced by `npm run test:research-smoke`.
 
 ---
 

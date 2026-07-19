@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 research responsive / a11y — #303)
+
+- Research shell skip link, mint `:focus-visible` rings, Escape-close mobile nav.
+- Playwright a11y/responsive suite + desktop/mobile reference screenshots under
+  `docs/visual-regression/`. Checklist: `docs/research/RESEARCH_RESPONSIVE_A11Y.md`.
+- Skip-link activation focuses `#research-main` (`tabIndex={-1}`); Playwright
+  asserts `toBeFocused()`.
+
 ### Added (P4.9 research forensics UI — #302)
 
 - Bind `GET /api/v1/research/scorecards/{id}/detail` (#350) into Research detail
