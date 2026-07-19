@@ -30,6 +30,14 @@ _BASE_EXPERIMENT: dict[str, Any] = {
         "manifest_path": "tests/fixtures/dataset_manifest.json",
     },
     "symbols": ["BTC"],
+    "symbol_constraints": {
+        "BTC": {
+            "quantity_step": "0.00001",
+            "minimum_quantity": "0.00001",
+            "minimum_notional": "10",
+            "price_tick_size": "0.1",
+        }
+    },
     "time_range": {
         "start": "2024-01-01T00:00:00.000000Z",
         "end": "2024-03-01T00:00:00.000000Z",
@@ -98,6 +106,13 @@ def _write_run(
 
     experiment = deepcopy(_BASE_EXPERIMENT)
     experiment.update(experiment_overrides or {})
+    if experiment_overrides and "symbols" in experiment_overrides:
+        from research.symbol_constraints import hyperliquid_mainnet_v1_pins
+
+        if "symbol_constraints" not in experiment_overrides:
+            experiment["symbol_constraints"] = hyperliquid_mainnet_v1_pins(
+                tuple(str(s) for s in experiment["symbols"])
+            )
     (run_dir / "experiment.json").write_text(
         json.dumps(experiment, sort_keys=True), encoding="utf-8"
     )

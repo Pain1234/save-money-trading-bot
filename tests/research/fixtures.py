@@ -115,6 +115,9 @@ def align_spec_to_bundle(
     )
     data = deepcopy(json.loads(EXAMPLE_JSON.read_text(encoding="utf-8")))
     data["symbols"] = symbols
+    from research.symbol_constraints import hyperliquid_mainnet_v1_pins
+
+    data["symbol_constraints"] = hyperliquid_mainnet_v1_pins(tuple(symbols))
     data["time_range"] = {
         "start": exp_tr.start.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         "end": exp_tr.end.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),

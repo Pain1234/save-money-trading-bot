@@ -16,6 +16,7 @@ Versioned research experiment contract for comparable, reproducible paper runs.
 | `parameters` | Parameter snapshot (no secrets) |
 | `dataset_manifest_ref` | P3 `DatasetManifest` pin: `dataset_id`, `content_hash`, optional `manifest_path` |
 | `symbols` | `BTC` / `ETH` / `SOL` only |
+| `symbol_constraints` | Sealed per-symbol exchange pins (`quantity_step`, `minimum_quantity`, `minimum_notional`, `price_tick_size`); must cover Spec symbols exactly ([#363](https://github.com/Pain1234/save-money-trading-bot/issues/363)) |
 | `time_range` | UTC window |
 | `starting_capital` | Initial capital |
 | `fee_assumption` / `slippage_assumption` / `funding_assumption` | Cost model |

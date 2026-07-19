@@ -233,6 +233,17 @@ class RunOutcome:
 def _config_from_spec(spec: ExperimentSpec, params: StrategyParameters) -> BacktestConfig:
     fee, slip, funding = cost_models_from_spec(spec)
     symbols = tuple(s.value for s in spec.symbols)
+    if not spec.symbol_constraints:
+        raise ValueError(
+            "ExperimentSpec.symbol_constraints is required for research runs (#363)"
+        )
+    missing = [s for s in symbols if s not in spec.symbol_constraints]
+    if missing:
+        raise ValueError(
+            f"ExperimentSpec.symbol_constraints missing symbols: {missing}"
+        )
+    from risk_engine.models import SymbolConstraints
+
     return BacktestConfig(
         symbols=symbols,
         initial_cash=spec.starting_capital,
@@ -240,6 +251,15 @@ def _config_from_spec(spec: ExperimentSpec, params: StrategyParameters) -> Backt
         fee_model=fee,
         slippage_model=slip,
         funding_model=funding,
+        symbol_constraints={
+            sym: SymbolConstraints(
+                quantity_step=pin.quantity_step,
+                minimum_quantity=pin.minimum_quantity,
+                minimum_notional=pin.minimum_notional,
+                price_tick_size=pin.price_tick_size,
+            )
+            for sym, pin in spec.symbol_constraints.items()
+        },
     )
 
 
