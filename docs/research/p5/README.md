@@ -43,6 +43,7 @@ P4 usable enough on main (Engine + Workspace; Lab Abnahme/#245–#250 as needed)
         → P5-02 #198 Protocol + Decision Freeze
           → P5-03 #199 Benchmarks + Regimes
             → {P5-04 #200 … P5-07 #203 Planung/Helfer}
+              → #294 Scorecard/policy version bind (Holdout bleibt zu)
               → {P5-04E #251 … P5-07E #254 tatsächliche Ausführung}
                 → Human Pre-OOS Approval
                   → P5-08 #204 Final Untouched OOS Once
@@ -61,8 +62,10 @@ Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295), cont
 [`docs/research/REGIME_SCORECARD.md`](../REGIME_SCORECARD.md). After P4.9
 infrastructure, [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
 binds frozen Strategy V1 validation to scorecard/classifier/behaviour/confidence
-policy versions **without** opening the final holdout. Extends #198/#199; does not
-replace them.
+policy versions **and** `evaluation_code_commit` **without** opening the final
+holdout — see [P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md)
+(ADR-020). Classifier `1.0` is the sole scorecard taxonomy SoT; #292 UI does
+not block #294. Extends #198/#199; does not replace them.
 
 Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181).
 
@@ -75,6 +78,7 @@ Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), 
 | [P5_VALIDATION_PROTOCOL.md](P5_VALIDATION_PROTOCOL.md) | Pre-register all checks before final OOS |
 | [P5_DECISION_RULES.md](P5_DECISION_RULES.md) | ACCEPT / REJECT / INCONCLUSIVE gates |
 | [P5_BENCHMARKS_REGIMES.md](P5_BENCHMARKS_REGIMES.md) | Benchmarks + deterministic regimes (#199) |
+| [P5_SCORECARD_POLICY_BIND.md](P5_SCORECARD_POLICY_BIND.md) | P4.9 policy/classifier/confidence/behaviour version freeze (#294); Holdout closed |
 | [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md) | Live execution gate status (no metrics) |
 | [P5_ROBUSTNESS_PLANS.md](P5_ROBUSTNESS_PLANS.md) | WF / cost / stability / bootstrap plans (#200–#203) |
 | [P5_PUBLIC_PRIVATE_ARTIFACTS.md](P5_PUBLIC_PRIVATE_ARTIFACTS.md) | Artifact classification (#181) |
