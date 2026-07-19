@@ -150,15 +150,10 @@ class GateService:
         return _record_to_public_dict(self.root, record)
 
     def list_all(self, *, run_id: str | None = None) -> list[dict[str, Any]]:
-        entries = self.store.list_entries()
-        # Most-recent-per-id (append-only log may hold a superseding
-        # invalidation record after the original active one).
-        latest: dict[str, GateRunRecord] = {}
-        for entry in entries:
-            latest[entry.gate_run_id] = entry
-        items: list[dict[str, Any]] = []
-        for entry in latest.values():
-            items.append(_record_to_public_dict(self.root, entry))
+        # Sidecar-resolved latest-per-id (never raw JSONL status alone).
+        items: list[dict[str, Any]] = [
+            _record_to_public_dict(self.root, e) for e in self.store.list_latest()
+        ]
         if run_id:
             items = [i for i in items if i["run_id"] == run_id]
         items.sort(key=lambda i: i["evaluated_at"], reverse=True)

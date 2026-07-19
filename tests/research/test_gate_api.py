@@ -254,6 +254,36 @@ def test_invalidate_gate_is_append_only(gate_client: tuple[TestClient, str]) -> 
     assert second.status_code == 409
 
 
+def test_evaluate_after_invalidate_refused_and_list_consistent(
+    gate_client: tuple[TestClient, str],
+) -> None:
+    """Evaluate/Get/List must agree: invalidated IDs stay invalidated (#350)."""
+    client, run_id = gate_client
+    payload = {"run_id": run_id, "policy_version": "1.0"}
+    created = client.post("/api/v1/research/gates/evaluate", json=payload).json()
+    gate_run_id = created["gate_run_id"]
+
+    inv = client.post(
+        f"/api/v1/research/gates/{gate_run_id}/invalidate",
+        json={"reason": "lifecycle", "actor": "test"},
+    )
+    assert inv.status_code == 200
+    assert inv.json()["status"] == "invalidated"
+
+    revived = client.post("/api/v1/research/gates/evaluate", json=payload)
+    assert revived.status_code == 422
+    assert revived.json()["detail"]["fields"].get("gate_run_id") == "invalidated"
+
+    got = client.get(f"/api/v1/research/gates/{gate_run_id}")
+    assert got.status_code == 200
+    assert got.json()["status"] == "invalidated"
+
+    listed = client.get("/api/v1/research/gates").json()["items"]
+    match = [i for i in listed if i["gate_run_id"] == gate_run_id]
+    assert len(match) == 1
+    assert match[0]["status"] == "invalidated"
+
+
 def test_invalidate_gate_unknown_404(gate_client: tuple[TestClient, str]) -> None:
     client, _run_id = gate_client
     resp = client.post(

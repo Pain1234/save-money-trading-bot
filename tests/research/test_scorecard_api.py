@@ -181,3 +181,25 @@ def test_invalidate_scorecard(scorecard_client: tuple[TestClient, str]) -> None:
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "invalidated"
+
+
+def test_scorecard_detail_endpoint(scorecard_client: tuple[TestClient, str]) -> None:
+    """Nested detail route exposes regime rows without changing summary GET (#350)."""
+    client, run_id = scorecard_client
+    created = client.post(
+        "/api/v1/research/scorecards/evaluate",
+        json={"run_id": run_id, "policy_version": "1.0"},
+    ).json()
+    sid = created["scorecard_id"]
+    summary = client.get(f"/api/v1/research/scorecards/{sid}")
+    assert summary.status_code == 200, summary.text
+    assert "regime_rows" not in summary.json()
+    detail = client.get(f"/api/v1/research/scorecards/{sid}/detail")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["scorecard_id"] == sid
+    assert isinstance(body["regime_rows"], list)
+    assert body["regime_rows"]
+    assert body["promotion_action"] == "none"
+    assert body["missing_data_semantics"]["token"] == "NOT_AVAILABLE"
+    assert body["cost_stress"]["status"] == "NOT_AVAILABLE"

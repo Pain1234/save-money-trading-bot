@@ -358,7 +358,8 @@ API (extend existing Research API; no second registry):
 
 - `GET /api/v1/research/scorecards/policies`
 - `GET /api/v1/research/scorecards`
-- `GET /api/v1/research/scorecards/{scorecard_id}`
+- `GET /api/v1/research/scorecards/{scorecard_id}` — coarse summary (#291)
+- `GET /api/v1/research/scorecards/{scorecard_id}/detail` — regime rows + forensics (#350)
 - `POST /api/v1/research/scorecards/evaluate` — idempotent evidence evaluation only
 - `POST /api/v1/research/scorecards/{scorecard_id}/invalidate` — append-only
 

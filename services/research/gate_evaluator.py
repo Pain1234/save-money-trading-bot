@@ -68,6 +68,7 @@ from research.robustness import (
 from research.robustness_jobs import RobustnessJobStore
 from research.run_manifest import RunManifest, load_run_manifest
 from research.runner import resolve_git_commit
+from research.validation_study import content_digest
 from research.write_service import load_dataset_catalog
 
 GATE_RUN_RECORD_SCHEMA_VERSION = "1.1"
@@ -256,6 +257,31 @@ class GateRunRecord:
                 IntegrityCheckResult.from_dict(c) for c in raw.get("integrity_checks", [])
             ),
         )
+
+
+def gate_evidence_content_hash(record: GateRunRecord) -> str:
+    """Hash of sealed gate evidence fields (excludes mutable invalidation status).
+
+    Shared by ValidationStudy pins (#249) and scorecard detail forensics (#350).
+    """
+    return content_digest(
+        {
+            "gate_run_id": record.gate_run_id,
+            "policy_version": record.policy_version,
+            "policy_content_hash": record.policy_content_hash,
+            "run_code_commit": record.run_code_commit,
+            "evaluation_code_commit": record.evaluation_code_commit,
+            "experiment_id": record.experiment_id,
+            "run_id": record.run_id,
+            "robustness_run_ids": list(record.robustness_run_ids),
+            "dataset_id": record.dataset_id,
+            "dataset_content_hash": record.dataset_content_hash,
+            "artifact_checksums": dict(sorted(record.artifact_checksums.items())),
+            "measurements": dict(sorted(record.measurements.items())),
+            "gates": [g.to_dict() for g in record.gates],
+            "overall_status": record.overall_status,
+        }
+    )
 
 
 def quality_scores_permitted(record: GateRunRecord) -> bool:
@@ -505,7 +531,44 @@ class GateResultStore:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
 
+    def invalidation_sidecar_path(self, gate_run_id: str) -> Path:
+        return self.invalidation_dir / f"{gate_run_id}.jsonl"
+
+    def _sidecar_marks_invalidated(self, gate_run_id: str) -> bool:
+        """True when an invalidation sidecar exists for ``gate_run_id``.
+
+        Sidecar is append-only and authoritative: rewriting the JSONL log back
+        to ``active`` must not resurrect a gate (#350).
+        """
+        sidecar = self.invalidation_sidecar_path(gate_run_id)
+        if not sidecar.is_file():
+            return False
+        try:
+            text = sidecar.read_text(encoding="utf-8")
+        except OSError:
+            # Unreadable sidecar → fail closed (treat as invalidated).
+            return True
+        if not text.strip():
+            # Empty sidecar file still signals prior invalidation intent.
+            return True
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                return True
+            if not isinstance(raw, dict):
+                return True
+            if str(raw.get("status") or "") == "invalidated":
+                return True
+            if str(raw.get("gate_run_id") or "") == gate_run_id:
+                return True
+        # Non-empty unparseable-as-invalidation content → fail closed.
+        return True
+
     def list_entries(self) -> list[GateRunRecord]:
+        """Raw append-only history (does not apply sidecar coercion)."""
         if not self.path.exists():
             return []
         entries: list[GateRunRecord] = []
@@ -515,18 +578,51 @@ class GateResultStore:
             entries.append(GateRunRecord.from_dict(json.loads(line)))
         return entries
 
+    def _apply_sidecar(self, entry: GateRunRecord) -> GateRunRecord:
+        if self._sidecar_marks_invalidated(entry.gate_run_id):
+            reason = entry.invalidation_reason or "invalidation_sidecar"
+            return replace(entry, status="invalidated", invalidation_reason=reason)
+        return entry
+
     def get(self, gate_run_id: str) -> GateRunRecord | None:
-        """Most recent record for ``gate_run_id`` (reflects invalidation if any)."""
+        """Most recent record for ``gate_run_id`` (sidecar invalidation is binding)."""
         matches = [e for e in self.list_entries() if e.gate_run_id == gate_run_id]
-        return matches[-1] if matches else None
+        if not matches:
+            return None
+        return self._apply_sidecar(matches[-1])
+
+    def list_latest(self) -> list[GateRunRecord]:
+        """Latest-per-id view with sidecar-resolved status (API list surface)."""
+        latest: dict[str, GateRunRecord] = {}
+        for entry in self.list_entries():
+            latest[entry.gate_run_id] = entry
+        return [self._apply_sidecar(entry) for entry in latest.values()]
 
     def list_for_run(self, run_id: str) -> list[GateRunRecord]:
-        return [e for e in self.list_entries() if e.run_id == run_id]
+        """Latest-per-id for a run, sidecar-resolved (same semantics as list_latest)."""
+        return [e for e in self.list_latest() if e.run_id == run_id]
 
     def append(self, record: GateRunRecord) -> None:
+        """Append a fresh active evaluation.
+
+        Refuses duplicate actives and any reactivation after invalidation
+        (sidecar is authoritative even if JSONL was rewritten).
+        """
+        if self._sidecar_marks_invalidated(record.gate_run_id):
+            msg = (
+                f"gate_run_id invalidated — reactivation forbidden: "
+                f"{record.gate_run_id}"
+            )
+            raise ValueError(msg)
         existing = self.get(record.gate_run_id)
         if existing is not None and existing.status == "active":
             msg = f"duplicate active gate_run_id forbidden: {record.gate_run_id}"
+            raise ValueError(msg)
+        if existing is not None and existing.status == "invalidated":
+            msg = (
+                f"gate_run_id invalidated — reactivation forbidden: "
+                f"{record.gate_run_id}"
+            )
             raise ValueError(msg)
         self._append_line(record.to_dict())
 
@@ -539,7 +635,7 @@ class GateResultStore:
             msg = f"gate result already invalidated: {gate_run_id}"
             raise ValueError(msg)
         self.invalidation_dir.mkdir(parents=True, exist_ok=True)
-        sidecar = self.invalidation_dir / f"{gate_run_id}.jsonl"
+        sidecar = self.invalidation_sidecar_path(gate_run_id)
         sidecar_record = {
             "gate_run_id": gate_run_id,
             "status": "invalidated",
@@ -1343,5 +1439,17 @@ class GateEvaluator:
         existing = self.store.get(gate_run_id)
         if existing is not None and existing.status == "active":
             return existing
-        self.store.append(record)
+        if existing is not None and existing.status == "invalidated":
+            raise GateEvaluationError(
+                f"gate_run_id {gate_run_id} was invalidated; "
+                "re-evaluate of the same evidence is refused",
+                field_errors={"gate_run_id": "invalidated"},
+            )
+        try:
+            self.store.append(record)
+        except ValueError as exc:
+            raise GateEvaluationError(
+                str(exc),
+                field_errors={"gate_run_id": "append rejected"},
+            ) from exc
         return record
