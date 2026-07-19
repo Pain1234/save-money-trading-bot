@@ -19,7 +19,7 @@ Automated: `tests/visual/research-a11y-responsive.spec.ts`.
 | Check | Evidence |
 |-------|----------|
 | Landmarks `banner`, `navigation` (Workspace + Research), `main`, `contentinfo` | Playwright role assertions |
-| Skip link to `#research-main` | `research-skip-link` focus + Enter |
+| Skip link to `#research-main` | `research-skip-link` → `tabIndex={-1}` main `toBeFocused()` |
 | `aria-current="page"` on active nav / workspace | Existing shell links |
 | Mobile nav `aria-expanded` + Escape closes | Playwright mobile test |
 | Visible `:focus-visible` rings (mint) | `.research-shell` tokens in `design-tokens.css` |

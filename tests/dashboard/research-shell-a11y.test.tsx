@@ -15,6 +15,7 @@ describe("ResearchShell a11y chrome (#303)", () => {
     expect(html).toContain('href="#research-main"');
     expect(html).toContain('id="research-main"');
     expect(html).toContain('data-testid="research-main"');
+    expect(html).toContain('tabindex="-1"');
     expect(html).toContain('aria-label="Research content"');
     expect(html).toContain('role="contentinfo"');
     expect(html).not.toMatch(/\bPromote\b|Auto-Promotion|enable live trading/i);

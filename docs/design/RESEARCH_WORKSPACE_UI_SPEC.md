@@ -301,7 +301,7 @@ No second Research surface or registry.
 ## 11. Accessibility
 
 - Landmark roles: `banner`, `navigation`, `main`, `contentinfo`
-- Skip link: `Zum Research-Inhalt springen` → `#research-main` (#303)
+- Skip link: `Zum Research-Inhalt springen` → `#research-main` with `tabIndex={-1}` so the target receives keyboard focus (#303)
 - Keyboard: all nav links focusable; visible mint `:focus-visible` rings in `.research-shell`
 - Mobile nav: `aria-expanded` / Escape closes drawer
 - `aria-current="page"` on active Research nav items and workspace switch

@@ -49,8 +49,9 @@ test("research landmarks and skip link (desktop)", async ({ page }) => {
   const skip = page.getByTestId("research-skip-link");
   await skip.focus();
   await expect(skip).toBeFocused();
+  // Activate like a keyboard user (Enter) after Tab-focus.
   await skip.press("Enter");
-  await expect(page.locator("#research-main")).toBeVisible();
+  await expect(page.getByTestId("research-main")).toBeFocused();
 });
 
 test("research mobile nav toggle and Escape close", async ({ page }) => {

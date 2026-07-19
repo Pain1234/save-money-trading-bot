@@ -1,4 +1,5 @@
 import { ResearchSidebar } from "@/components/research/shell/ResearchSidebar";
+import { ResearchSkipLink } from "@/components/research/shell/ResearchSkipLink";
 import { ResearchTicker } from "@/components/research/shell/ResearchTicker";
 import { ResearchTopbar } from "@/components/research/shell/ResearchTopbar";
 
@@ -14,9 +15,7 @@ export function ResearchShell({ username, children }: ResearchShellProps) {
       className="research-shell relative flex min-h-screen flex-col bg-bg-base text-text-primary"
       data-testid="research-shell"
     >
-      <a href="#research-main" className="rs-skip-link" data-testid="research-skip-link">
-        Zum Research-Inhalt springen
-      </a>
+      <ResearchSkipLink />
       <ResearchTopbar username={username} />
       <ResearchTicker />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -24,7 +23,8 @@ export function ResearchShell({ username, children }: ResearchShellProps) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <main
             id="research-main"
-            className="min-w-0 flex-1 px-[var(--rs-shell-x)] py-[var(--rs-shell-y)]"
+            tabIndex={-1}
+            className="min-w-0 flex-1 px-[var(--rs-shell-x)] py-[var(--rs-shell-y)] outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mint"
             data-testid="research-main"
             aria-label="Research content"
           >
