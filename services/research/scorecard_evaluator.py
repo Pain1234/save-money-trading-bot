@@ -523,12 +523,43 @@ class ScorecardEvaluator:
         )
         layer_refs["confidence_overall_label"] = confidence_payload.get("overall_label")
 
-        # Parameter area (#290) — optional / NOT_AVAILABLE
+        # Parameter area (#290) — optional / NOT_AVAILABLE; trusted sealed only.
         parameter_area: dict[str, Any]
         if (artifact_path / "parameter_area.json").is_file():
             _layer_file_digest(artifact_path, "parameter_area.json", checksums)
             parameter_area = _load_json(artifact_path / "parameter_area.json")
+            if parameter_area.get("evidence_trusted") is not True:
+                raise ScorecardEvaluationError(
+                    "parameter_area.json is not trusted evidence "
+                    "(evidence_trusted must be true; produce via "
+                    "evaluate_parameter_area_from_robustness with a sealed "
+                    "manifest pin)",
+                    field_errors={"parameter_area": "untrusted"},
+                )
+            trusted_hash = str(parameter_area.get("trusted_manifest_hash") or "").strip()
+            robustness_id = str(parameter_area.get("robustness_id") or "").strip()
+            if not trusted_hash:
+                raise ScorecardEvaluationError(
+                    "parameter_area.json missing trusted_manifest_hash pin",
+                    field_errors={"parameter_area": "missing trusted_manifest_hash"},
+                )
+            if not robustness_id:
+                raise ScorecardEvaluationError(
+                    "parameter_area.json missing robustness_id",
+                    field_errors={"parameter_area": "missing robustness_id"},
+                )
+            try:
+                verify_robustness_manifest_seal(
+                    self.root, robustness_id, expected_hash=trusted_hash
+                )
+            except (ValueError, FileNotFoundError) as exc:
+                raise ScorecardEvaluationError(
+                    f"parameter_area trusted_manifest_hash seal failed: {exc}",
+                    field_errors={"parameter_area": "manifest seal mismatch"},
+                ) from exc
             layer_refs["parameter_area_id"] = parameter_area.get("parameter_area_id")
+            layer_refs["parameter_area_robustness_id"] = robustness_id
+            layer_refs["parameter_area_trusted_manifest_hash"] = trusted_hash
         else:
             parameter_area = {
                 "classification": None,

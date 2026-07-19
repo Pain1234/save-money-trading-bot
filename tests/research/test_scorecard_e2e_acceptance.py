@@ -1,6 +1,10 @@
 """P4.9 scorecard reproducibility + anti-overfit acceptance (#293).
 
-Explicit matrix (Issue #293) — composition over sealed layers, not UI (#292):
+Explicit matrix (Issue #293) — Research API / evaluator composition over sealed
+layers. Dashboard UI E2E remains out of scope here and is tracked on
+[#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) /
+[#250](https://github.com/Pain1234/save-money-trading-bot/issues/250); this
+issue's "UI E2E" AC is deferred until those land.
 
 1. Valid synthetic run → scorecard with layer pins + no auto-promotion
 2. Same inputs → identical ``scorecard_id`` (idempotent)
@@ -12,8 +16,12 @@ Explicit matrix (Issue #293) — composition over sealed layers, not UI (#292):
 8. Unknown policy version → fail-closed
 9. Silent policy content edit under same version string → hash mismatch
 10. Parameter-area isolated peak vs broad plateau (unit composition)
-11. Behaviour: Sideways zero-trades defensive; Bull whipsaw weakness
-12. No automatic promotion flags on any successful evaluate
+11. Untrusted parameter_area.json → scorecard evaluate fail-closed
+12. Trusted parameter_area (sealed manifest pin) → pins into scorecard
+13. integrity_status=INVALID → quality_scores_permitted False
+14. Behaviour: Sideways zero-trades defensive; Bull whipsaw weakness
+15. API smoke without RESEARCH_ALLOW_DIRTY_GIT (clean temp git tree)
+16. No automatic promotion flags on any successful evaluate
 
 Non-scope: dashboard UI (#292), private Strategy V1 metrics, paper/live side effects.
 """
@@ -379,7 +387,8 @@ def test_matrix_insufficient_sample_cannot_yield_high_confidence(tmp_path: Path)
     assert record.auto_promotion is False
 
 
-def test_matrix_parameter_area_pinned_into_scorecard(tmp_path: Path) -> None:
+def test_matrix_untrusted_parameter_area_fail_closed(tmp_path: Path) -> None:
+    """Public evaluate_parameter_area artifacts must not enter the scorecard."""
     from research.parameter_area import (
         NeighborObservation,
         evaluate_parameter_area,
@@ -424,50 +433,99 @@ def test_matrix_parameter_area_pinned_into_scorecard(tmp_path: Path) -> None:
         ],
     )
     assert result.classification == "ISOLATED_PEAK"
+    assert result.artifact.get("evidence_trusted") is False
     write_parameter_area_artifact(run_dir, result.artifact)
+    _reseal_registry_entry(root, run_id)
+
+    with pytest.raises(ScorecardEvaluationError) as exc:
+        _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
+    assert exc.value.field_errors.get("parameter_area") == "untrusted"
+
+
+def test_matrix_trusted_parameter_area_pins_into_scorecard(tmp_path: Path) -> None:
+    """Sealed robustness pin + evidence_trusted=true may appear on the scorecard."""
+    from research.parameter_area import write_parameter_area_artifact
+
+    root, experiment_id, run_id = te._completed_run(tmp_path)
+    robustness_id = te._save_walk_forward_manifest(
+        root,
+        base_experiment_id=experiment_id,
+        base_run_id=run_id,
+        fold_run_ids=[run_id, run_id, run_id],
+        robustness_id="rob_pa_trusted",
+    )
+    job = __import__(
+        "research.robustness_jobs", fromlist=["RobustnessJobStore"]
+    ).RobustnessJobStore(root).get(robustness_id)
+    assert job is not None and job.manifest_content_hash
+    entry = ExperimentRegistry(root).show(run_id, verify=True)
+    run_dir = Path(entry.artifact_path)
+    artifact = {
+        "schema_version": "1.0",
+        "parameter_area_id": "pa_acceptance_trusted",
+        "robustness_id": robustness_id,
+        "policy_version": "1.0",
+        "policy_content_hash": "c" * 64,
+        "evidence_hash": "d" * 64,
+        "evidence_trusted": True,
+        "trusted_manifest_hash": job.manifest_content_hash,
+        "classification": "ISOLATED_PEAK",
+        "classification_reason": "acceptance fixture",
+        "auto_parameter_selection": False,
+        "decision_binding": False,
+        "oos_holdout_used": False,
+    }
+    write_parameter_area_artifact(run_dir, artifact)
     _reseal_registry_entry(root, run_id)
 
     scorecard = _evaluator(root).evaluate(run_id=run_id, policy_version="1.0")
     pa = scorecard.global_profile["parameter_area"]
     assert pa.get("classification") == "ISOLATED_PEAK"
-    assert scorecard.layer_refs.get("parameter_area_id")
+    assert pa.get("evidence_trusted") is True
+    assert scorecard.layer_refs.get("parameter_area_id") == "pa_acceptance_trusted"
+    assert scorecard.layer_refs.get("parameter_area_trusted_manifest_hash") == (
+        job.manifest_content_hash
+    )
     assert scorecard.auto_promotion is False
 
 
 def test_matrix_invalid_integrity_blocks_decision_use_quality(tmp_path: Path) -> None:
-    """Gate FAIL / non-VALID integrity must keep quality_scores_permitted False."""
+    """Real integrity_status=INVALID must block quality_scores_permitted."""
     from research.gate_evaluator import quality_scores_permitted
 
     root, experiment_id, run_id = te._completed_run(tmp_path)
-    neg_a = te._clone_run_with_net_pnl(
-        root, run_id, new_run_id="run_fold_neg_qi_a", net_pnl="-10"
+    entry = ExperimentRegistry(root).show(run_id, verify=True)
+    run_dir = Path(entry.artifact_path)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Empty git_commit fails Layer-0 git_commit_binding → integrity INVALID.
+    manifest["git_commit"] = ""
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
     )
-    neg_b = te._clone_run_with_net_pnl(
-        root, run_id, new_run_id="run_fold_neg_qi_b", net_pnl="-20"
-    )
-    robustness_id = te._save_walk_forward_manifest(
+    _reseal_registry_entry(root, run_id)
+
+    robustness_id = te._save_bootstrap_manifest(
         root,
         base_experiment_id=experiment_id,
         base_run_id=run_id,
-        fold_run_ids=[neg_a, neg_b, run_id],
-        robustness_id="rob_qi_fail",
+        robustness_id="rob_qi_invalid",
     )
     gate = GateEvaluator(root, repo_root=te._evaluation_image_root(root)).evaluate(
         run_id=run_id, policy_version="1.0", robustness_run_ids=[robustness_id]
     )
-    assert gate.overall_status == "fail"
-    # Decision-use quality is only permitted when integrity is VALID + active.
-    # FAIL overall and/or NOT_VERIFIABLE integrity must block decision-use.
-    if gate.integrity_status != "VALID":
-        assert quality_scores_permitted(gate) is False
+    assert gate.integrity_status == "INVALID"
+    assert quality_scores_permitted(gate) is False
+
     scorecard = _evaluator(root).evaluate(
         run_id=run_id,
         policy_version="1.0",
         gate_run_id=gate.gate_run_id,
         robustness_run_ids=[robustness_id],
     )
-    assert scorecard.global_profile["gates"]["overall_status"] == "fail"
+    assert scorecard.global_profile["gates"]["integrity_status"] == "INVALID"
     assert scorecard.promotion_action == "none"
+    assert scorecard.auto_promotion is False
 
 
 def test_matrix_public_fixtures_have_no_private_edge_markers() -> None:
@@ -481,10 +539,40 @@ def test_matrix_public_fixtures_have_no_private_edge_markers() -> None:
         assert token not in dumped
 
 
-def test_matrix_api_evaluate_idempotent_and_no_promotion(
+def _init_clean_git_repo(path: Path) -> str:
+    """Create a minimal clean git repo; return HEAD sha (no dirty bypass)."""
+    import subprocess
+
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init"], cwd=path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "acceptance@example.com"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Acceptance"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "acceptance-base"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=path, text=True
+    ).strip()
+    return head
+
+
+def test_matrix_api_evaluate_idempotent_without_dirty_git_bypass(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Thin Research API smoke for the same idempotency / no-promotion contract."""
+    """Research API smoke on a clean git tree — no RESEARCH_ALLOW_DIRTY_GIT."""
     import time
 
     from fastapi.testclient import TestClient
@@ -502,7 +590,10 @@ def test_matrix_api_evaluate_idempotent_and_no_promotion(
     from research.service import ResearchReadService
     from research.write_service import ResearchWriteService
 
-    from tests.research.fixtures import REPO_ROOT, align_spec_to_bundle, btc_bundle
+    from tests.research.fixtures import align_spec_to_bundle, btc_bundle
+
+    clean_repo = tmp_path / "clean_git_repo"
+    head = _init_clean_git_repo(clean_repo)
 
     bundle = btc_bundle()
     spec = align_spec_to_bundle(tmp_path, bundle, symbols=["BTC"])
@@ -524,19 +615,19 @@ def test_matrix_api_evaluate_idempotent_and_no_promotion(
     catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
     monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
     monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
-    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
-    monkeypatch.setenv("RESEARCH_ALLOW_DIRTY_GIT", "1")
-    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", "b" * 40)
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(clean_repo))
+    monkeypatch.delenv("RESEARCH_ALLOW_DIRTY_GIT", raising=False)
+    monkeypatch.setenv("RESEARCH_EVALUATION_GIT_SHA", head)
     eval_root = tmp_path / ".evaluation_image_root"
     eval_root.mkdir()
 
     app.dependency_overrides[get_research_service] = lambda: ResearchReadService(tmp_path)
     app.dependency_overrides[get_research_write_service] = lambda: ResearchWriteService(
-        tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True
+        tmp_path, repo_root=clean_repo, allow_dirty_git=False
     )
     app.dependency_overrides[get_robustness_service] = (
         lambda: RobustnessOrchestrationService(
-            tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True
+            tmp_path, repo_root=clean_repo, allow_dirty_git=False
         )
     )
     app.dependency_overrides[get_gate_service] = lambda: GateService(
@@ -550,8 +641,8 @@ def test_matrix_api_evaluate_idempotent_and_no_promotion(
         payload = {
             "strategy_id": "trend_v1",
             "strategy_version": spec.strategy_version,
-            "name": "scorecard e2e api",
-            "notes": "acceptance",
+            "name": "scorecard e2e api clean-git",
+            "notes": "acceptance without dirty bypass",
             "symbols": ["BTC"],
             "timeframe": "1D",
             "time_range": {

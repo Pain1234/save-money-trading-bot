@@ -54,7 +54,7 @@ Optional `robustness_run_ids` are verified via the same #247 path as gates
 | `regime_metrics.json` | required |
 | `behavior_profile.json` | required |
 | `confidence_profile.json` | optional — if missing, derived at evaluate time (not written back) |
-| `parameter_area.json` | optional — if missing → `NOT_AVAILABLE` (#290) |
+| `parameter_area.json` | optional — if missing → `NOT_AVAILABLE`; if present must have `evidence_trusted=true` + sealed `trusted_manifest_hash` or evaluate fail-closed |
 
 ## API
 
@@ -93,11 +93,13 @@ python -m pytest tests/research/test_scorecard_e2e_acceptance.py -q
 - invalidation blocks reactivation
 - policy version unknown + silent content mutation under same version
 - insufficient sample cannot yield HIGH confidence
-- parameter-area classifications pin into the scorecard when the artifact exists
+- untrusted `parameter_area.json` fail-closed; trusted sealed PA pins into scorecard
+- `integrity_status=INVALID` blocks `quality_scores_permitted`
 - Sideways zero-trades → `DEFENSIVE_INACTIVE`; Bull whipsaw weakness
 - no auto-promotion / decision_binding
-- Research API evaluate smoke (idempotent, integrity ok)
+- Research API evaluate smoke **without** `RESEARCH_ALLOW_DIRTY_GIT` (clean temp git)
 
 **UI E2E** for scorecard surfaces is deferred to
 [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) /
-[#250](https://github.com/Pain1234/save-money-trading-bot/issues/250).
+[#250](https://github.com/Pain1234/save-money-trading-bot/issues/250)
+(issue #293 AC “Research API und UI E2E” is satisfied for API only until UI lands).
