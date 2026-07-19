@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (P5 Pre-OOS calendar blocker — #204)
+
+- Recorded forward-holdout clock start (`FREEZE APPROVED` 2026-07-19T12:54:01Z)
+  and that the ≥90d sample-sufficiency gate is **not met** on the same UTC day.
+  Holdout remains `SEALED`; #204 stays blocked pending human `PRE-OOS APPROVED`
+  and calendar sufficiency.
+
 ### Changed (P5 Phase 3 cross-check + Pre-OOS gate — #204 prep)
 
 - Recorded technical Phase-3 cross-check (130/0) for sealed #251–#254 packs on
