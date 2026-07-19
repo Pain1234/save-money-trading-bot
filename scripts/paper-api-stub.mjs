@@ -378,6 +378,12 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/v1/research/scorecards" || url.startsWith("/api/v1/research/scorecards?")) {
       return json(res, { items: [], count: 0 });
     }
+    if (/^\/api\/v1\/research\/scorecards\/[^/]+\/detail$/.test(url)) {
+      return json(res, { detail: "not found" }, 404);
+    }
+    if (/^\/api\/v1\/research\/scorecards\/[^/]+$/.test(url)) {
+      return json(res, { detail: "not found" }, 404);
+    }
 
     return json(res, { detail: "not found" }, 404);
   }

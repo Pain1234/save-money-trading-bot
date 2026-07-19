@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 research forensics UI — #302)
+
+- Bind `GET /api/v1/research/scorecards/{id}/detail` (#350) into Research detail
+  routes: regime table rows, cost-stress boundary, classifier transitions,
+  Evidence Inputs / Gate Failures / Raw Artifact Refs, lineage + audit metadata.
+- `ResearchForensicsSection` for MFE/MAE (honest N/A), folds, costs, gate history,
+  freeze placeholder. Validation gate tables expand per-gate results.
+- Docs: `docs/design/RESEARCH_WORKSPACE_UI_SPEC.md` UI-05.
+
 ### Added (P4.9 scorecard detail API — #350)
 
 - Read-only `GET /api/v1/research/scorecards/{scorecard_id}/detail` joins sealed
