@@ -17,6 +17,7 @@
     "fee_assumption",
     "slippage_assumption",
     "funding_assumption",
+    "symbol_constraints",
     "benchmark",
     "owner"
   ],
@@ -143,6 +144,39 @@
           "type": "string",
           "minLength": 1,
           "default": "1.0"
+        }
+      }
+    },
+    "symbol_constraints": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Sealed per-symbol exchange constraints (#363). Keys must match symbols exactly.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "quantity_step",
+          "minimum_quantity",
+          "minimum_notional",
+          "price_tick_size"
+        ],
+        "properties": {
+          "quantity_step": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+          },
+          "minimum_quantity": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+          },
+          "minimum_notional": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+          },
+          "price_tick_size": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d+)?$"
+          }
         }
       }
     },

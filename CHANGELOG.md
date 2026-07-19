@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (research sealed symbol constraints — #363)
+
+- `ExperimentSpec.symbol_constraints` is required and must cover Spec symbols
+  exactly. Runner wires pins into `BacktestConfig` (fail-closed). Sealed
+  Hyperliquid mainnet szDecimals v1 helper: BTC=5 / ETH=4 / SOL=2. Lab write
+  path injects the sealed set when omitted. Enables honest P5 re-runs without
+  private monkeypatches.
+
 ### Changed (P4.8 final acceptance evidence — #250)
 
 - Recorded BOT 3B final acceptance on `main` SHA

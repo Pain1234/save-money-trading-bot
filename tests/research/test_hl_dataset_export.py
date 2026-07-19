@@ -262,6 +262,14 @@ def test_catalog_load_and_bind_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
                 "manifest_path": entry.manifest_path,
             },
             "symbols": ["BTC"],
+            "symbol_constraints": {
+                "BTC": {
+                    "quantity_step": "0.00001",
+                    "minimum_quantity": "0.00001",
+                    "minimum_notional": "10",
+                    "price_tick_size": "0.1",
+                }
+            },
             "time_range": {
                 "start": window.start_timestamp.isoformat().replace("+00:00", "+00:00"),
                 "end": window.end_timestamp.isoformat().replace("+00:00", "+00:00"),

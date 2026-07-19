@@ -400,6 +400,14 @@ def test_lab_style_end_micros_beyond_local_manifest_fails_bind() -> None:
                     "manifest_path": catalog["manifest_path"],
                 },
                 "symbols": ["BTC"],
+                "symbol_constraints": {
+                    "BTC": {
+                        "quantity_step": "0.00001",
+                        "minimum_quantity": "0.00001",
+                        "minimum_notional": "10",
+                        "price_tick_size": "0.1",
+                    }
+                },
                 "time_range": {
                     "start": "2024-01-01T00:00:00.000000Z",
                     "end": end,
