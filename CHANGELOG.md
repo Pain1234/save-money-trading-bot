@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (research sealed symbol constraints — #363)
+
+- `ExperimentSpec.symbol_constraints` is required and must cover Spec symbols
+  exactly. Runner wires pins into `BacktestConfig` (fail-closed). Sealed
+  Hyperliquid mainnet szDecimals v1 helper: BTC=5 / ETH=4 / SOL=2. Lab write
+  path injects the sealed set when omitted. Enables honest P5 re-runs without
+  private monkeypatches.
+
+### Added (P4.9 research forensics UI — #302)
+
 ### Added (P4.9 safe artifact content GET — #357)
 
 - Auth-bound read-only `GET /api/v1/research/scorecards/{id}/artifacts/content`

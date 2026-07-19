@@ -210,6 +210,9 @@ def test_compare_symbols_mismatch(tmp_path: Path) -> None:
 
     def mutate(exp: dict[str, Any]) -> None:
         exp["symbols"] = ["BTC", "ETH"]
+        from research.symbol_constraints import hyperliquid_mainnet_v1_pins
+
+        exp["symbol_constraints"] = hyperliquid_mainnet_v1_pins(("BTC", "ETH"))
 
     seal = _mutate_experiment(twin, mutate)
     _append_twin(
