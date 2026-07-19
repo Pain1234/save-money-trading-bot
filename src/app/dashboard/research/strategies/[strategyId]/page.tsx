@@ -1,6 +1,8 @@
+import { ScorecardBindSection } from "@/components/research/ScorecardBindSection";
 import { StrategyDetailError, StrategyDetailView } from "@/components/research/StrategyDetailView";
 import { fetchPaperApi, PaperApiError } from "@/lib/paper-api/client";
 import { getResearchErrorMessage } from "@/lib/research-api/client";
+import { loadScorecardForStrategy } from "@/lib/research/scorecard-binding";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -47,8 +49,18 @@ export default async function ResearchStrategyDetailPage({
       `/api/v1/research/strategies/${encodeURIComponent(strategyId)}`,
       { noStore: true },
     );
+    const scorecardBind = await loadScorecardForStrategy(
+      strategy.last_run?.experiment_id ??
+        strategy.experiments[0]?.experiment_id ??
+        null,
+    );
 
-    return <StrategyDetailView strategy={strategy} />;
+    return (
+      <div className="space-y-4">
+        <StrategyDetailView strategy={strategy} />
+        <ScorecardBindSection bind={scorecardBind} />
+      </div>
+    );
   } catch (error) {
     if (error instanceof PaperApiError && error.status === 404) {
       notFound();

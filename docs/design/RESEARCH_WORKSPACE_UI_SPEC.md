@@ -219,6 +219,14 @@ UI-03 (#300): reusable `src/components/research/analytics/*` panels
 (Regime table, Equity vs Benchmark, Underwater, Transition, Plateau,
 Cost Stress, Evidence Summary). Empty until #291; detail binding in #292.
 
+UI-04 (#292): `ScorecardBindSection` + `ScorecardProfileStrip` bind
+`GET /api/v1/research/scorecards` / `{id}` on Validation Study, Experiment,
+and Strategy detail. Maps `global_profile` (integrity, gates, worst regime,
+transition risk_label, parameter classification, confidence, weakness).
+`NOT_AVAILABLE` → `Nicht verfügbar`. Regime table rows remain unavailable
+until per-regime metrics are exposed on the scorecard GET payload
+(`regime_metrics.json` is not inlined). No promotion controls.
+
 ---
 
 ## 7. Responsive-Verhalten
@@ -251,7 +259,7 @@ UI-06 owns Playwright + screenshot acceptance across breakpoints.
 |---------|--------|
 | Overview / experiments / charts | Existing Research API |
 | Compare / robustness / validation / gates | Existing endpoints on `main` |
-| Regime scorecard / evidence confidence | P4.9 API (#291–#292) when available |
+| Regime scorecard / evidence confidence | `GET /scorecards`, `GET /scorecards/{id}` (#291) bound in UI (#292) |
 | Monitor paper data | Unchanged paper API |
 
 No second Research surface or registry.

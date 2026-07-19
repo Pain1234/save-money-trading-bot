@@ -369,12 +369,19 @@ export interface ValidationPinnedRunEvidence {
   git_commit: string;
 }
 
+/** Pinned Layer-5 scorecard (#291 / study schema 1.2). */
+export interface ValidationPinnedScorecardEvidence {
+  scorecard_id: string;
+  content_hash: string;
+}
+
 export interface ValidationEvidenceSnapshot {
   snapshot_id: string;
   primary: ValidationPinnedRunEvidence;
   additional: ValidationPinnedRunEvidence[];
   robustness: { robustness_id: string; manifest_hash: string }[];
   gates: { gate_run_id: string; content_hash: string }[];
+  scorecards?: ValidationPinnedScorecardEvidence[];
 }
 
 export interface ValidationStudySummary {
@@ -390,6 +397,8 @@ export interface ValidationStudySummary {
   additional_run_ids?: string[];
   robustness_ids: string[];
   gate_run_ids: string[];
+  /** Optional Layer-5 pins (schema 1.2+). */
+  scorecard_ids?: string[];
   evidence_snapshot?: ValidationEvidenceSnapshot;
   notes: string;
   status: ValidationStudyStatus;
@@ -435,6 +444,112 @@ export async function fetchValidationStudy(
   return fetchPaperApi<ValidationStudyDetail>(
     `/api/v1/research/validation/${encodeURIComponent(studyId)}`,
     { revalidate: 5 }
+  );
+}
+
+// --- Scorecards (#291 / P4.9 Layer 5) ---------------------------------
+//
+// Read-only global evidence profile. Status / label strings are backend
+// literals (e.g. NOT_AVAILABLE, FAIL) — UI must not invent enums or scores.
+
+export type ScorecardStatus = "active" | "invalidated";
+
+export interface ScorecardLimitation {
+  code: string;
+  status: string;
+  detail: string;
+}
+
+export interface ScorecardEvidenceIntegrity {
+  ok: boolean;
+  error: string | null;
+}
+
+/** Nested profile fields use loose typing; values are backend strings. */
+export interface ScorecardGlobalProfile {
+  auto_promotion?: boolean;
+  decision_binding?: boolean;
+  behaviour?: {
+    behaviour_id?: string | null;
+    main_strength?: string | null;
+    main_weakness?: string | null;
+    transition_risk?: Record<string, unknown> | null;
+  };
+  confidence?: {
+    confidence_id?: string | null;
+    overall_label?: string | null;
+    source?: string | null;
+  };
+  gates?: {
+    gate_run_id?: string | null;
+    integrity_status?: string | null;
+    overall_status?: string | null;
+  };
+  parameter_area?: Record<string, unknown> | null;
+  quality?: {
+    quality_id?: string | null;
+    strongest_regime?: string | null;
+    worst_regime?: string | null;
+  };
+  regime?: {
+    classification_id?: string | null;
+    classifier_version?: string | null;
+  };
+  robustness_manifest_hashes?: Record<string, string>;
+  robustness_run_ids?: string[];
+  [key: string]: unknown;
+}
+
+export interface ScorecardRecord {
+  schema_version: string;
+  scorecard_id: string;
+  policy_version: string;
+  policy_content_hash: string;
+  evidence_content_hash: string;
+  evaluated_at: string;
+  run_code_commit: string;
+  evaluation_code_commit: string;
+  experiment_id: string;
+  run_id: string;
+  gate_run_id: string | null;
+  robustness_run_ids: string[];
+  dataset_id: string;
+  dataset_content_hash: string;
+  artifact_checksums: Record<string, string>;
+  layer_refs: Record<string, unknown>;
+  global_profile: ScorecardGlobalProfile;
+  limitations: ScorecardLimitation[];
+  decision_binding: boolean;
+  auto_promotion: boolean;
+  promotion_action: "none" | string;
+  status: ScorecardStatus | string;
+  invalidation_reason: string | null;
+  evidence_integrity?: ScorecardEvidenceIntegrity;
+}
+
+export interface ScorecardList {
+  items: ScorecardRecord[];
+  count: number;
+}
+
+export async function fetchScorecards(params?: {
+  run_id?: string;
+}): Promise<ScorecardList> {
+  const search = new URLSearchParams();
+  if (params?.run_id) search.set("run_id", params.run_id);
+  const qs = search.toString();
+  return fetchPaperApi<ScorecardList>(
+    `/api/v1/research/scorecards${qs ? `?${qs}` : ""}`,
+    { revalidate: 5 },
+  );
+}
+
+export async function fetchScorecard(
+  scorecardId: string,
+): Promise<ScorecardRecord> {
+  return fetchPaperApi<ScorecardRecord>(
+    `/api/v1/research/scorecards/${encodeURIComponent(scorecardId)}`,
+    { revalidate: 5 },
   );
 }
 

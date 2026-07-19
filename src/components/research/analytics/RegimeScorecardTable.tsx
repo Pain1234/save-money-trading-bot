@@ -2,13 +2,22 @@ import { AnalyticsPanel } from "@/components/research/analytics/AnalyticsPanel";
 import { UNAVAILABLE } from "@/lib/research/executive-summary";
 import { displayValue } from "@/lib/research-api/client";
 
-/** Optional row — all fields displayed via displayValue; null → Nicht verfügbar. */
+/**
+ * Optional regime row. Layer-5 GET does not include per-regime metrics;
+ * columns match #292 AC for when rows become available.
+ */
 export interface RegimeScorecardRow {
   regime: string;
+  quality: string | number | null;
+  confidence: string | number | null;
+  behaviour: string | number | null;
   trades: string | number | null;
   netPnl: string | number | null;
   maxDd: string | number | null;
-  label: string | null;
+  costs: string | number | null;
+  benchmarkDelta: string | number | null;
+  /** @deprecated Prefer quality/behaviour; kept for older fixtures. */
+  label?: string | null;
 }
 
 interface RegimeScorecardTableProps {
@@ -16,14 +25,25 @@ interface RegimeScorecardTableProps {
   reason?: string;
 }
 
+const COLUMNS = [
+  "Regime",
+  "Quality",
+  "Confidence",
+  "Behaviour",
+  "Trades",
+  "Net PnL",
+  "Max DD",
+  "Costs",
+  "Benchmark Δ",
+] as const;
+
 /**
- * Regime scorecard table (#300).
+ * Regime scorecard table (#300/#292).
  * Does not invent regime metrics — empty/missing → Nicht verfügbar.
- * Real rows come from #291 scorecard API (bound in #292).
  */
 export function RegimeScorecardTable({
   rows,
-  reason = "Scorecard-API (#291) noch nicht angebunden — keine Regime-Metriken",
+  reason = "Regime-Zeilen nicht in Scorecard Layer-5 Payload",
 }: RegimeScorecardTableProps) {
   const hasRows = Array.isArray(rows) && rows.length > 0;
 
@@ -43,7 +63,7 @@ export function RegimeScorecardTable({
           >
             <thead className="text-text-muted">
               <tr>
-                {["Regime", "Trades", "Net PnL", "Max DD", "Label"].map((col) => (
+                {COLUMNS.map((col) => (
                   <th key={col} className="px-2 py-1 font-medium">
                     {col}
                   </th>
@@ -59,6 +79,15 @@ export function RegimeScorecardTable({
                 >
                   <td className="px-2 py-1.5 font-mono text-mint">{row.regime}</td>
                   <td className="px-2 py-1.5 font-mono">
+                    {displayValue(row.quality)}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">
+                    {displayValue(row.confidence)}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">
+                    {displayValue(row.behaviour)}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">
                     {displayValue(row.trades)}
                   </td>
                   <td className="px-2 py-1.5 font-mono">
@@ -67,8 +96,11 @@ export function RegimeScorecardTable({
                   <td className="px-2 py-1.5 font-mono">
                     {displayValue(row.maxDd)}
                   </td>
-                  <td className="px-2 py-1.5 font-mono text-text-secondary">
-                    {displayValue(row.label)}
+                  <td className="px-2 py-1.5 font-mono">
+                    {displayValue(row.costs)}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono">
+                    {displayValue(row.benchmarkDelta)}
                   </td>
                 </tr>
               ))}
