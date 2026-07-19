@@ -11,6 +11,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 const AUTH_USERNAME = "monitor";
 const AUTH_PASSWORD = "testpass123";
+const STUB_URL = process.env.PAPER_API_STUB_URL ?? "http://127.0.0.1:18080";
 
 async function login(page: Page) {
   await page.goto("/login");
@@ -27,7 +28,7 @@ test("research workspace core routes render (empty/ready fixtures)", async ({
 }) => {
   await login(page);
 
-  // Monitor regression: paper dashboard still loads after research stub routes.
+  // Monitor still reachable via direct navigation before Research routes.
   await page.goto("/dashboard");
   await expect(page.getByTestId("dashboard-page-ready")).toBeVisible({
     timeout: 20_000,
@@ -70,7 +71,25 @@ test("research workspace core routes render (empty/ready fixtures)", async ({
   await expect(page.getByTestId("validation-page-ready")).toBeVisible();
   await expect(page.getByTestId("validation-list-empty")).toBeVisible();
 
-  // Workspace switch back to Monitor must remain functional.
-  await page.goto("/dashboard");
+  // Workspace switch UI: Research topbar → Monitor (not only page.goto).
+  await expect(page.getByTestId("workspace-switch")).toBeVisible();
+  await page.getByTestId("workspace-monitor").click();
+  await page.waitForURL(/\/dashboard\/?$/, { timeout: 20_000 });
   await expect(page.getByTestId("dashboard-page-ready")).toBeVisible();
+});
+
+test("research stub rejects write methods with 405", async ({ request }) => {
+  const writePaths = [
+    "/api/v1/research/experiments",
+    "/api/v1/research/validation",
+    "/api/v1/research/scorecards",
+    "/api/v1/research/robustness",
+  ];
+  for (const path of writePaths) {
+    const response = await request.post(`${STUB_URL}${path}`, {
+      data: { probe: true },
+    });
+    expect(response.status(), `${path} POST`).toBe(405);
+    expect(response.headers()["allow"] ?? "").toMatch(/GET/i);
+  }
 });
