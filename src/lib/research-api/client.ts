@@ -661,6 +661,36 @@ export interface ScorecardDetailRawArtifactRef {
   status?: string;
 }
 
+/**
+ * Auth-bound dashboard URL for sealed artifact content (#357).
+ * Returns null when the inventory row is not linkable (no fake href).
+ */
+export function scorecardArtifactContentHref(
+  scorecardId: string | null | undefined,
+  ref: ScorecardDetailRawArtifactRef,
+): string | null {
+  if (!scorecardId || !ref.relative_path) {
+    return null;
+  }
+  if (ref.present !== true || ref.status !== "OK") {
+    return null;
+  }
+  const path = ref.relative_path;
+  // Only run-directory relative paths (public-core sealed files).
+  if (
+    path.startsWith("scorecards/") ||
+    path.startsWith("robustness/") ||
+    path.includes("..") ||
+    path.startsWith("/") ||
+    path.includes("\\") ||
+    path.includes("%")
+  ) {
+    return null;
+  }
+  const qs = new URLSearchParams({ relative_path: path });
+  return `/api/research/scorecards/${encodeURIComponent(scorecardId)}/artifacts/content?${qs.toString()}`;
+}
+
 /** Read-only forensics payload (#350 / #302). */
 export interface ScorecardDetail {
   scorecard_id: string;

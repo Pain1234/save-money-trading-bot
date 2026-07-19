@@ -67,6 +67,7 @@ Optional `robustness_run_ids` are verified via the same #247 path as gates
 | `GET /api/v1/research/scorecards?run_id=` | latest-per-id |
 | `GET /api/v1/research/scorecards/{scorecard_id}` | coarse #291 summary; fail-closed integrity for active |
 | `GET /api/v1/research/scorecards/{scorecard_id}/detail` | per-regime rows + forensics (#350); summary route unchanged |
+| `GET /api/v1/research/scorecards/{scorecard_id}/artifacts/content?relative_path=` | single sealed run file (#357); fail-closed |
 | `POST /api/v1/research/scorecards/evaluate` | idempotent assemble |
 | `POST /api/v1/research/scorecards/{id}/invalidate` | append-only |
 
@@ -87,6 +88,15 @@ not recompute backtests or invent metrics.
 | `evidence_inputs` | Bound run/gate/robustness/policy/dataset pins + `gate_evidence_content_hash` + promotion flags |
 | `gate_failures` | Non-PASS gates **after** verifying scorecard-pinned `gate_evidence_content_hash` and binding invalidation sidecar; tamper/invalidation/JSONL-reactivation → fail-closed (409) |
 | `raw_artifact_refs` | Layer file names + checksum keys + robustness/scorecard refs |
+
+Content GET (#357): `GET .../scorecards/{id}/artifacts/content?relative_path=`
+returns one **run-directory** file only when the scorecard is active, the run is
+`complete` + sealed, the path is pinned in run `artifact_checksums`, the
+checksum matches, and the media type is JSON or allowlisted text. Errors use
+structured `{code, message}` (`not_found`, `not_pinned`, `not_allowlisted`,
+`unsealed_run`, `checksum_mismatch`, `invalidated_evidence`, `too_large`,
+`unsupported_media_type`). No directory listing / ZIP / absolute paths.
+Tests: `tests/research/test_artifact_content.py`.
 | `missing_data_semantics` | Token `NOT_AVAILABLE` — clients must not coerce to `0` / PASS |
 
 Metric cells use `{ "status": "OK"|"NOT_AVAILABLE", "value": ... }`.
