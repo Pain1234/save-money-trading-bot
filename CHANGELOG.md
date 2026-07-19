@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 parameter area — #290)
+
+- Parameter plateau / local stability classification under
+  `services/research/parameter_area/` (`parameter_area.json`).
+- Reuses #247 OAT `parameter_stability` evidence; frozen point unchanged;
+  no auto parameter selection; no OOS/holdout plateau build.
+- Docs: `docs/research/PARAMETER_AREA.md`.
+
 ### Added (P4.9 regime behaviour — #289)
 
 - Deterministic behaviour labels + transition-risk profile under

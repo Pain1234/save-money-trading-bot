@@ -16,6 +16,7 @@ artifacts/research/<experiment_id>/<run_id>/
   regime_metrics.json
   confidence_profile.json
   behavior_profile.json
+  parameter_area.json
   events.jsonl
   checksums.json
 ```
@@ -46,3 +47,4 @@ Rules:
   (+ invalidation sidecars); see [SCORECARDS.md](SCORECARDS.md) — not a second
   experiment registry; not written into the run directory
 - `behavior_profile.json` (#289): deterministic behaviour + transition risk; see [REGIME_BEHAVIOUR.md](REGIME_BEHAVIOUR.md)
+- `parameter_area.json` (#290): optional post-hoc plateau classification from #247; see [PARAMETER_AREA.md](PARAMETER_AREA.md)
