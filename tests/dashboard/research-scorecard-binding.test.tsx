@@ -587,6 +587,10 @@ describe("ScorecardBindSection", () => {
     expect(html).toContain("regime_metrics.json");
     expect(html).toContain('data-testid="raw-artifact-path-regime_metrics.json"');
     expect(html).toContain('data-testid="raw-artifact-download-note"');
+    expect(html).toContain(
+      'data-testid="raw-artifact-content-link-regime_metrics.json"',
+    );
+    expect(html).toContain("/api/research/scorecards/");
     expect(html).toContain('data-testid="analytics-unavailable-mfe-mae"');
     expect(html).not.toMatch(/Promote|live.?trading/i);
   });

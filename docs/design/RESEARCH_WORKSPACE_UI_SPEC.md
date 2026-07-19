@@ -249,13 +249,13 @@ UI-05 (#302): `ResearchForensicsSection` + Scorecard **detail** binding
 - Experiment cost metrics (`fees` / `slippage_costs` / `funding_costs`)
 - Freeze Specification stays `Nicht verfügbar` until Spec-Freeze API exists
 
-**Not claimed as full #292 close:** clickable Raw Metric Refs **into artifact
-contents** need a fail-closed read-only artifact GET (path traversal safe,
-auth-bound) — tracked as
-[#357](https://github.com/Pain1234/save-money-trading-bot/issues/357).
-Until that lands, `relative_path` is shown as sealed inventory only — no fake
-download href. Keep [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292)
-open for that residual.
+**#357 / Raw Metric content:** Forensics links use auth-bound
+`GET /api/v1/research/scorecards/{id}/artifacts/content?relative_path=…`
+(and dashboard `/api/research/scorecards/…/artifacts/content`) only when
+inventory says `present=true` + `status=OK`. Fail-closed (no fake href;
+**Nicht verfügbar** otherwise). Keep
+[#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) open
+until this residual is merged and accepted.
 
 Missing / fail-closed detail → honest unavailable panels. Trades remain on
 `ResearchTradeChart` (existing chart-data). No promotion / live-trading affordances.

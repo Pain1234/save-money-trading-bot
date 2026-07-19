@@ -7,7 +7,11 @@ import {
 } from "@/lib/research/scorecard-detail-binding";
 import { scorecardDisplayValue } from "@/lib/research/scorecard-binding";
 import { UNAVAILABLE } from "@/lib/research/executive-summary";
-import { displayValue, type ScorecardDetail } from "@/lib/research-api/client";
+import {
+  displayValue,
+  scorecardArtifactContentHref,
+  type ScorecardDetail,
+} from "@/lib/research-api/client";
 import type { GateRunRecord } from "@/lib/research-api/client";
 
 export interface ForensicsExtras {
@@ -146,7 +150,7 @@ export function ResearchForensicsSection({
       <AnalyticsPanel
         id="raw-artifact-refs"
         title="Raw Metric / Artifact Refs"
-        subtitle="Layer-Dateien + relative_path + Checksums — Inhalt-Download folgt sicherem Artefakt-GET"
+        subtitle="Layer-Dateien + relative_path + Checksums — Inhalt nur über sicheren Artefakt-GET"
         unavailable={refs.length === 0}
         unavailableReason={
           detailError
@@ -165,35 +169,61 @@ export function ResearchForensicsSection({
                 <th className="px-2 py-1 font-medium">Path</th>
                 <th className="px-2 py-1 font-medium">Checksum</th>
                 <th className="px-2 py-1 font-medium">Status</th>
+                <th className="px-2 py-1 font-medium">Inhalt</th>
               </tr>
             </thead>
             <tbody>
-              {refs.map((ref) => (
-                <tr key={ref.name} className="border-t border-border-subtle">
-                  <td className="px-2 py-1 font-mono text-mint">{ref.name}</td>
-                  <td
-                    className="max-w-[16rem] truncate px-2 py-1 font-mono text-[10px]"
-                    title={ref.relative_path ?? undefined}
-                    data-testid={`raw-artifact-path-${ref.name}`}
-                  >
-                    {displayValue(ref.relative_path)}
-                  </td>
-                  <td className="max-w-[14rem] truncate px-2 py-1 font-mono">
-                    {displayValue(ref.checksum_sha256)}
-                  </td>
-                  <td className="px-2 py-1 font-mono">
-                    {scorecardDisplayValue(ref.status)}
-                    {ref.present === false ? " · absent" : ""}
-                  </td>
-                </tr>
-              ))}
+              {refs.map((ref) => {
+                const scorecardId =
+                  detail?.scorecard_id ?? audit?.scorecardId ?? null;
+                const href = scorecardArtifactContentHref(scorecardId, ref);
+                return (
+                  <tr key={ref.name} className="border-t border-border-subtle">
+                    <td className="px-2 py-1 font-mono text-mint">{ref.name}</td>
+                    <td
+                      className="max-w-[16rem] truncate px-2 py-1 font-mono text-[10px]"
+                      title={ref.relative_path ?? undefined}
+                      data-testid={`raw-artifact-path-${ref.name}`}
+                    >
+                      {displayValue(ref.relative_path)}
+                    </td>
+                    <td className="max-w-[14rem] truncate px-2 py-1 font-mono">
+                      {displayValue(ref.checksum_sha256)}
+                    </td>
+                    <td className="px-2 py-1 font-mono">
+                      {scorecardDisplayValue(ref.status)}
+                      {ref.present === false ? " · absent" : ""}
+                    </td>
+                    <td className="px-2 py-1">
+                      {href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-mint underline-offset-2 hover:underline"
+                          data-testid={`raw-artifact-content-link-${ref.name}`}
+                        >
+                          Öffnen
+                        </a>
+                      ) : (
+                        <span
+                          className="font-mono text-text-muted"
+                          data-testid={`raw-artifact-content-unavailable-${ref.name}`}
+                        >
+                          {UNAVAILABLE}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         <p className="text-[10px] text-text-muted" data-testid="raw-artifact-download-note">
-          relative_path ist Inventar aus Scorecard-Detail. Inhalt / Download bleibt{" "}
-          {UNAVAILABLE} bis ein sicherer read-only Artefakt-Endpunkt existiert
-          (Folge-Issue #357 — kein Fake-Link).
+          Links nur für sealed, gepinnte Run-Dateien über{" "}
+          <span className="font-mono">/artifacts/content</span> (#357). Keine
+          Fake-Hrefs; Server-Pfade werden nicht angezeigt.
         </p>
       </AnalyticsPanel>
 

@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from research.artifact_content import (
+    ArtifactContentError,
+    ArtifactContentResult,
+    read_sealed_artifact_content,
+)
 from research.scorecard_detail import assemble_scorecard_detail
 from research.scorecard_evaluator import (
     ScorecardEvaluationError,
@@ -167,6 +172,29 @@ class ScorecardService:
             ) from exc
         detail["evidence_integrity"] = {"ok": True, "error": None}
         return detail
+
+    def get_artifact_content(
+        self, scorecard_id: str, *, relative_path: str
+    ) -> ArtifactContentResult:
+        """Fail-closed read of one sealed run artifact pinned on the scorecard (#357)."""
+        scorecard_id = assert_safe_id(scorecard_id, field="scorecard_id")
+        record = self.store.get(scorecard_id)
+        if record is None:
+            raise ArtifactContentError(
+                code="not_found", message="scorecard not found", status=404
+            )
+        try:
+            return read_sealed_artifact_content(
+                self.root, record, relative_path=relative_path
+            )
+        except ArtifactContentError:
+            raise
+        except ScorecardEvaluationError as exc:
+            raise ArtifactContentError(
+                code="checksum_mismatch",
+                message=str(exc),
+                status=409,
+            ) from exc
 
     def list_all(self, *, run_id: str | None = None) -> list[dict[str, Any]]:
         latest: dict[str, ScorecardRecord] = {}
