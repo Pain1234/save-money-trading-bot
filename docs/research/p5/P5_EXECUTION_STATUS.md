@@ -27,26 +27,26 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 Do **not** open holdout C until all are true:
 
 - [x] #181 merged / private store usable
-- [ ] Human `FREEZE APPROVED` on #196 (regression evidence on final merged `main`)
-- [ ] Human partition lock on #197 (embargo **and** completed-monthly warmup acknowledged)
-- [ ] Human protocol + decision freeze on #198
-- [ ] Human benchmark/regime approval on #199 (metrics 1.2 / Spec cost parity)
-- [ ] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
+- [x] Human `FREEZE APPROVED` on #196 (comment 2026-07-19T12:54:01Z; pin SHA `35b4fa6d0c7d4f74a397a7d1a57437823341237b` — **note:** `main` tip has advanced to `1516ddb…` with UI/#357–#359; human may refresh freeze pin before #251)
+- [x] Human partition lock on #197 (`PARTITIONS LOCKED` 2026-07-19T12:54:01Z)
+- [x] Human protocol + decision freeze on #198 (`PROTOCOL FROZEN` / `DECISION RULES FROZEN`)
+- [x] Human benchmark/regime approval on #199 (`BENCHMARKS AND REGIMES APPROVED`)
+- [x] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
 - [ ] Private robustness packs for #200–#203 complete (status on issues; metrics private)
 - [ ] Forward holdout length ≥ sample-sufficiency min (proposed 90 days) **and** feature warmup satisfied for the evaluation engine
 - [ ] Human pre-OOS approval recorded in Decision Log (process only)
 
-## Gate status snapshot (2026-07-17, post public-core merge)
+## Gate status snapshot (2026-07-19, post #250 acceptance evidence)
 
 | Gate | State |
 |------|-------|
 | Public stack #181 / #196-docs / #197-#203 / #204-prep / #205-prep | On `main` |
-| Freeze evidence refresh | PR #236 merged; **human FREEZE APPROVED pending** on #196 |
-| Human locks #197-#199 | **Pending** (requested on issues) |
-| #294 scorecard/policy bind | Docs on branch/PR; **PENDING_HUMAN_SIGN_OFF**; Holdout `NO`; #292 UI non-blocking |
+| Human locks #196–#199 + #294 | **Present** (see comments; freeze pin SHA may need refresh vs tip) |
+| #250 P4 acceptance evidence | Recorded on `1516ddb…`; **human close pending** |
 | Private Partition B datasets | **Missing** (templates only) |
-| Private robustness packs #200-#203 | **Not run** (blocked) |
-| Forward holdout length | **Not started** until freeze UTC |
+| Private robustness packs #200-#203 helpers | On `main`; **execution packs not run** |
+| Next Ready (after human #250/#295 close) | [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251) private Walk-Forward — **do not start in this PR** |
+| Forward holdout length | **Not started** |
 | Holdout opened? | `NO` |
 | #204 OOS execution | **BLOCKED** — do not run |
 | #205 final decision | **BLOCKED** by #204 |

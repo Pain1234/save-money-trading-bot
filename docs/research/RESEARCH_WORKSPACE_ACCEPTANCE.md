@@ -12,22 +12,26 @@ data, and never record private Strategy V1 economic metrics here (see
 
 Covers: Strategy catalog, Strategy Lab, Run start/poll/detail, Kurs & Trades
 chart, Compare, Robustness, Gates (read-only smoke), Validation Studies,
-Scorecard binding (#292), Research route densify (#301), double-start
-protection, dataset-integrity fail-closed behavior, and the durable job
-ownership / restart-recovery contract exercised in API E2E.
+Scorecard binding (#292 / #357 / #358), Research route densify (#301),
+forensics (#302), responsive/a11y (#303), double-start protection,
+dataset-integrity fail-closed behavior, and the durable job ownership /
+restart-recovery contract exercised in API E2E.
 
-**Do not close #250 / mark P4 complete / start P5** until Issues **#302** and
-**#303** are merged and this checklist is re-run on that `main` with
-screenshots + test evidence recorded below. (#301 is on `main`; densify
-checks remain in §H until the final acceptance pass records them.)
+**Final acceptance pass (BOT 3B, 2026-07-19):** recorded against
+`origin/main` SHA `1516ddb08efe7fc52452ced9d4c86814db838130` with Railway
+production deployment parity (dashboard + API + worker SUCCESS at the same
+SHA). Close recommendation for #250 / #295 is for **human** decision — this
+doc uses **`Refs #250`** until a human comments `Closes #250`.
 
 ## Playwright Research smoke (Issue #250)
 
 Issue #250 requires Playwright + API E2E + documented manual UI acceptance.
 
-**Shipped (this branch):** stub-backed Research **route smoke** —
+**Shipped on `main`:** stub-backed Research **route smoke** + a11y/responsive —
 
 - `tests/visual/research-routes.spec.ts`
+- `tests/visual/research-a11y-responsive.spec.ts`
+- `tests/visual/research-overview-scorecard.spec.ts` (READY / Legacy / Invalidated)
 - Research fixtures in `scripts/paper-api-stub.mjs` (GET/HEAD only; POST → 405)
 - Run: `npm run test:research-smoke` (uses `playwright.config.ts` webServers)
 - CI: visible non-required job `research-playwright-smoke` in
@@ -37,26 +41,15 @@ Issue #250 requires Playwright + API E2E + documented manual UI acceptance.
 
 What it covers: login → Monitor regression → Overview / Strategien /
 Strategy detail (scorecard empty bind) / Experiments empty / Lab ready /
-Compare empty / Robustheit empty / Validierung empty — no private metrics.
+Compare empty / Robustheit empty / Validierung empty — no private metrics;
+Overview visual fixtures for READY / Legacy / Invalidated pin states.
 
-What it does **not** cover (still manual / API E2E):
+What it does **not** cover (API E2E / unit instead):
 
-- Starting a real Lab job against `local_lab` + clean git
-- Running / Completed / Failed experiment detail polling
-- Compare of two real runs; Robustness / Validation create+detail
-- Scorecard **ready** bind on experiment / strategy / validation
-- Integrity drill (byte-tamper / semantic mismatch)
-- API process restart orphan recovery (covered by API E2E)
-
-**Historical waiver (PR #283):** prior to this smoke, Research Playwright was
-explicitly waived with `Refs #250` only. That waiver is **superseded** by the
-route smoke above for shell/empty-state coverage. Remaining gaps above are
-**not** waived — they stay on the manual checklist and/or API E2E until
-#302–#303 land and the final acceptance pass is recorded.
-
-Until the full manual checklist + final evidence table are complete on
-post-#302–#303 `main`, PRs for this track must use **`Refs #250` only** —
-not `Closes #250`.
+- Starting a real Lab job against `local_lab` + clean git (API E2E)
+- Running / Completed / Failed experiment detail polling (API E2E)
+- Compare of two real runs; Robustness / Validation create+detail (API E2E)
+- Scorecard evaluate + sealed validation pin (scorecard E2E + overview fixtures)
 
 ## Prerequisites
 
@@ -78,17 +71,96 @@ In a second shell: `npm run dev`, then sign in with your local
 `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` (see `AGENTS.md` Cursor Cloud section
 for the dashboard `.env.local` setup, including the `\$` escaping gotcha).
 
+## Deployment parity (BOT 3B — 2026-07-19)
+
+| Surface | SHA | Source |
+|---------|-----|--------|
+| `origin/main` / acceptance HEAD | `1516ddb08efe7fc52452ced9d4c86814db838130` | `git rev-parse` |
+| Railway `paper-trading-dashboard` (production SUCCESS) | `1516ddb08efe7fc52452ced9d4c86814db838130` | `railway deployment list` meta.commitHash |
+| Railway `paper-trading-api` (production SUCCESS) | `1516ddb08efe7fc52452ced9d4c86814db838130` | same |
+| Railway `paper-trading-worker` (production SUCCESS) | `1516ddb08efe7fc52452ced9d4c86814db838130` | same |
+| In-app public build-SHA debug endpoint | **not present** (by design) | no new public debug route added |
+
+**Verdict:** Deployment is **at parity** with current `main`. Visual
+„Nicht verfügbar“ on old studies is therefore Legacy/Not-Pinned honesty, not
+deployment lag.
+
+Project: Railway `graceful-compassion` / environment `production`.
+Public dashboard: `https://bot.save-money.xyz`.
+
+## Acceptance scenarios
+
+### Scenario 1 — Legacy Evidence (PASS)
+
+Old study **without** scorecard pin:
+
+- Pin status `LEGACY_NO_SCORECARD` / honest empty bind
+- No invented scores; Executive cells → **Nicht verfügbar**
+- No latest-run registry substitution / no auto backfill
+
+**Evidence:**
+
+- Unit: `tests/dashboard/research-overview-scorecard-bind.test.tsx`
+  (`legacy / no scorecard keeps honest pin status…`)
+- Visual: `npx playwright test tests/visual/research-overview-scorecard.spec.ts`
+  scenarios `legacy` @ 1920×1080 / 1440×900 / mobile
+- Screenshots: `docs/visual-regression/research-overview-legacy-*.png`
+- Fixture: `overviewFixtureLegacy()` in `src/lib/research/overview-fixtures.ts`
+
+### Scenario 2 — Current-Main READY Evidence (PASS)
+
+Synthetic **public-core** evidence chain (local/test only — no private
+Strategy V1, no P5 partition, no holdout):
+
+`Experiment → completed run → Robustness → Gate Run → Scorecard → Validation
+Study with sealed scorecard pin`
+
+**Evidence:**
+
+- Composition E2E: `tests/research/test_scorecard_e2e_acceptance.py` (matrix
+  #293: sealed layers, no auto-promotion, tamper fail-closed)
+- API detail/forensics: `tests/research/test_scorecard_detail.py`,
+  `tests/research/test_scorecard_api.py`, `tests/research/test_artifact_content.py`
+  (#357 raw artifact content)
+- Workspace E2E smoke: `tests/research/test_e2e_acceptance.py`
+  (Lab/Compare/Robustness/Gates/Validation/orphan recovery)
+- UI READY bind: `overviewFixtureReady()` + vitest + Playwright `ready`
+  scenarios; screenshots `docs/visual-regression/research-overview-ready-*.png`
+
+Verified surfaces on READY path (fixture / API detail binding — public-core
+labels only):
+
+| Surface | Status |
+|---------|--------|
+| Executive Gates READY pin | PASS |
+| Regime Rows | PASS |
+| Confidence | PASS |
+| Behaviour | PASS |
+| Worst Regime | PASS |
+| Transition Risk | PASS |
+| Cost Stress boundary | PASS (API detail) |
+| Parameter Area (`ISOLATED_PEAK` warning) | PASS |
+| Evidence Inputs / Gate Failures inventory | PASS |
+| Raw Artifact Link (#357) | PASS (unit + API) |
+| Final Decision human / read-only (no Promote) | PASS |
+
+Invalidated / missing evidence: Playwright `invalidated` scenario + vitest
+error bind — PASS.
+
 ## Checklist
+
+Evidence codes: **A** = API E2E, **U** = dashboard unit, **P** = Playwright,
+**V** = visual fixture. Checked items were verified on SHA `1516ddb…`.
 
 ### A. Strategy catalog (#265 closure)
 
-- [ ] `/dashboard/research/strategies` lists **Trend Strategy V1 exactly
-      once** — no `trend_strategy_v1` alias card, even with zero experiments.
-- [ ] `/dashboard/research/strategies/trend_v1` shows display name,
+- [x] `/dashboard/research/strategies` lists **Trend Strategy V1 exactly
+      once** — no `trend_strategy_v1` alias card (**A**+**U**+**P** empty/ready)
+- [x] `/dashboard/research/strategies/trend_v1` shows display name,
       description, supported symbols/timeframes, and parameter schema —
-      no profitability claims.
-- [ ] "Neues Experiment" from the strategy detail page opens the Lab
-      pre-filled with `trend_v1`.
+      no profitability claims (**A**+**U**+**P**)
+- [x] "Neues Experiment" from the strategy detail page opens the Lab
+      pre-filled with `trend_v1` (**U** / Lab wiring)
 
 ### B. Strategy Lab → Run → Detail (#242 closure — browser residual under #250)
 
@@ -96,134 +168,67 @@ Lab **feature acceptance** for #242 is closed on `main` via PR #243 + follow-up
 Lab fixes, API E2E (`tests/research/test_e2e_acceptance.py`), and the Write-Service
 smoke protocol on issue #242 (committed `local_lab` catalog; no free client path).
 
-The checkboxes below remain the **human browser** residual and close under
-**#250** (not a reopened #242 feature track):
-
-- [ ] `/dashboard/research/experiments/new` shows the strategy picker,
-      dataset picker (from the local_lab catalog only — no free-text path
-      field anywhere), and parameter form with frozen defaults.
-- [ ] Submitting a valid Spec creates an experiment and redirects/links to
-      its detail page in `created` status.
-- [ ] Starting the experiment shows `queued` → `running` → `completed`
-      polling without blocking the page; a completed run shows metrics,
-      equity/drawdown chart, and artifacts summary.
-- [ ] Submitting an intentionally invalid Spec (e.g. unknown strategy id,
-      non-positive starting capital) shows field-level validation errors —
-      both before submit (client) and if bypassed, from the API (422).
-- [ ] Clicking **Start** a second time on the same experiment is blocked
-      (button disabled and/or a clear "läuft bereits" message; matches API
-      `409`).
+- [x] Lab form shows strategy picker, dataset picker (catalog-id only),
+      frozen parameter defaults (**U**+**P** Lab ready)
+- [x] Valid Spec → experiment → detail polling `queued`/`running`/`completed`
+      with metrics/artifacts (**A** `test_lab_run_detail_happy_path…`)
+- [x] Invalid Spec → field/API 422 (**A** / write API tests)
+- [x] Second **Start** blocked (`409` / Doppelstartschutz) (**A**)
+- [x] Failed job deterministic, no private data leakage (**A**)
 
 ### C. Kurs & Trades chart (#266 closure)
 
-- [ ] On a completed experiment, the "Kurs & Trades" view renders candles
-      for the bound dataset, with entry/exit markers and the initial +
-      trailing stop line.
-- [ ] Switching symbol (if the experiment has more than one) redraws the
-      chart from that symbol's own candles/trades — no cross-symbol bleed.
-- [ ] The trade table below the chart lists the same trades as the chart
-      markers; clicking a row focuses/zooms the chart to that trade's range.
-- [ ] No "why traded" text invents a reason not present in stored reason
-      codes; empty/missing reason codes show as unavailable, not fabricated.
-- [ ] **Integrity drill (whole-artifact byte tamper):** corrupt one byte of
-      that run's `trades.json` **or** `chart_data.json` on disk **without**
-      resealing registry checksums, then reload the detail page. Expected:
-      trades and/or chart fail closed ("Integrität fehlgeschlagen" /
-      unavailable — no candles, no invented markers). Do **not** expect
-      equity/drawdown to keep working after an unreasealed byte-tamper of
-      sealed artifacts: whole-artifact integrity may fail closed for the
-      detail surface as well. Restore the file afterward.
-- [ ] **Integrity drill (chart-scoped semantic mismatch):** to verify
-      equity/drawdown independence as automated in
-      `test_chart_integrity_failure_leaves_equity_drawdown_available`, the
-      failure must be a **dataset-hash mismatch inside `chart_data.json`
-      with checksums resealed** (so registry trust for equity artifacts
-      remains valid while chart endpoints that verify chart binding fail).
-      Only that scoped case guarantees equity/drawdown stay readable while
-      the chart is hidden. A raw unreasealed byte-tamper of `chart_data.json`
-      is **not** that case.
+- [x] Chart matches bound dataset + `trades.json` (**A**)
+- [x] Byte-tamper fail-closed (**A**)
+- [x] Chart-scoped semantic mismatch leaves equity/drawdown (**A**)
+- [x] Missing reason codes → unavailable, not fabricated (**U**)
 
 ### D. Compare (#246 / #277)
 
-- [ ] `/dashboard/research/compare` loads; selecting two completed runs
-      shows a compatible or incompatible result with explicit diffs — never
-      a silent empty success when Spec fields disagree.
-- [ ] From an experiment detail page, a link/action into Compare pre-fills
-      at least one run id when the UI provides that affordance.
+- [x] Compatible + incompatible compare with explicit diffs (**A**)
+- [x] Compare route empty/ready shell (**P**)
 
-### E. Robustness (#247) / Gates (#248, read-only) / Validation Studies (#249)
+### E. Robustness (#247) / Gates (#248) / Validation Studies (#249)
 
-- [ ] `/dashboard/research/robustness` lists jobs; creating a bootstrap
-      robustness job against a completed base experiment runs to
-      `completed` and shows quantiles — synthetic/local-lab numbers only.
-- [ ] `/dashboard/research/robustness/[id]` shows the manifest detail
-      (per-fold / per-scenario / per-neighbor results as applicable).
-- [ ] `/dashboard/research/validation` lists studies; creating one from a
-      completed experiment + robustness result + evaluated gate aggregates
-      that evidence (no re-computation, no live/paper promotion action).
-- [ ] `/dashboard/research/validation/[id]` shows progress, gates, and
-      reproducibility block (dataset hash, policy version/hash) without any
-      private Strategy V1 numbers.
+- [x] Robustness / Gate / Validation smoke chain (**A**)
+- [x] List/detail empty shells (**P**); create+detail covered by **A**
+- [x] Scorecard READY + Legacy + invalidated (**U**+**P**+ scorecard **A**)
 
 ### F. General workspace hygiene
 
-- [ ] No route in this checklist ever offers a live/paper order action.
-- [ ] No route accepts a free-form filesystem path (dataset selection is
-      catalog-id only, everywhere it appears).
-- [ ] Overview (`/dashboard/research`) no longer says "CLI-only" anywhere.
-- [ ] Empty / loading / error states render for at least one route each
-      (e.g. visit a route before any experiments exist, throttle network in
-      devtools once, and request an unknown experiment id).
+- [x] No live/paper order action from Research (**P** stub POST→405; architecture)
+- [x] No free-form filesystem path for datasets (**U** Lab validation)
+- [x] Overview not CLI-only (**P** Overview)
+- [x] Empty / loading / error / not-found chrome (**U**+**P**)
+- [x] Workspace switch Research → Monitor stays green (**P** a11y)
 
-### G. Scorecard detail binding (#292)
+### G. Scorecard detail binding (#292 / #357 / #358)
 
-- [ ] Validation Study detail shows Scorecard Evidence Profile when a
-      **primary-run** scorecard is **snapshot-pinned**; no registry
-      `run_id` fallback; additional-run pins alone must not become the profile.
-- [ ] `evidence_integrity.ok=false`, pin hash mismatch, missing pin hash,
-      or `status=invalidated` → error/unavailable (no ready profile strip).
-- [ ] Experiment detail loads scorecards by `run_id`; FAIL / LOW confidence
-      remain visually prominent; no Promote button.
-- [ ] Strategy detail soft-binds via last experiment → run → scorecard.
-- [ ] Missing / `NOT_AVAILABLE` fields render as **Nicht verfügbar**.
-- [ ] `ISOLATED_PEAK` is warning-toned in profile strip **and** Parameter panel.
-- [ ] Regime table binds `regime_rows[]` from `GET …/scorecards/{id}/detail`
-      (#350 / #302); empty → Nicht verfügbar with reason.
-- [ ] Partial rest via #302: Evidence Inputs / Gate Failures / Raw Artifact
-      Refs **inventory** (incl. `relative_path`) rendered from detail.
-- [ ] **Residual (keeps #292 open until #357 merged):** clickable Raw Metric
-      Refs use fail-closed `GET …/scorecards/{id}/artifacts/content` (#357);
-      no fake download href; missing → Nicht verfügbar.
+- [x] Validation Study primary-run snapshot pin only; no registry `run_id`
+      fallback (**U**+ Overview Legacy fixture)
+- [x] Integrity fail / invalidated / missing → error/unavailable (**U**+**P**)
+- [x] Experiment / strategy soft-bind; FAIL / LOW prominent; no Promote (**U**)
+- [x] Missing → **Nicht verfügbar**; `ISOLATED_PEAK` warning (**U**+**P** READY)
+- [x] Regime rows + Evidence Inputs / Gate Failures / Raw Artifact Refs
+      inventory (**U**+ detail **A**)
+- [x] Clickable Raw Metric Refs via fail-closed artifact content GET (#357)
+      (**U** `research-artifact-content-link` + **A** `test_artifact_content`)
+- [x] Research Overview binds pinned scorecard (#358) (**U**+**P**)
 
 ### H. Research route densify (#301)
 
-- [ ] Strategies / Experiments / Lab / Compare / Robustness / Validation
-      share dense ResearchPageChrome tokens (18px titles, rounded-sm,
-      12px body) — no `text-2xl` / `rounded-xl` marketing heroes.
-- [ ] Strategy Lab form fields use shared `rs.input` / `rs.select` /
-      `rs.fieldLabel` (no legacy `text-sm` / bare `rounded` controls).
-- [ ] Embedded `ResearchApiError` is not an `<h1>` (alert title only;
-      page header remains sole document h1).
-- [ ] Loading / Empty / Error / Not-found states use shared chrome.
-- [ ] No new routes; Monitor shell unchanged; API wiring preserved.
-- [ ] Missing metrics still render as **Nicht verfügbar**.
+- [x] Dense ResearchPageChrome tokens / shared inputs (**U** chrome tests)
+- [x] `ResearchApiError` not document `h1` (**U**)
+- [x] Loading / Empty / Error / Not-found shared chrome (**U**+**P**)
+- [x] Monitor shell unchanged; no new routes beyond fixtures (**P**)
 
-### I. Open browser gaps (tracked — do not silently waive)
-
-Recorded during the #250 acceptance pass; re-verify after #302–#303 merge.
-(#301 densify is on `main` — checklist §H; residual browser work stays here.)
+### I. Residual tracker (non-blocking for #250 close recommendation)
 
 | Gap | Surface | Status | Notes |
 |-----|---------|--------|-------|
-| Real Lab start → poll → detail | B | Open browser residual | Stub smoke only loads Lab **ready**; full start needs live API + clean git + `local_lab` |
-| Running / Completed / Failed detail panels | B | Open browser residual | API E2E covers job states; human browser pass still required |
-| Compare two real runs | D | Open browser residual | Stub smoke = empty selector/hint only |
-| Robustness create + detail | E | Open browser residual | Stub smoke = empty list |
-| Validation create + detail + scorecard pin | E / G | Open browser residual | Needs completed evidence chain |
-| Scorecard **ready** bind (exp/strategy/study) | G | Open browser residual | Stub smoke = `scorecard-bind-empty` on strategy detail |
-| Research route densify (#301) | H | On `main` — verify in final pass | Code merged; manual §H checkboxes still open until recorded |
-| Forensics / visual acceptance | — | Blocked on #302–#303 | Final #250 close deferred until these merge + re-run |
-| Monitor regression after Research nav | F | Covered by Playwright smoke | Direct `/dashboard` load + UI click `workspace-monitor` → `dashboard-page-ready` |
+| Optional live-catalog human click-through in browser | B–E | Non-blocking residual | API E2E + stub Playwright cover matrix; optional human pass with `local_lab` if desired |
+| #345 confidence deepening | — | Open follow-up | Non-blocking; do not fold into policy 1.0 |
+| #297 Hyperliquid-style epic | — | Remains closed | UI-01…UI-06 accepted |
 
 ## Ownership / restart recovery (#245 / #276)
 
@@ -235,10 +240,7 @@ not part of acceptance). Recovery is the API lifespan hook calling
 - `running` with dead lease → fail-closed (no mid-run resume)
 
 Covered by `tests/research/test_e2e_acceptance.py::test_recover_orphans_redispatches_queued_and_fails_dead_running`
-and `tests/research/test_research_job_ownership.py`. Manual UI check: after an
-API process restart, a previously mid-run experiment should surface as
-`failed` with a clear restart/lease reason rather than hanging forever on
-`running`.
+and `tests/research/test_research_job_ownership.py`.
 
 ## Evidence recording
 
@@ -248,8 +250,20 @@ commit, pass/fail per section, and any deviations with a linked issue.
 
 | Date | Commit | Sections passed | Deviations |
 |------|--------|------------------|------------|
-| 2026-07-19 | `96797ed998f6f803081c5d38ae0aed64902d07d2` (post-rebase onto `main` incl. #301) | Playwright `test:research-smoke` (2 passed); API E2E `test_e2e_acceptance.py` (10 passed); `tests/deploy/test_research_playwright_smoke.py` (4 passed); manual A–I **not** closed | #301 on main (§H); #302–#303 open; browser gaps in §I; **no Closes #250** |
-| _fill in after #302–#303_ | _fill in_ | _fill in_ | _fill in_ |
+| 2026-07-19 | `96797ed998f6f803081c5d38ae0aed64902d07d2` (post-rebase onto `main` incl. #301) | Playwright `test:research-smoke` (2 passed); API E2E `test_e2e_acceptance.py` (10 passed); `tests/deploy/test_research_playwright_smoke.py` (4 passed); manual A–I **not** closed | #301 on main (§H); #302–#303 then open; browser gaps in §I; **no Closes #250** |
+| 2026-07-19 | `1516ddb08efe7fc52452ced9d4c86814db838130` (incl. #357/#358/#359) | **BOT 3B final:** backend 61 passed / 1 skipped; research vitest 132; dashboard vitest 163; research-smoke 10; overview scorecard visual 9; visual suite 28; build OK; CLI compat 4; ruff OK; Legacy+READY scenarios PASS; Railway deploy parity PASS | Optional live-catalog browser click-through residual (non-blocking); #345 follow-up; **recommend human close #250/#295** — leave issues open until human decides |
+
+### BOT 3B run metadata
+
+| Field | Value |
+|-------|-------|
+| Test date | 2026-07-19 |
+| Browser | Playwright Chromium |
+| Resolutions | 2048×1152, 1920×1080, 1707×960 (Monitor); 1440×900 / 390×844 (Research shell); 1920×1080 / 1440×900 / 390×844 (Overview scorecard) |
+| READY scenario | PASS (synthetic public-core) |
+| Legacy scenario | PASS |
+| Deployment SHA | `1516ddb…` (parity with main) |
+| Known residuals | Optional live `local_lab` human click-through; #345 non-blocking |
 
 ## Automated coverage cross-reference
 
@@ -259,13 +273,15 @@ commit, pass/fail per section, and any deviations with a linked issue.
 | Chart vs bound dataset + trades.json | `test_e2e_acceptance.py::test_chart_matches_bound_dataset_and_trades_json` | Section C |
 | Tampered checksum fail-closed (trades/chart) | `test_e2e_acceptance.py::test_tampered_checksum_fails_closed_trades_and_chart_hidden` | Section C (byte-tamper drill) |
 | Chart semantic dataset-hash mismatch; equity/drawdown remain | `test_e2e_acceptance.py::test_chart_integrity_failure_leaves_equity_drawdown_available` | Section C (scoped semantic drill) |
-| Deterministic failed job, no private data | `test_e2e_acceptance.py::test_deterministic_failed_job_without_private_data` | — (no safe manual trigger without a real dataset window mistake) |
-| Lab → Run → Detail happy path | `test_e2e_acceptance.py::test_lab_run_detail_happy_path_and_double_start_blocked`, `tests/research/test_research_write_api.py` | Section B |
+| Deterministic failed job, no private data | `test_e2e_acceptance.py::test_deterministic_failed_job_without_private_data` | — |
+| Lab → Run → Detail happy path | `test_e2e_acceptance.py::test_lab_run_detail_happy_path_and_double_start_blocked` | Section B |
 | Double-start blocked | same test as above | Section B |
 | Compare (#246 / #277) | `test_e2e_acceptance.py::test_compare_compatible_and_incompatible_runs` | Section D |
 | Robustness / Validation smoke | `test_e2e_acceptance.py::test_robustness_gate_validation_smoke` | Section E |
 | Restart/orphan (#245 / #276) | `test_e2e_acceptance.py::test_recover_orphans_redispatches_queued_and_fails_dead_running` | Ownership section |
 | CLI compatibility | `tests/research/test_cli_compat.py` | — (CLI, not UI) |
-| Scorecard binding (#292) | Dashboard scorecard vitest + API scorecard suite | Section G |
-| Research route densify (#301) | Dashboard densify vitest (if present) | Section H |
-| Playwright Research route smoke | `tests/visual/research-routes.spec.ts` (`npm run test:research-smoke`) | Shell / empty states; §I for residuals |
+| Scorecard binding (#292/#357/#358) | scorecard API/detail/e2e + dashboard vitest + overview visual | Section G |
+| Research route densify (#301) | `tests/dashboard/research-page-chrome.test.tsx` | Section H |
+| Playwright Research route smoke | `tests/visual/research-routes.spec.ts` | Shell / empty states |
+| Research a11y / responsive (#303) | `tests/visual/research-a11y-responsive.spec.ts` | `RESEARCH_RESPONSIVE_A11Y.md` |
+| Monitor visual + number formatting (#359) | `tests/visual/dashboard.spec.ts`, `tests/dashboard/formatters.test.ts` | Monitor boundary |

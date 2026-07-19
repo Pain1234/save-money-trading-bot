@@ -48,3 +48,9 @@ npx playwright test tests/visual/research-overview-scorecard.spec.ts
 ```
 
 Aktuell keine automatische Pixel-Diff-Prüfung — Screenshots dienen als visueller Referenzstand.
+
+## Refresh log
+
+| Date | Commit | Notes |
+|------|--------|-------|
+| 2026-07-19 | `1516ddb…` (#250 BOT 3B) | Regenerated Monitor + Research shell references after #359/#358 stack; Overview READY/Legacy/Invalidated fixtures re-verified (unchanged digests) |

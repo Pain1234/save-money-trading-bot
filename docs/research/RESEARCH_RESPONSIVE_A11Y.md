@@ -46,3 +46,10 @@ bound scorecard detail is available in the stub (do not invent metrics).
 
 Workspace switch Research → Monitor must leave `dashboard-page-ready` green
 (covered in both research smoke specs).
+
+## Final acceptance cross-link (#250)
+
+BOT 3B 2026-07-19 re-ran `npm run test:research-smoke` (10 passed) and the
+full `tests/visual/` suite (28 passed) on SHA `1516ddb…` with Railway deploy
+parity. Full matrix + Legacy/READY scenarios:
+`docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`.

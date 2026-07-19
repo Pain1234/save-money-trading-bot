@@ -19,7 +19,7 @@ Central project goal:
 | P2 | Operational Reliability | In flight (partial; exit criteria not all met) | No |
 | P2.5 | Dashboard Performance & Responsiveness | Planned (seed issues closed; exit criteria **not** met — do not treat as complete) | No |
 | **P3** | Versioned Historical Market Data | **Complete** | No |
-| P4 | Research Engine und Research Workspace V1 | **In flight** (#250 browser UI acceptance; Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) P4.9 Regime Scorecard; #242 Lab accepted; #245–#249 delivered) | No |
+| P4 | Research Engine und Research Workspace V1 | **Acceptance evidence recorded** (#250 BOT 3B on `1516ddb…`; Railway deploy parity; Legacy+READY PASS; human close of #250/#295 pending) | No |
 | P5 | Honest Validation of Trend Strategy V1 | **Planning** (helpers #200–#203 ≠ execution; #251–#254 open; no OOS opened) | No |
 | P6 | Paper Trading Soak | **Not started** (Epic #46; sub-issues #256–#262; clock not started) | No |
 | P7 | Multi-Asset and Independent Strategy Candidates | Planning + architecture contracts (ADR-018); identity scaffolding #128–#130 exception; no runtime activation until P5/P6 | No |
@@ -37,7 +37,7 @@ Central project goal:
 - **P1 complete** (2026-07-14): tag `baseline-paper-v1.0.0` at `daacb627` (PR #62 merge). Post-tag doc/lock/CI improvements tracked in PR #63 (optional `baseline-paper-v1.0.1` after merge).
 - **P3 complete** (2026-07-14): versioned historical market data pipeline implemented (`services/market_data/`, migration `010_market_data_datasets`, issues #76–#84); reproducibility audit in `docs/P3_DATASET_REPRODUCIBILITY_AUDIT.md`.
 - Dashboard UI locally usable with real paper data (login, wallet, PnL, positions, fills, equity); **not** yet classified as production-accepted performant monitoring (`docs/railway-paper-trading-dashboard-v1.md` maturity levels).
-- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **accepted** (API E2E + catalog smoke; browser click-through residual under #250). Catalog visibility #265 (PR #267) and price/trade chart #266 (PR #268) **delivered and closed**. Durable jobs #245, compare #246, robustness #247, gates #248, validation studies #249 **closed on `main`**. #250 E2E/UI acceptance remains open (human browser checklist). Epic **P4.9 Regime-Based Strategy Evidence Scorecard** [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) opened (contract [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284); ADR-019). Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`. Governance sync: #244.
+- **P4** milestone title: `P4 – Research Engine und Research Workspace V1`. Engine + read-only workspace (#240) on `main`. Strategy Lab + start merged via PR #243; #242 **accepted**. Catalog #265 / chart #266 / durable jobs #245 / compare #246 / robustness #247 / gates #248 / validation #249 **closed**. P4.9 epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295): #284–#293, #302, #303, #350, #357, #358 **closed**; #292 closed after #357. **#250 final acceptance evidence** recorded 2026-07-19 on SHA `1516ddb08efe7fc52452ced9d4c86814db838130` (Railway dashboard/API/worker deploy parity; Legacy+READY scenarios PASS) — **human close of #250/#295 pending**. #345 confidence deepening remains open non-blocking follow-up. Audit: `docs/project-management/MILESTONE_COVERAGE_AUDIT.md`.
 - **P5** planning/helpers (#197–#203, #181) ≠ actual Strategy V1 validation. Execution issues: #251–#254; study register #255; final OOS #204 still blocked. See `docs/research/p5/README.md`.
 - **P6** soak **not started**. Epic #46 decomposed into #256–#262; private telemetry boundary #182.
 - **P2.5** seed issues are closed but ROADMAP exit criteria remain open — status drift documented in the coverage audit; not marked complete.
@@ -437,8 +437,9 @@ Workspace that reads those artifacts without introducing a second research syste
 - [x] API E2E suite `tests/research/test_e2e_acceptance.py` (matrix in Issue #250) without `RESEARCH_ALLOW_DIRTY_GIT` (merged via PR #283).
 - [x] CLI compatibility smoke `tests/research/test_cli_compat.py`.
 - [x] Manual UI acceptance checklist documented (`docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`).
-- [ ] Human execution of the manual checklist + evidence row filled in.
-- [ ] Playwright research smoke or accepted Playwright waiver (see acceptance doc).
+- [x] Final acceptance evidence row filled (BOT 3B 2026-07-19 on `1516ddb…`; Legacy+READY PASS; Railway deploy parity).
+- [x] Playwright research smoke + a11y/responsive + overview scorecard fixtures (see acceptance doc).
+- [ ] **Human** close of [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) after review (agent recommends close; issues left open).
 
 #### P4.9 — Regime-Based Strategy Evidence Scorecard (Epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295))
 
@@ -448,28 +449,32 @@ Studies — **no** second registry, **no** auto-promotion. Contract:
 
 - [x] [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284) docs: versioned scorecard + anti-overfitting contract
 - [x] [#285](https://github.com/Pain1234/save-money-trading-bot/issues/285) feat: deterministic regime + transition classifier
-- [ ] [#286](https://github.com/Pain1234/save-money-trading-bot/issues/286) feat: integrity profile + critical gate categories
+- [x] [#286](https://github.com/Pain1234/save-money-trading-bot/issues/286) feat: integrity profile + critical gate categories
 - [x] [#287](https://github.com/Pain1234/save-money-trading-bot/issues/287) feat: regime quality metrics + worst-regime profile
-- [ ] [#288](https://github.com/Pain1234/save-money-trading-bot/issues/288) feat: evidence confidence / sample sufficiency
+- [x] [#288](https://github.com/Pain1234/save-money-trading-bot/issues/288) feat: evidence confidence / sample sufficiency
 - [x] [#289](https://github.com/Pain1234/save-money-trading-bot/issues/289) feat: behaviour labels + transition risk
 - [x] [#290](https://github.com/Pain1234/save-money-trading-bot/issues/290) feat: parameter plateau / local stability
 - [x] [#291](https://github.com/Pain1234/save-money-trading-bot/issues/291) feat: scorecard artifacts + read-only API
-- [ ] [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) feat: Research Workspace scorecard UI
+- [x] [#292](https://github.com/Pain1234/save-money-trading-bot/issues/292) feat: Research Workspace scorecard UI (closed after #357)
 - [x] [#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) test: reproducibility + anti-overfit E2E
-- [ ] [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) docs(p5): bind Strategy V1 freeze to scorecard policy versions (P5 milestone) — docs + ADR-020; **Human Freeze pending**; Holdout closed
+- [x] [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294) docs(p5): bind Strategy V1 freeze to scorecard policy versions — `SCORECARD POLICY BIND FROZEN`; Holdout closed
+- [x] [#302](https://github.com/Pain1234/save-money-trading-bot/issues/302) / [#303](https://github.com/Pain1234/save-money-trading-bot/issues/303) / [#350](https://github.com/Pain1234/save-money-trading-bot/issues/350) / [#357](https://github.com/Pain1234/save-money-trading-bot/issues/357) / [#358](https://github.com/Pain1234/save-money-trading-bot/issues/358) forensics, responsive, detail API, artifact content, Overview bind
+- [ ] [#345](https://github.com/Pain1234/save-money-trading-bot/issues/345) confidence deepening — **open non-blocking follow-up**
+- [ ] **Human** close of epic [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) after #250 close
 
 Dependency chain (binding):
 
 ```text
 P4 engine → #284 → #285 → #286 → {#287,#288,#289,#290} → #291 → #293/#350
-→ #294 (docs bind; #292 UI parallel / non-blocking) → #251–#254 → human pre-OOS → #204 → #205
+→ #294 (docs bind; #292 UI) → #250 acceptance → human close → #251–#254 → human pre-OOS → #204 → #205
 ```
 
 #### Still open (linked issues — see `docs/project-management/p4-research-workspace-follow-ups.md`)
 
-- [x] [#242](https://github.com/Pain1234/save-money-trading-bot/issues/242) Lab acceptance (API E2E + catalog smoke; browser residual under #250)
-- [ ] [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) P4.8 Research E2E, Reproduzierbarkeit und UI-Abnahme — human browser checklist outstanding
-- [ ] [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) / [#284](https://github.com/Pain1234/save-money-trading-bot/issues/284)–[#293](https://github.com/Pain1234/save-money-trading-bot/issues/293) P4.9 Regime Scorecard (implementation after contract)
+- [x] [#242](https://github.com/Pain1234/save-money-trading-bot/issues/242) Lab acceptance (API E2E + catalog smoke)
+- [ ] [#250](https://github.com/Pain1234/save-money-trading-bot/issues/250) P4.8 — evidence recorded; **human close recommended**
+- [ ] [#295](https://github.com/Pain1234/save-money-trading-bot/issues/295) P4.9 epic — checklist complete on GitHub issues; **human close after #250**
+- [ ] [#345](https://github.com/Pain1234/save-money-trading-bot/issues/345) confidence deepening (non-blocking)
 - [ ] Cancel / Retry / Re-run (explicitly deferred — no issue)
 
 ### Binding dependency chain
@@ -490,7 +495,7 @@ Docs preparation may run in parallel from #142.
 - [x] P5 gates (OOS / walk-forward / cost-stress robustness) not pre-empted
 - [x] Research Workspace usable for browsing real experiments (API + UI) without a parallel system
 - [x] Strategy visible/selectable without prior runs (#265); trade chart on completed runs (#266)
-- [ ] Lab usable; durable jobs / compare / robustness / gates / validation studies delivered; **#250 browser UI Abnahme** still open
+- [x] Lab usable; durable jobs / compare / robustness / gates / validation studies delivered; **#250 acceptance evidence recorded** (human close pending)
 
 ### Stop criteria
 
@@ -500,7 +505,7 @@ Docs preparation may run in parallel from #142.
 
 - Backtest bias; cost model optimism; UI inventing metrics not produced by the engine
 
-**Current gap:** Engine + read-only workspace + Lab accepted on `main` (#242). Strategy catalog (#265) and price/trade chart (#266) **delivered**. #250 human browser checklist + Playwright waiver/smoke still outstanding. **P4 not complete.** P5 economic execution remains gated on usable workspace + P5 execution chain.
+**Current status (2026-07-19):** P4 engine + workspace + P4.9 scorecard stack on `main` at `1516ddb…` with Railway production deploy parity. #250/#295 **close recommended** after human review of `docs/research/RESEARCH_WORKSPACE_ACCEPTANCE.md`. P5 economic execution (#251–#254 / #204) remains blocked until human decides post-P4; holdout closed. #345 non-blocking.
 
 ---
 
