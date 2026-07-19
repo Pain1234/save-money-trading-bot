@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import {
+  ResearchEmpty,
+  ResearchPageHeader,
+  ResearchTableFrame,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
+import {
   displayValue,
   type ResearchExperimentSummary,
 } from "@/lib/research-api/client";
@@ -44,32 +50,34 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
 
   if (items.length === 0) {
     return (
-      <div data-testid="research-experiments-empty">
-        <h1 className="mb-4 text-2xl font-semibold">Experiments</h1>
-        <p className="text-sm text-text-muted">
-          Keine Experimente registriert.
-        </p>
-      </div>
+      <ResearchEmpty
+        testId="research-experiments-empty"
+        title="Experiments"
+        message="Keine Experimente registriert."
+      />
     );
   }
 
   return (
-    <div data-testid="research-experiments-ready" className="space-y-4">
-      <h1 className="text-2xl font-semibold">Experiments</h1>
+    <div data-testid="research-experiments-ready" className={rs.page}>
+      <ResearchPageHeader title="Experiments" />
 
-      <div className="flex flex-wrap gap-2" data-testid="research-experiments-filters">
+      <div
+        className="flex flex-wrap gap-2"
+        data-testid="research-experiments-filters"
+      >
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Suche Experiment-ID oder Strategie"
-          className="min-w-[220px] flex-1 rounded border border-border bg-bg-elevated px-3 py-1.5 text-sm text-text-primary"
+          className={`min-w-[220px] flex-1 ${rs.input}`}
           aria-label="Suche"
         />
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+          className={rs.select}
           aria-label="Status filter"
         >
           <option value="">Alle Status</option>
@@ -82,7 +90,7 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
         <select
           value={strategy}
           onChange={(e) => setStrategy(e.target.value)}
-          className="rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+          className={rs.select}
           aria-label="Strategie filter"
         >
           <option value="">Alle Strategien</option>
@@ -95,13 +103,13 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-text-muted" data-testid="research-experiments-no-match">
+        <p className={rs.muted} data-testid="research-experiments-no-match">
           Keine Experimente für die aktuelle Filterung.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border-subtle">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-bg-elevated text-text-muted">
+        <ResearchTableFrame>
+          <table className={rs.table}>
+            <thead>
               <tr>
                 {[
                   "Experiment-ID",
@@ -118,7 +126,7 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
                   "Max DD",
                   "Trades",
                 ].map((col) => (
-                  <th key={col} className="whitespace-nowrap px-3 py-2 font-medium">
+                  <th key={col} className={`whitespace-nowrap ${rs.th}`}>
                     {col}
                   </th>
                 ))}
@@ -130,7 +138,7 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
                   key={item.experiment_id}
                   className="border-t border-border-subtle"
                 >
-                  <td className="px-3 py-2">
+                  <td className={rs.td}>
                     <Link
                       href={`/dashboard/research/experiments/${encodeURIComponent(item.experiment_id)}`}
                       className="font-mono text-mint hover:underline"
@@ -138,44 +146,42 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
                       {item.experiment_id}
                     </Link>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={rs.td}>
                     {displayValue(item.strategy_version)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={rs.td}>
                     {item.symbols.length
                       ? item.symbols.join(", ")
                       : "Nicht verfügbar"}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className={`${rs.td} font-mono text-[11px]`}>
                     {item.time_range_start && item.time_range_end
                       ? `${item.time_range_start} → ${item.time_range_end}`
                       : "Nicht verfügbar"}
                   </td>
-                  <td className="px-3 py-2">
-                    {displayValue(item.timeframe)}
-                  </td>
-                  <td className="px-3 py-2">{displayValue(item.status)}</td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className={rs.td}>{displayValue(item.timeframe)}</td>
+                  <td className={rs.td}>{displayValue(item.status)}</td>
+                  <td className={`${rs.td} font-mono text-[11px]`}>
                     {displayValue(item.created_at)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={rs.td}>
                     {item.duration_seconds == null
                       ? "Nicht verfügbar"
                       : `${item.duration_seconds}s`}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">
+                  <td className={`${rs.td} font-mono text-[11px]`}>
                     {displayValue(item.git_commit)}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={rs.td}>
                     {displayValue(item.dataset_version)}
                   </td>
-                  <td className="px-3 py-2 font-mono">
+                  <td className={`${rs.td} font-mono`}>
                     {displayValue(item.net_pnl)}
                   </td>
-                  <td className="px-3 py-2 font-mono">
+                  <td className={`${rs.td} font-mono`}>
                     {displayValue(item.max_drawdown)}
                   </td>
-                  <td className="px-3 py-2 font-mono">
+                  <td className={`${rs.td} font-mono`}>
                     {item.closed_trades == null
                       ? "Nicht verfügbar"
                       : item.closed_trades}
@@ -184,7 +190,7 @@ export function ExperimentsTable({ items }: ExperimentsTableProps) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ResearchTableFrame>
       )}
     </div>
   );

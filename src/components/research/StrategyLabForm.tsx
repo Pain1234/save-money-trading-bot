@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { Card } from "@/components/ui/Card";
 import {
   labDayEndUtc,
@@ -240,9 +244,9 @@ export function StrategyLabForm({
 
   if (!datasets.length) {
     return (
-      <div data-testid="research-lab-no-datasets" className="space-y-2">
-        <h1 className="text-2xl font-semibold">Neues Experiment</h1>
-        <p className="text-sm text-text-muted">
+      <div data-testid="research-lab-no-datasets" className={rs.page}>
+        <ResearchPageHeader title="Neues Experiment" />
+        <p className={rs.muted}>
           Kein Dataset-Katalog gefunden. Lokal:{" "}
           <code className="font-mono text-xs">
             python scripts/prepare_research_lab_local.py
@@ -259,27 +263,23 @@ export function StrategyLabForm({
     );
   }
 
+  const labDescription =
+    `Strategy Lab — konfiguriert denselben ExperimentSpec / Runner wie die CLI.${
+      baselineMode
+        ? " Baseline-Modus: eingefrorene Standardparameter vorausgefüllt; Start erst nach Bestätigung."
+        : ""
+    }${strategy?.description ? ` ${strategy.description}` : ""}`;
+
   return (
-    <div data-testid="research-lab-ready" className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Neues Experiment</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Strategy Lab — konfiguriert denselben ExperimentSpec / Runner wie die
-            CLI.
-            {baselineMode
-              ? " Baseline-Modus: eingefrorene Standardparameter vorausgefüllt; Start erst nach Bestätigung."
-              : ""}
-          </p>
-          {strategy?.description ? (
-            <p className="mt-2 text-sm text-text-muted">{strategy.description}</p>
-          ) : null}
-        </div>
-      </div>
+    <div data-testid="research-lab-ready" className={rs.page}>
+      <ResearchPageHeader
+        title="Neues Experiment"
+        description={labDescription}
+      />
 
       {formError && (
         <p
-          className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200"
+          className="rounded-sm border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[12px] text-red-200"
           data-testid="research-lab-error"
         >
           {formError}
@@ -287,7 +287,7 @@ export function StrategyLabForm({
       )}
 
       {step === "form" ? (
-        <Card padding="sm" className="space-y-4">
+        <Card padding="sm" className="space-y-3">
           <label className="block text-sm">
             <span className="text-text-muted">Strategie</span>
             <select
@@ -498,7 +498,7 @@ export function StrategyLabForm({
 
           <button
             type="button"
-            className="rounded bg-mint/20 px-3 py-2 text-sm font-medium text-mint hover:bg-mint/30"
+            className={rs.btnPrimary}
             onClick={goSummary}
             data-testid="lab-review"
           >
@@ -506,9 +506,9 @@ export function StrategyLabForm({
           </button>
         </Card>
       ) : (
-        <Card padding="sm" className="space-y-3" data-testid="research-lab-summary">
-          <h2 className="text-sm font-medium">Zusammenfassung</h2>
-          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <Card padding="sm" className="space-y-2" data-testid="research-lab-summary">
+          <h2 className={rs.sectionTitle}>Zusammenfassung</h2>
+          <dl className="grid gap-2 text-[12px] sm:grid-cols-2">
             <div>
               <dt className="text-text-muted">Strategie</dt>
               <dd>
@@ -544,7 +544,7 @@ export function StrategyLabForm({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className="rounded border border-border px-3 py-2 text-sm"
+              className={rs.btnSecondary}
               onClick={() => setStep("form")}
               disabled={submitting}
             >
@@ -552,7 +552,7 @@ export function StrategyLabForm({
             </button>
             <button
               type="button"
-              className="rounded bg-mint/20 px-3 py-2 text-sm font-medium text-mint hover:bg-mint/30 disabled:opacity-50"
+              className={`${rs.btnPrimary} disabled:opacity-50`}
               onClick={() => void createAndStart()}
               disabled={submitting}
               data-testid="lab-start"

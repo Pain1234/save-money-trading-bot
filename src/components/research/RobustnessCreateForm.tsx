@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { rs } from "@/components/research/chrome/ResearchPageChrome";
 import { Card } from "@/components/ui/Card";
 import type { RobustnessTestType } from "@/lib/research-api/client";
 
@@ -129,7 +130,7 @@ export function RobustnessCreateForm({
   if (experiments.length === 0) {
     return (
       <Card padding="sm" data-testid="robustness-create-empty">
-        <p className="text-sm text-text-muted">
+        <p className={rs.muted}>
           Es gibt noch kein abgeschlossenes Experiment. Robustheitstests
           benötigen einen abgeschlossenen Basis-Lauf.
         </p>
@@ -139,15 +140,15 @@ export function RobustnessCreateForm({
 
   return (
     <Card padding="sm" data-testid="robustness-create-form">
-      <h2 className="mb-3 text-sm font-medium">Neuer Robustheitstest</h2>
+      <h2 className={rs.sectionTitle}>Neuer Robustheitstest</h2>
       <form onSubmit={onSubmit} className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="mb-1 block text-text-muted">Basis-Experiment</span>
+          <label className="text-[12px]">
+            <span className={`mb-1 block ${rs.label}`}>Basis-Experiment</span>
             <select
               value={baseExperimentId}
               onChange={(e) => setBaseExperimentId(e.target.value)}
-              className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm font-mono"
+              className={`w-full font-mono ${rs.select}`}
               data-testid="robustness-base-experiment-select"
             >
               {experiments.map((exp) => (
@@ -157,18 +158,18 @@ export function RobustnessCreateForm({
               ))}
             </select>
             {fieldErrors.base_experiment_id && (
-              <p className="mt-1 text-xs text-red-300">
+              <p className="mt-1 text-[11px] text-red-300">
                 {fieldErrors.base_experiment_id}
               </p>
             )}
           </label>
 
-          <label className="text-sm">
-            <span className="mb-1 block text-text-muted">Testart</span>
+          <label className="text-[12px]">
+            <span className={`mb-1 block ${rs.label}`}>Testart</span>
             <select
               value={testType}
               onChange={(e) => setTestType(e.target.value as RobustnessTestType)}
-              className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+              className={`w-full ${rs.select}`}
               data-testid="robustness-test-type-select"
             >
               {(Object.keys(TEST_TYPE_LABELS) as RobustnessTestType[]).map((key) => (
@@ -180,17 +181,17 @@ export function RobustnessCreateForm({
           </label>
         </div>
 
-        <p className="text-xs text-text-secondary">
+        <p className="text-[11px] text-text-secondary">
           {TEST_TYPE_DESCRIPTIONS[testType]}
         </p>
 
         {needsDataset && (
-          <label className="block text-sm">
-            <span className="mb-1 block text-text-muted">Dataset</span>
+          <label className="block text-[12px]">
+            <span className={`mb-1 block ${rs.label}`}>Dataset</span>
             <select
               value={datasetCatalogId}
               onChange={(e) => setDatasetCatalogId(e.target.value)}
-              className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+              className={`w-full ${rs.select}`}
               data-testid="robustness-dataset-select"
             >
               {datasets.map((ds) => (
@@ -200,7 +201,7 @@ export function RobustnessCreateForm({
               ))}
             </select>
             {fieldErrors.dataset_catalog_id && (
-              <p className="mt-1 text-xs text-red-300">
+              <p className="mt-1 text-[11px] text-red-300">
                 {fieldErrors.dataset_catalog_id}
               </p>
             )}
@@ -209,24 +210,24 @@ export function RobustnessCreateForm({
 
         {testType === "walk_forward" && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm">
-              <span className="mb-1 block text-text-muted">Anzahl Folds</span>
+            <label className="text-[12px]">
+              <span className={`mb-1 block ${rs.label}`}>Anzahl Folds</span>
               <input
                 type="number"
                 min={1}
                 value={nFolds}
                 onChange={(e) => setNFolds(e.target.value)}
-                className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+                className={`w-full ${rs.input}`}
               />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-text-muted">Embargo (Tage)</span>
+            <label className="text-[12px]">
+              <span className={`mb-1 block ${rs.label}`}>Embargo (Tage)</span>
               <input
                 type="number"
                 min={0}
                 value={embargoDays}
                 onChange={(e) => setEmbargoDays(e.target.value)}
-                className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+                className={`w-full ${rs.input}`}
               />
             </label>
           </div>
@@ -234,40 +235,40 @@ export function RobustnessCreateForm({
 
         {testType === "bootstrap" && (
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="text-sm">
-              <span className="mb-1 block text-text-muted">Blocklänge</span>
+            <label className="text-[12px]">
+              <span className={`mb-1 block ${rs.label}`}>Blocklänge</span>
               <input
                 type="number"
                 min={1}
                 value={blockLength}
                 onChange={(e) => setBlockLength(e.target.value)}
-                className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+                className={`w-full ${rs.input}`}
               />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-text-muted">Simulationen</span>
+            <label className="text-[12px]">
+              <span className={`mb-1 block ${rs.label}`}>Simulationen</span>
               <input
                 type="number"
                 min={1}
                 value={nSimulations}
                 onChange={(e) => setNSimulations(e.target.value)}
-                className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+                className={`w-full ${rs.input}`}
               />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-text-muted">Seed</span>
+            <label className="text-[12px]">
+              <span className={`mb-1 block ${rs.label}`}>Seed</span>
               <input
                 type="number"
                 value={seed}
                 onChange={(e) => setSeed(e.target.value)}
-                className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+                className={`w-full ${rs.input}`}
               />
             </label>
           </div>
         )}
 
         {formError && (
-          <p className="text-sm text-red-300" data-testid="robustness-form-error">
+          <p className="text-[12px] text-red-300" data-testid="robustness-form-error">
             {formError}
           </p>
         )}
@@ -275,7 +276,7 @@ export function RobustnessCreateForm({
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint disabled:opacity-50"
+          className={`${rs.btnPrimary} disabled:opacity-50`}
           data-testid="robustness-submit"
         >
           {submitting ? "Wird erstellt…" : "Test erstellen und starten"}

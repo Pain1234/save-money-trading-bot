@@ -3,6 +3,11 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { ResearchCharts } from "@/components/research/ResearchCharts";
 import {
+  ResearchApiError,
+  ResearchTableFrame,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
+import {
   displayValue,
   type ResearchCompareResult,
   type ResearchCompareRunView,
@@ -34,14 +39,12 @@ export function CompareSelector({ items, runA, runB }: CompareSelectorProps) {
       className="flex flex-wrap items-end gap-2"
     >
       <div className="min-w-[260px] flex-1">
-        <label className="mb-1 block text-[11px] uppercase tracking-wide text-text-muted">
-          Run A
-        </label>
+        <label className={`mb-1 block ${rs.label}`}>Run A</label>
         <select
           name="run_a"
           defaultValue={runA}
           data-testid="research-compare-select-a"
-          className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+          className={`w-full ${rs.select}`}
         >
           <option value="">— wählen —</option>
           {items.map((item) => (
@@ -52,14 +55,12 @@ export function CompareSelector({ items, runA, runB }: CompareSelectorProps) {
         </select>
       </div>
       <div className="min-w-[260px] flex-1">
-        <label className="mb-1 block text-[11px] uppercase tracking-wide text-text-muted">
-          Run B
-        </label>
+        <label className={`mb-1 block ${rs.label}`}>Run B</label>
         <select
           name="run_b"
           defaultValue={runB}
           data-testid="research-compare-select-b"
-          className="w-full rounded border border-border bg-bg-elevated px-2 py-1.5 text-sm"
+          className={`w-full ${rs.select}`}
         >
           <option value="">— wählen —</option>
           {items.map((item) => (
@@ -72,7 +73,7 @@ export function CompareSelector({ items, runA, runB }: CompareSelectorProps) {
       <button
         type="submit"
         data-testid="research-compare-submit"
-        className="rounded bg-mint/20 px-3 py-1.5 text-sm text-mint"
+        className={rs.btnPrimary}
       >
         Vergleichen
       </button>
@@ -82,10 +83,7 @@ export function CompareSelector({ items, runA, runB }: CompareSelectorProps) {
 
 export function CompareEmptyHint() {
   return (
-    <p
-      className="text-sm text-text-muted"
-      data-testid="research-compare-empty"
-    >
+    <p className={rs.muted} data-testid="research-compare-empty">
       Wähle zwei Runs aus, um Kennzahlen, Equity/Drawdown und
       Konfigurationsunterschiede zu vergleichen.
     </p>
@@ -94,15 +92,11 @@ export function CompareEmptyHint() {
 
 export function CompareError({ message }: { message: string }) {
   return (
-    <div
-      data-testid="research-compare-error"
-      className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-    >
-      <h2 className="text-lg font-semibold text-red-300">
-        Vergleich nicht möglich
-      </h2>
-      <p className="mt-2 text-sm text-red-200/90">{message}</p>
-    </div>
+    <ResearchApiError
+      testId="research-compare-error"
+      title="Vergleich nicht möglich"
+      message={message}
+    />
   );
 }
 
@@ -122,10 +116,10 @@ function formatDiffValue(value: unknown): string {
 function RunLabel({ run }: { run: ResearchCompareRunView }) {
   return (
     <div>
-      <p className="font-mono text-sm text-text-primary">
+      <p className="font-mono text-[12px] text-text-primary">
         {run.metadata.run_id}
       </p>
-      <p className="text-xs text-text-muted">
+      <p className="text-[11px] text-text-muted">
         {run.metadata.experiment_id} · {displayValue(run.metadata.status)}
       </p>
     </div>
@@ -138,7 +132,7 @@ function CompatibilityBanner({ result }: { result: ResearchCompareResult }) {
     return (
       <div
         data-testid="research-compare-compatible"
-        className="rounded border border-mint/30 bg-mint/10 px-3 py-2 text-sm text-mint"
+        className="rounded-sm border border-mint/30 bg-mint/10 px-2 py-1.5 text-[12px] text-mint"
       >
         Kompatibel — identische Spec-/Run-Identität, keine Unterschiede.
       </div>
@@ -147,7 +141,7 @@ function CompatibilityBanner({ result }: { result: ResearchCompareResult }) {
   return (
     <div
       data-testid="research-compare-incompatible"
-      className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+      className="rounded-sm border border-warning/40 bg-warning/10 px-2 py-1.5 text-[12px] text-warning"
     >
       Inkompatibel — {diffCount}{" "}
       {diffCount === 1 ? "Unterschied" : "Unterschiede"} zwischen Spec/Run-Identität.
@@ -160,31 +154,35 @@ function DiffsTable({ diffs }: { diffs: ResearchCompareResult["diffs"] }) {
   const keys = Object.keys(diffs).sort();
   if (keys.length === 0) {
     return (
-      <p className="text-sm text-text-muted" data-testid="research-compare-diffs-empty">
+      <p className={rs.muted} data-testid="research-compare-diffs-empty">
         Keine Unterschiede.
       </p>
     );
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-subtle" data-testid="research-compare-diffs">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-bg-elevated text-text-muted">
+    <ResearchTableFrame testId="research-compare-diffs">
+      <table className={rs.table}>
+        <thead>
           <tr>
-            <th className="px-3 py-2 font-medium">Feld</th>
-            <th className="px-3 py-2 font-medium">Run A</th>
-            <th className="px-3 py-2 font-medium">Run B</th>
+            <th className={rs.th}>Feld</th>
+            <th className={rs.th}>Run A</th>
+            <th className={rs.th}>Run B</th>
           </tr>
         </thead>
         <tbody>
           {keys.map((key) => {
             const [left, right] = diffs[key] ?? [null, null];
             return (
-              <tr key={key} className="border-t border-border-subtle" data-testid={`diff-row-${key}`}>
-                <td className="px-3 py-2 font-mono text-xs">{key}</td>
-                <td className="max-w-[320px] break-words px-3 py-2 font-mono text-xs text-negative">
+              <tr
+                key={key}
+                className="border-t border-border-subtle"
+                data-testid={`diff-row-${key}`}
+              >
+                <td className={`${rs.td} font-mono text-[11px]`}>{key}</td>
+                <td className={`max-w-[320px] break-words ${rs.td} font-mono text-[11px] text-negative`}>
                   {formatDiffValue(left)}
                 </td>
-                <td className="max-w-[320px] break-words px-3 py-2 font-mono text-xs text-negative">
+                <td className={`max-w-[320px] break-words ${rs.td} font-mono text-[11px] text-negative`}>
                   {formatDiffValue(right)}
                 </td>
               </tr>
@@ -192,7 +190,7 @@ function DiffsTable({ diffs }: { diffs: ResearchCompareResult["diffs"] }) {
           })}
         </tbody>
       </table>
-    </div>
+    </ResearchTableFrame>
   );
 }
 
@@ -204,26 +202,34 @@ function MetricsComparisonTable({
   b: ResearchCompareRunView;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-subtle" data-testid="research-compare-metrics">
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-bg-elevated text-text-muted">
+    <ResearchTableFrame testId="research-compare-metrics">
+      <table className={rs.table}>
+        <thead>
           <tr>
-            <th className="px-3 py-2 font-medium">Kennzahl</th>
-            <th className="px-3 py-2 font-medium">Run A</th>
-            <th className="px-3 py-2 font-medium">Run B</th>
+            <th className={rs.th}>Kennzahl</th>
+            <th className={rs.th}>Run A</th>
+            <th className={rs.th}>Run B</th>
           </tr>
         </thead>
         <tbody>
           {RESEARCH_METRIC_LABELS.map(({ key, label }) => (
-            <tr key={key} className="border-t border-border-subtle" data-testid={`compare-metric-${key}`}>
-              <td className="px-3 py-2 text-text-secondary">{label}</td>
-              <td className="px-3 py-2 font-mono">{displayValue(a.metrics[key])}</td>
-              <td className="px-3 py-2 font-mono">{displayValue(b.metrics[key])}</td>
+            <tr
+              key={key}
+              className="border-t border-border-subtle"
+              data-testid={`compare-metric-${key}`}
+            >
+              <td className={rs.td}>{label}</td>
+              <td className={`${rs.td} font-mono`}>
+                {displayValue(a.metrics[key])}
+              </td>
+              <td className={`${rs.td} font-mono`}>
+                {displayValue(b.metrics[key])}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </ResearchTableFrame>
   );
 }
 
@@ -231,7 +237,7 @@ function RunIntegrityNotice({ run, label }: { run: ResearchCompareRunView; label
   if (run.integrity.ok) return null;
   return (
     <p
-      className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+      className="rounded-sm border border-warning/40 bg-warning/10 px-2 py-1.5 text-[12px] text-warning"
       data-testid={`research-compare-integrity-${label}`}
     >
       {label}: Integrität fehlgeschlagen — Kennzahlen/Charts werden nicht
@@ -243,22 +249,22 @@ function RunIntegrityNotice({ run, label }: { run: ResearchCompareRunView; label
 export function CompareResultView({ result }: { result: ResearchCompareResult }) {
   const { a, b } = result.runs;
   return (
-    <div className="space-y-4" data-testid="research-compare-result">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex gap-6">
+    <div className={rs.page} data-testid="research-compare-result">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex gap-4">
           <RunLabel run={a} />
           <RunLabel run={b} />
         </div>
         <div className="flex gap-2">
           <Link
             href={`/dashboard/research/experiments/${encodeURIComponent(a.metadata.experiment_id)}`}
-            className="text-xs text-text-muted hover:text-mint"
+            className={rs.backLink}
           >
             Run A Detail →
           </Link>
           <Link
             href={`/dashboard/research/experiments/${encodeURIComponent(b.metadata.experiment_id)}`}
-            className="text-xs text-text-muted hover:text-mint"
+            className={rs.backLink}
           >
             Run B Detail →
           </Link>
@@ -270,26 +276,24 @@ export function CompareResultView({ result }: { result: ResearchCompareResult })
       <RunIntegrityNotice run={b} label="Run B" />
 
       <Card padding="sm">
-        <h2 className="mb-3 text-sm font-medium">Konfigurations- und Spec-Unterschiede</h2>
+        <h2 className={rs.sectionTitle}>
+          Konfigurations- und Spec-Unterschiede
+        </h2>
         <DiffsTable diffs={result.diffs} />
       </Card>
 
       <Card padding="sm">
-        <h2 className="mb-3 text-sm font-medium">Kennzahlen</h2>
+        <h2 className={rs.sectionTitle}>Kennzahlen</h2>
         <MetricsComparisonTable a={a} b={b} />
       </Card>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-text-secondary">
-            Run A — Equity / Drawdown
-          </h3>
+      <div className="grid gap-2 lg:grid-cols-2">
+        <div className="space-y-1">
+          <h3 className={rs.sectionTitle}>Run A — Equity / Drawdown</h3>
           <ResearchCharts equity={a.equity} drawdown={a.drawdown} />
         </div>
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-text-secondary">
-            Run B — Equity / Drawdown
-          </h3>
+        <div className="space-y-1">
+          <h3 className={rs.sectionTitle}>Run B — Equity / Drawdown</h3>
           <ResearchCharts equity={b.equity} drawdown={b.drawdown} />
         </div>
       </div>

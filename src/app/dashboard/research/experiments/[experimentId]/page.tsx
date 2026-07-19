@@ -1,10 +1,14 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ExperimentJobPanel } from "@/components/research/ExperimentJobPanel";
 import { ResearchCharts } from "@/components/research/ResearchCharts";
 import { ResearchTradeChart } from "@/components/research/ResearchTradeChart";
 import { ScorecardBindSection } from "@/components/research/ScorecardBindSection";
+import {
+  ResearchApiError,
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { Card } from "@/components/ui/Card";
 import { PaperApiError } from "@/lib/paper-api/client";
 import {
@@ -59,22 +63,14 @@ export default async function ResearchExperimentDetailPage({
     const metrics = detail.metrics ?? {};
 
     return (
-      <div data-testid="research-detail-ready" className="space-y-4">
-        <div>
-          <Link
-            href="/dashboard/research/experiments"
-            className="text-xs text-text-muted hover:text-mint"
-          >
-            ← Experiments
-          </Link>
-          <h1 className="mt-2 font-mono text-xl font-semibold">
-            {metadata.experiment_id}
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            {displayValue(metadata.strategy_version)} ·{" "}
-            {displayValue(detail.job?.status ?? metadata.status)}
-          </p>
-        </div>
+      <div data-testid="research-detail-ready" className={rs.page}>
+        <ResearchPageHeader
+          title={metadata.experiment_id}
+          description={`${displayValue(metadata.strategy_version)} · ${displayValue(detail.job?.status ?? metadata.status)}`}
+          backHref="/dashboard/research/experiments"
+          backLabel="← Experiments"
+          titleMono
+        />
 
         {detail.job && (
           <ExperimentJobPanel
@@ -84,17 +80,17 @@ export default async function ResearchExperimentDetailPage({
         )}
 
         <Card padding="sm">
-          <h2 className="mb-3 text-sm font-medium">Metadaten</h2>
+          <h2 className={rs.sectionTitle}>Metadaten</h2>
           {!detail.integrity.ok && (
             <p
-              className="mb-3 rounded border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning"
+              className="mb-2 rounded-sm border border-warning/40 bg-warning/10 px-2 py-1.5 text-[12px] text-warning"
               data-testid="research-integrity-warning"
             >
               Integrität fehlgeschlagen — Kennzahlen und Charts werden nicht
               angezeigt. {displayValue(detail.integrity.error)}
             </p>
           )}
-          <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+          <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-[12px]">
             {[
               ["Experiment-ID", metadata.experiment_id],
               ["Run-ID", metadata.run_id],
@@ -114,10 +110,8 @@ export default async function ResearchExperimentDetailPage({
               ["Status", metadata.status],
             ].map(([label, value]) => (
               <div key={String(label)}>
-                <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                  {label}
-                </dt>
-                <dd className="mt-0.5 font-mono text-text-primary">
+                <dt className={rs.label}>{label}</dt>
+                <dd className={`mt-0.5 ${rs.mono}`}>
                   {displayValue(value as string | number | null)}
                 </dd>
               </div>
@@ -126,12 +120,10 @@ export default async function ResearchExperimentDetailPage({
         </Card>
 
         <Card padding="sm">
-          <h2 className="mb-3 text-sm font-medium">Konfiguration</h2>
-          <dl className="grid gap-2 sm:grid-cols-2 text-sm">
+          <h2 className={rs.sectionTitle}>Konfiguration</h2>
+          <dl className="grid gap-2 sm:grid-cols-2 text-[12px]">
             <div>
-              <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                Symbole
-              </dt>
+              <dt className={rs.label}>Symbole</dt>
               <dd className="mt-0.5">
                 {config.symbols.length
                   ? config.symbols.join(", ")
@@ -139,51 +131,41 @@ export default async function ResearchExperimentDetailPage({
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                Zeitraum
-              </dt>
-              <dd className="mt-0.5 font-mono text-xs">
+              <dt className={rs.label}>Zeitraum</dt>
+              <dd className="mt-0.5 font-mono text-[11px]">
                 {config.time_range_start && config.time_range_end
                   ? `${config.time_range_start} → ${config.time_range_end}`
                   : "Nicht verfügbar"}
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                Timeframe
-              </dt>
+              <dt className={rs.label}>Timeframe</dt>
               <dd className="mt-0.5">{displayValue(config.timeframe)}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                Startkapital
-              </dt>
+              <dt className={rs.label}>Startkapital</dt>
               <dd className="mt-0.5 font-mono">
                 {displayValue(config.starting_capital)}
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                Benchmark
-              </dt>
+              <dt className={rs.label}>Benchmark</dt>
               <dd className="mt-0.5">{displayValue(config.benchmark)}</dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wide text-text-muted">
-                IS / OOS
-              </dt>
+              <dt className={rs.label}>IS / OOS</dt>
               <dd className="mt-0.5">
                 {displayValue(config.in_sample_config)} /{" "}
                 {displayValue(config.out_of_sample_config)}
               </dd>
             </div>
           </dl>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <pre className="overflow-x-auto rounded border border-border-subtle bg-bg-elevated p-2 text-xs">
+          <div className="mt-2 grid gap-2 lg:grid-cols-2">
+            <pre className="overflow-x-auto rounded-sm border border-border-subtle bg-bg-elevated p-2 text-[11px]">
               <p className="mb-1 text-text-muted">Strategieparameter</p>
               {jsonBlock(config.parameters)}
             </pre>
-            <pre className="overflow-x-auto rounded border border-border-subtle bg-bg-elevated p-2 text-xs">
+            <pre className="overflow-x-auto rounded-sm border border-border-subtle bg-bg-elevated p-2 text-[11px]">
               <p className="mb-1 text-text-muted">Kosten / Fees / Slippage</p>
               {jsonBlock({
                 fee_assumption: config.fee_assumption,
@@ -196,18 +178,16 @@ export default async function ResearchExperimentDetailPage({
         </Card>
 
         <Card padding="sm">
-          <h2 className="mb-3 text-sm font-medium">Kennzahlen</h2>
+          <h2 className={rs.sectionTitle}>Kennzahlen</h2>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {METRIC_LABELS.map(({ key, label }) => (
               <div
                 key={key}
-                className="rounded border border-border-subtle px-3 py-2"
+                className="rounded-sm border border-border-subtle px-2 py-1.5"
                 data-testid={`research-metric-${key}`}
               >
-                <p className="text-[11px] uppercase tracking-wide text-text-muted">
-                  {label}
-                </p>
-                <p className="mt-1 font-mono text-sm">
+                <p className={rs.label}>{label}</p>
+                <p className="mt-0.5 font-mono text-[12px]">
                   {displayValue(metrics[key])}
                 </p>
               </div>
@@ -236,15 +216,10 @@ export default async function ResearchExperimentDetailPage({
       notFound();
     }
     return (
-      <div
-        data-testid="research-detail-error"
-        className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-      >
-        <h1 className="text-xl font-semibold text-red-300">Research API Error</h1>
-        <p className="mt-2 text-sm text-red-200/90">
-          {getResearchErrorMessage(error)}
-        </p>
-      </div>
+      <ResearchApiError
+        testId="research-detail-error"
+        message={getResearchErrorMessage(error)}
+      />
     );
   }
 }

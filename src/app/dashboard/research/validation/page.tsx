@@ -1,6 +1,11 @@
 import { ValidationStudyCreateForm } from "@/components/research/ValidationStudyCreateForm";
 import { ValidationStudiesTable } from "@/components/research/ValidationStudiesTable";
 import {
+  ResearchApiError,
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
+import {
   fetchGateRuns,
   fetchResearchExperiments,
   fetchRobustnessJobs,
@@ -20,15 +25,11 @@ export default async function ResearchValidationPage() {
     ]);
 
     return (
-      <div data-testid="validation-page-ready" className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Validierungsstudien</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Fasst Experimente, Robustheitstests (#247) und Gate-Ergebnisse
-            (#248) zu einer gemeinsamen Studie zusammen — keine zweite
-            Backtest-Engine, keine automatische Live/Paper-Promotion.
-          </p>
-        </div>
+      <div data-testid="validation-page-ready" className={rs.page}>
+        <ResearchPageHeader
+          title="Validierungsstudien"
+          description="Fasst Experimente, Robustheitstests (#247) und Gate-Ergebnisse (#248) zu einer gemeinsamen Studie zusammen — keine zweite Backtest-Engine, keine automatische Live/Paper-Promotion."
+        />
 
         <ValidationStudyCreateForm
           experiments={experiments.items.map((e) => ({
@@ -41,22 +42,17 @@ export default async function ResearchValidationPage() {
         />
 
         <div>
-          <h2 className="mb-2 text-lg font-medium">Studien</h2>
+          <h2 className={rs.sectionTitle}>Studien</h2>
           <ValidationStudiesTable items={studies.items} />
         </div>
       </div>
     );
   } catch (error) {
     return (
-      <div
-        data-testid="validation-page-error"
-        className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-      >
-        <h1 className="text-xl font-semibold text-red-300">Research API Error</h1>
-        <p className="mt-2 text-sm text-red-200/90">
-          {getResearchErrorMessage(error)}
-        </p>
-      </div>
+      <ResearchApiError
+        testId="validation-page-error"
+        message={getResearchErrorMessage(error)}
+      />
     );
   }
 }

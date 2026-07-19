@@ -104,6 +104,12 @@
   --rs-ticker-height: 32px;
 }
 
+/* Dense cards inside ResearchShell only (#301) — Monitor `.card-surface` unchanged. */
+.research-shell .card-surface {
+  border-radius: var(--rs-radius);
+  box-shadow: inset 0 1px 0 var(--ds-color-card-inset);
+}
+
 @media (min-width: 1280px) {
   .research-shell {
     --rs-shell-x: 14px;

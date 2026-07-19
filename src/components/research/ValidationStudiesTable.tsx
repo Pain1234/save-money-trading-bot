@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+import {
+  ResearchTableFrame,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { displayValue, type ValidationStudyDetail } from "@/lib/research-api/client";
 
 interface ValidationStudiesTableProps {
@@ -20,19 +24,16 @@ const OUTCOME_LABELS: Record<string, string> = {
 export function ValidationStudiesTable({ items }: ValidationStudiesTableProps) {
   if (items.length === 0) {
     return (
-      <p className="text-sm text-text-muted" data-testid="validation-list-empty">
+      <p className={rs.muted} data-testid="validation-list-empty">
         Noch keine Validierungsstudien erstellt.
       </p>
     );
   }
 
   return (
-    <div
-      className="overflow-x-auto rounded-xl border border-border-subtle"
-      data-testid="validation-list-ready"
-    >
-      <table className="min-w-full text-left text-sm">
-        <thead className="bg-bg-elevated text-text-muted">
+    <ResearchTableFrame testId="validation-list-ready">
+      <table className={rs.table}>
+        <thead>
           <tr>
             {[
               "Studie",
@@ -42,7 +43,7 @@ export function ValidationStudiesTable({ items }: ValidationStudiesTableProps) {
               "Entscheidung",
               "Erstellt",
             ].map((col) => (
-              <th key={col} className="whitespace-nowrap px-3 py-2 font-medium">
+              <th key={col} className={`whitespace-nowrap ${rs.th}`}>
                 {col}
               </th>
             ))}
@@ -51,7 +52,7 @@ export function ValidationStudiesTable({ items }: ValidationStudiesTableProps) {
         <tbody>
           {items.map((item) => (
             <tr key={item.study_id} className="border-t border-border-subtle">
-              <td className="px-3 py-2">
+              <td className={rs.td}>
                 <Link
                   href={`/dashboard/research/validation/${encodeURIComponent(item.study_id)}`}
                   className="text-mint hover:underline"
@@ -59,22 +60,22 @@ export function ValidationStudiesTable({ items }: ValidationStudiesTableProps) {
                   {item.name}
                 </Link>
               </td>
-              <td className="px-3 py-2 font-mono text-xs">
+              <td className={`${rs.td} font-mono text-[11px]`}>
                 {displayValue(item.strategy_id)} · {displayValue(item.strategy_version)}
               </td>
-              <td className="px-3 py-2">{STATUS_LABELS[item.status] ?? item.status}</td>
-              <td className="px-3 py-2 text-xs">
+              <td className={rs.td}>{STATUS_LABELS[item.status] ?? item.status}</td>
+              <td className={`${rs.td} text-[11px]`}>
                 Rob {item.progress.robustness.completed}/{item.progress.robustness.total} ·
                 Gates {item.progress.gates.pass}/{item.progress.gates.total}
               </td>
-              <td className="px-3 py-2 text-xs">
+              <td className={`${rs.td} text-[11px]`}>
                 {item.decision ? OUTCOME_LABELS[item.decision.outcome] ?? item.decision.outcome : "Nicht verfügbar"}
               </td>
-              <td className="px-3 py-2 font-mono text-xs">{displayValue(item.created_at)}</td>
+              <td className={`${rs.td} font-mono text-[11px]`}>{displayValue(item.created_at)}</td>
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </ResearchTableFrame>
   );
 }

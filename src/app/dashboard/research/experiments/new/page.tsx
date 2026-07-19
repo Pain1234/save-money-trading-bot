@@ -4,6 +4,7 @@ import {
   type StrategyOption,
   type StrategySchemaPayload,
 } from "@/components/research/StrategyLabForm";
+import { ResearchApiError } from "@/components/research/chrome/ResearchPageChrome";
 import { fetchPaperApi } from "@/lib/paper-api/client";
 import { getResearchErrorMessage } from "@/lib/research-api/client";
 
@@ -49,15 +50,10 @@ export default async function ResearchNewExperimentPage({
     );
   } catch (error) {
     return (
-      <div
-        data-testid="research-lab-error"
-        className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-      >
-        <h1 className="text-xl font-semibold text-red-300">Research API Error</h1>
-        <p className="mt-2 text-sm text-red-200/90">
-          {getResearchErrorMessage(error)}
-        </p>
-      </div>
+      <ResearchApiError
+        testId="research-lab-error"
+        message={getResearchErrorMessage(error)}
+      />
     );
   }
 }

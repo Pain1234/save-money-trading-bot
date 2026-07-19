@@ -1,5 +1,10 @@
 import { RobustnessCreateForm } from "@/components/research/RobustnessCreateForm";
 import { RobustnessTable } from "@/components/research/RobustnessTable";
+import {
+  ResearchApiError,
+  ResearchPageHeader,
+  rs,
+} from "@/components/research/chrome/ResearchPageChrome";
 import { fetchPaperApi } from "@/lib/paper-api/client";
 import {
   fetchResearchExperiments,
@@ -25,15 +30,11 @@ export default async function ResearchRobustnessPage() {
     ]);
 
     return (
-      <div data-testid="robustness-page-ready" className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Robustheit</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Orchestriert Walk-Forward, Cost Stress, Parameter Stability und
-            Bootstrap auf Basis abgeschlossener Experimente — dieselbe
-            Runner/Registry/Artefakt-Linie, keine zweite Backtest-Engine.
-          </p>
-        </div>
+      <div data-testid="robustness-page-ready" className={rs.page}>
+        <ResearchPageHeader
+          title="Robustheit"
+          description="Orchestriert Walk-Forward, Cost Stress, Parameter Stability und Bootstrap auf Basis abgeschlossener Experimente — dieselbe Runner/Registry/Artefakt-Linie, keine zweite Backtest-Engine."
+        />
 
         <RobustnessCreateForm
           experiments={experiments.items.map((e) => ({
@@ -45,22 +46,17 @@ export default async function ResearchRobustnessPage() {
         />
 
         <div>
-          <h2 className="mb-2 text-lg font-medium">Läufe</h2>
+          <h2 className={rs.sectionTitle}>Läufe</h2>
           <RobustnessTable items={jobs.items} />
         </div>
       </div>
     );
   } catch (error) {
     return (
-      <div
-        data-testid="robustness-page-error"
-        className="rounded-xl border border-red-500/40 bg-red-500/10 p-6"
-      >
-        <h1 className="text-xl font-semibold text-red-300">Research API Error</h1>
-        <p className="mt-2 text-sm text-red-200/90">
-          {getResearchErrorMessage(error)}
-        </p>
-      </div>
+      <ResearchApiError
+        testId="robustness-page-error"
+        message={getResearchErrorMessage(error)}
+      />
     );
   }
 }
