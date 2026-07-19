@@ -188,10 +188,56 @@ class JobCountConstraintTests(unittest.TestCase):
     def test_ci_fast_job_count_within_phase1_budget(self) -> None:
         job_ids = _job_ids(CI_FAST)
         real_jobs = {"plan", "quality", "targeted-tests", "fast-ci-required"}
-        alias_jobs = {"validate", "requirements-baseline", "lint", "test", "test-market-data"}
+        alias_jobs = {
+            "validate",
+            "requirements-baseline",
+            "lint",
+            "test",
+            "test-market-data",
+        }
+        # Visible, non-required Fast CI jobs (must not gate fast-ci-required).
+        optional_jobs = {"research-playwright-smoke"}
+        known = real_jobs | alias_jobs | optional_jobs
         self.assertEqual(set(job_ids) & real_jobs, real_jobs)
-        self.assertTrue(set(job_ids) - real_jobs <= alias_jobs)
-        self.assertLessEqual(len(job_ids), 4 + len(alias_jobs))
+        self.assertTrue(set(job_ids) <= known)
+        self.assertLessEqual(
+            len(job_ids), len(real_jobs) + len(alias_jobs) + len(optional_jobs)
+        )
+
+    def test_research_playwright_smoke_is_optional_not_required(self) -> None:
+        """#250 smoke is allowed on Fast CI but must not block required aliases."""
+        self.assertTrue(_has_job_name(CI_FAST, "research-playwright-smoke"))
+        self.assertRegex(
+            CI_FAST,
+            re.compile(
+                r"^  research-playwright-smoke:\s*\n"
+                r"    name:\s*research-playwright-smoke\s*\n"
+                r"    needs:\s*plan\s*\n",
+                flags=re.MULTILINE,
+            ),
+        )
+        required_needs = re.search(
+            r"^  fast-ci-required:\s*\n"
+            r"    name:\s*fast-ci-required\s*\n"
+            r"    needs:\s*\[([^\]]+)\]\s*\n",
+            CI_FAST,
+            flags=re.MULTILINE,
+        )
+        self.assertIsNotNone(required_needs)
+        assert required_needs is not None
+        self.assertNotIn("research-playwright-smoke", required_needs.group(1))
+        # Smoke must not list fast-ci-required as a dependency (only `needs: plan`).
+        smoke_needs = re.search(
+            r"^  research-playwright-smoke:\s*\n"
+            r"    name:\s*research-playwright-smoke\s*\n"
+            r"    needs:\s*([^\n]+)\s*\n",
+            CI_FAST,
+            flags=re.MULTILINE,
+        )
+        self.assertIsNotNone(smoke_needs)
+        assert smoke_needs is not None
+        self.assertEqual(smoke_needs.group(1).strip(), "plan")
+        self.assertNotIn("fast-ci-required", smoke_needs.group(1))
 
     def test_ci_full_job_count_within_phase1_budget(self) -> None:
         job_ids = _job_ids(CI_FULL)
