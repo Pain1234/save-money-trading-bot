@@ -18,6 +18,7 @@ from research.parameter_area.evaluator import (
     evaluate_parameter_area_from_robustness,
     is_neighbor_stable,
     observations_from_manifest,
+    observations_from_sealed_manifest,
     reconstruct_oat_variants,
 )
 from research.parameter_area.policy import (
@@ -46,6 +47,7 @@ __all__ = [
     "get_parameter_area_policy",
     "is_neighbor_stable",
     "observations_from_manifest",
+    "observations_from_sealed_manifest",
     "reconstruct_oat_variants",
     "verify_parameter_area_policy_content_hash",
     "verify_parameter_area_seal",

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 from research.parameter_area import (
     NeighborObservation,
+    ParameterAreaError,
     evaluate_parameter_area,
+    evaluate_parameter_area_from_robustness,
     get_parameter_area_policy,
     write_parameter_area_artifact,
 )
@@ -81,12 +84,12 @@ def test_isolated_peak_when_only_frozen_stable() -> None:
     assert art["auto_parameter_selection"] is False
     assert art["oos_holdout_used"] is False
     assert art["decision_binding"] is False
+    assert art["evidence_trusted"] is False
     assert art["plateau"]["isolated_optimum"] is True
 
 
 def test_broad_stable_plateau_contiguous_axis() -> None:
     frozen = {"daily_ema_period": 20}
-    # Contiguous stable: 18, 20(frozen), 22 — size 3; extra profitable neighbors.
     observations = [
         _obs("frozen", params=frozen, net_pnl="50", total_costs="5"),
         _obs(
@@ -126,8 +129,104 @@ def test_broad_stable_plateau_contiguous_axis() -> None:
     assert result.classification == "BROAD_STABLE_PLATEAU"
     art = result.artifact
     assert art["plateau"]["size"] >= 3
+    assert art["plateau"]["includes_frozen"] is True
     assert art["stats"]["gates_available"] is True
     assert float(art["stats"]["share_stable"]) >= 0.6
+
+
+def test_frozen_unstable_cannot_be_broad_plateau() -> None:
+    """Stable neighbors without a stable frozen point must not yield BROAD."""
+    frozen = {"daily_ema_period": 20}
+    observations = [
+        _obs("frozen", params=frozen, net_pnl="-50", total_costs="5"),
+        _obs(
+            "neighbor_01",
+            params={"daily_ema_period": 18},
+            net_pnl="40",
+            total_costs="4",
+        ),
+        _obs(
+            "neighbor_02",
+            params={"daily_ema_period": 22},
+            net_pnl="45",
+            total_costs="4",
+        ),
+        _obs(
+            "neighbor_03",
+            params={"daily_ema_period": 16},
+            net_pnl="30",
+            total_costs="3",
+        ),
+    ]
+    result = evaluate_parameter_area(
+        robustness_id="rob_unfrozen",
+        frozen_parameters=frozen,
+        observations=observations,
+    )
+    assert result.classification == "UNSTABLE"
+    assert result.artifact["plateau"]["includes_frozen"] is False
+    assert result.classification != "BROAD_STABLE_PLATEAU"
+
+
+def test_frozen_parameter_mismatch_rejected() -> None:
+    frozen = {"daily_ema_period": 20}
+    observations = [
+        _obs("frozen", params={"daily_ema_period": 999}, net_pnl="100", total_costs="1"),
+        _obs(
+            "neighbor_01",
+            params={"daily_ema_period": 18},
+            net_pnl="40",
+            total_costs="1",
+        ),
+        _obs(
+            "neighbor_02",
+            params={"daily_ema_period": 22},
+            net_pnl="45",
+            total_costs="1",
+        ),
+    ]
+    with pytest.raises(ParameterAreaError, match="frozen observation parameters"):
+        evaluate_parameter_area(
+            robustness_id="rob_mismatch",
+            frozen_parameters=frozen,
+            observations=observations,
+        )
+
+
+def test_from_robustness_requires_trusted_manifest_hash(tmp_path) -> None:
+    with pytest.raises(ParameterAreaError, match="trusted_manifest_hash"):
+        evaluate_parameter_area_from_robustness(
+            tmp_path,
+            "rob_missing",
+            trusted_manifest_hash="",
+            registry=None,  # type: ignore[arg-type]
+        )
+
+
+def test_break_even_not_counted_as_positive() -> None:
+    frozen = {"daily_ema_period": 20}
+    observations = [
+        _obs("frozen", params=frozen, net_pnl="10", total_costs="1"),
+        _obs(
+            "neighbor_01",
+            params={"daily_ema_period": 18},
+            net_pnl="0",
+            total_costs="1",
+        ),
+        _obs(
+            "neighbor_02",
+            params={"daily_ema_period": 22},
+            net_pnl="0",
+            total_costs="1",
+        ),
+    ]
+    result = evaluate_parameter_area(
+        robustness_id="rob_be",
+        frozen_parameters=frozen,
+        observations=observations,
+    )
+    assert result.artifact["stats"]["share_positive"] == "0"
+    assert all(n["positive"] is False for n in result.artifact["neighbors"])
 
 
 def test_profit_alone_insufficient_without_costs() -> None:
@@ -166,7 +265,6 @@ def test_profit_alone_insufficient_without_costs() -> None:
         frozen_parameters=frozen,
         observations=observations,
     )
-    # Neighbors not stable without costs → isolated peak at best.
     assert result.classification in ("ISOLATED_PEAK", "UNSTABLE", "INSUFFICIENT_EVIDENCE")
     assert all(
         (n["stable"] is False) or n["child_id"] == "frozen"

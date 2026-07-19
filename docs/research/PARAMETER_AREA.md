@@ -27,8 +27,25 @@ selection. No OOS/holdout plateau construction.
 ≥ floor, **costs present** and within `max_cost_ratio`, optional gate when
 `require_gate_for_stable`. Profit alone is never enough.
 
-**Contiguity:** adjacent steps on a single OAT axis including the frozen point
-(`contiguity_rule=oat_axis_adjacent_including_frozen_v1`).
+**Positive share** (stats only): strict `net_pnl > 0` (break-even is not positive).
+
+**Contiguity:** adjacent steps on a single OAT axis **including the frozen
+point**. Plateau size ignores stable runs that do not contain frozen.
+BROAD/NARROW require `frozen_stable` and `plateau.includes_frozen`.
+
+## Trust
+
+`evaluate_parameter_area_from_robustness` requires:
+
+- external `trusted_manifest_hash` (job/registry pin)
+- `ExperimentRegistry` with `show(verify=True)` for base + child runs
+- frozen parameters from sealed base-run `experiment.json`
+- costs + gate_pass from sealed child `metrics.json` (gate = `net_pnl >= 0`,
+  same as #248 `parameter_neighbor_pass_ratio`)
+
+Direct `evaluate_parameter_area` is for fixtures/tests and sets
+`evidence_trusted=false`. Frozen observation parameters must match
+`frozen_parameters` exactly.
 
 ## Output
 

@@ -6,18 +6,23 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 from research.parameter_area.classify import classify_parameter_area
-from research.parameter_area.graph import build_axis_points, measure_contiguous_regions
+from research.parameter_area.graph import (
+    build_axis_points,
+    measure_contiguous_regions,
+    parameters_equal,
+)
 from research.parameter_area.policy import (
     ParameterAreaPolicyError,
     compute_policy_content_hash,
     get_parameter_area_policy,
 )
 from research.parameter_stability import symmetric_neighborhood
+from research.registry import ExperimentRegistry
 from research.robustness import (
     load_robustness_manifest,
     verify_robustness_manifest_seal,
@@ -43,11 +48,20 @@ def _optional_dec(value: object | None) -> Decimal | None:
     return Decimal(str(value))
 
 
+def _values_equal(left: object, right: object) -> bool:
+    if left == right:
+        return True
+    try:
+        return Decimal(str(left)) == Decimal(str(right))
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+
+
 def _param_variant_label(base: Mapping[str, Any], variant: Mapping[str, Any]) -> str:
     changed = [
         f"{key}={variant[key]}"
         for key in sorted(variant)
-        if key != "strategy_id" and variant.get(key) != base.get(key)
+        if key != "strategy_id" and not _values_equal(variant.get(key), base.get(key))
     ]
     return "baseline" if not changed else ",".join(changed)
 
@@ -88,6 +102,7 @@ def compute_parameter_area_id(
     policy_version: str,
     policy_content_hash: str,
     evidence_hash: str,
+    trusted_manifest_hash: str | None = None,
 ) -> str:
     digest = hashlib.sha256(
         _canonical_json_bytes(
@@ -96,6 +111,7 @@ def compute_parameter_area_id(
                 "policy_content_hash": policy_content_hash,
                 "policy_version": policy_version,
                 "robustness_id": robustness_id,
+                "trusted_manifest_hash": trusted_manifest_hash,
             }
         )
     ).hexdigest()
@@ -161,6 +177,53 @@ def is_neighbor_stable(
     return True, "stable"
 
 
+def _total_costs_from_metrics(metrics: Mapping[str, Any]) -> str | None:
+    """Sum fees + slippage + funding from sealed metrics.json."""
+    keys = ("fees", "slippage_costs", "funding_costs")
+    if not any(metrics.get(k) is not None for k in keys):
+        return None
+    total = Decimal("0")
+    for key in keys:
+        value = metrics.get(key)
+        if value is None:
+            continue
+        total += Decimal(str(value))
+    return format(total, "f")
+
+
+def _load_verified_run_metrics(
+    registry: ExperimentRegistry, run_id: str
+) -> dict[str, Any]:
+    entry = registry.show(run_id, verify=True)
+    metrics_path = Path(entry.artifact_path) / "metrics.json"
+    if not metrics_path.is_file():
+        raise ParameterAreaError(f"missing sealed metrics.json for run_id={run_id}")
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    if not isinstance(metrics, dict):
+        raise ParameterAreaError(f"metrics.json must be an object for run_id={run_id}")
+    return metrics
+
+
+def _load_frozen_parameters_from_base_run(
+    registry: ExperimentRegistry, base_run_id: str
+) -> dict[str, Any]:
+    entry = registry.show(base_run_id, verify=True)
+    exp_path = Path(entry.artifact_path) / "experiment.json"
+    if not exp_path.is_file():
+        raise ParameterAreaError(
+            f"missing sealed experiment.json for base_run_id={base_run_id}"
+        )
+    experiment = json.loads(exp_path.read_text(encoding="utf-8"))
+    if not isinstance(experiment, dict):
+        raise ParameterAreaError("experiment.json must be an object")
+    params = experiment.get("parameters")
+    if not isinstance(params, dict) or not params:
+        raise ParameterAreaError(
+            f"base run {base_run_id} missing parameters in experiment.json"
+        )
+    return dict(params)
+
+
 def evaluate_parameter_area(
     *,
     robustness_id: str,
@@ -169,11 +232,16 @@ def evaluate_parameter_area(
     neighborhood_config: Mapping[str, Any] | None = None,
     policy_version: str = "1.0",
     require_gate_for_stable: bool = False,
+    evidence_trusted: bool = False,
+    trusted_manifest_hash: str | None = None,
 ) -> ParameterAreaResult:
-    """Classify plateau / local stability from sealed neighbor observations.
+    """Classify plateau / local stability from neighbor observations.
 
-    Does not select or mutate parameters. ``decision_binding`` / ``auto_promotion``
-    are always false.
+    Direct callers (tests / offline fixtures) produce ``evidence_trusted=false``
+    unless explicitly marked. Trusted research evidence must use
+    :func:`evaluate_parameter_area_from_robustness` with an external manifest pin.
+
+    Frozen observation parameters must exactly match ``frozen_parameters``.
     """
     policy = get_parameter_area_policy(policy_version)
     policy_hash = compute_policy_content_hash(policy)
@@ -181,11 +249,19 @@ def evaluate_parameter_area(
         raise ParameterAreaError("robustness_id required")
     if not frozen_parameters:
         raise ParameterAreaError("frozen_parameters required")
+    if evidence_trusted and not trusted_manifest_hash:
+        raise ParameterAreaError(
+            "evidence_trusted=true requires trusted_manifest_hash pin"
+        )
 
     frozen_rows = [o for o in observations if o.child_id == "frozen"]
     if len(frozen_rows) != 1:
         raise ParameterAreaError("exactly one frozen observation required")
     frozen = frozen_rows[0]
+    if not parameters_equal(frozen.parameters, frozen_parameters):
+        raise ParameterAreaError(
+            "frozen observation parameters must match frozen_parameters exactly"
+        )
     neighbors = [o for o in observations if o.child_id != "frozen"]
 
     min_net = Decimal(policy.min_net_pnl)
@@ -203,6 +279,7 @@ def evaluate_parameter_area(
             policy_min_net=min_net,
             policy_max_cost_ratio=max_cost,
         )
+        # share_positive is independent of the stability floor: strict > 0.
         return {
             "child_id": obs.child_id,
             "label": obs.label,
@@ -215,7 +292,7 @@ def evaluate_parameter_area(
             "gate_pass": obs.gate_pass,
             "stable": stable,
             "stable_reason": reason,
-            "positive": bool(net is not None and net >= min_net),
+            "positive": bool(net is not None and net > 0),
         }
 
     frozen_eval = _eval(frozen)
@@ -230,9 +307,9 @@ def evaluate_parameter_area(
     gates_available = len(gate_known) == n_complete and n_complete > 0
     gate_pass_share: Decimal | None
     if gates_available:
-        gate_pass_share = Decimal(sum(1 for n in gate_known if n["gate_pass"])) / Decimal(
-            n_complete
-        )
+        gate_pass_share = Decimal(
+            sum(1 for n in gate_known if n["gate_pass"])
+        ) / Decimal(n_complete)
     else:
         gate_pass_share = None
 
@@ -249,8 +326,6 @@ def evaluate_parameter_area(
 
     nets = [_optional_dec(n["net_pnl"]) for n in complete_neighbors]
     nets_present = [n for n in nets if n is not None]
-    median_net: str | None
-    dispersion: str | None
     if nets_present:
         ordered = sorted(nets_present)
         mid = len(ordered) // 2
@@ -278,8 +353,19 @@ def evaluate_parameter_area(
         frozen_stable=bool(frozen_eval["stable"]),
         neighbors=neighbor_evals,
     )
-    region = measure_contiguous_regions(by_axis)
+    region = measure_contiguous_regions(by_axis, frozen_child_id="frozen")
     plateau_size = int(region["plateau_size"])
+    # Frozen stable with no OAT axes still has a degenerate plateau of size 1.
+    if plateau_size == 0 and frozen_eval["stable"] and not by_axis:
+        plateau_size = 1
+        region = {
+            **region,
+            "plateau_size": 1,
+            "plateau_includes_frozen": True,
+        }
+    plateau_includes_frozen = bool(region.get("plateau_includes_frozen")) or (
+        plateau_size > 0 and bool(frozen_eval["stable"])
+    )
 
     classification, reason = classify_parameter_area(
         policy=policy,
@@ -289,6 +375,7 @@ def evaluate_parameter_area(
         gates_available=gates_available,
         plateau_size=plateau_size,
         frozen_stable=bool(frozen_eval["stable"]),
+        plateau_includes_frozen=plateau_includes_frozen,
         any_stable_neighbor=bool(stable_neighbors),
         steepest_drop=steepest,
     )
@@ -299,6 +386,7 @@ def evaluate_parameter_area(
         "neighbors": neighbor_evals,
         "neighborhood_config": dict(neighborhood_config or {}),
         "require_gate_for_stable": require_gate_for_stable,
+        "trusted_manifest_hash": trusted_manifest_hash,
     }
     evidence_hash = compute_evidence_hash(evidence_payload)
     parameter_area_id = compute_parameter_area_id(
@@ -306,6 +394,7 @@ def evaluate_parameter_area(
         policy_version=policy.version,
         policy_content_hash=policy_hash,
         evidence_hash=evidence_hash,
+        trusted_manifest_hash=trusted_manifest_hash,
     )
 
     artifact: dict[str, Any] = {
@@ -315,6 +404,8 @@ def evaluate_parameter_area(
         "policy_version": policy.version,
         "policy_content_hash": policy_hash,
         "evidence_hash": evidence_hash,
+        "evidence_trusted": evidence_trusted,
+        "trusted_manifest_hash": trusted_manifest_hash,
         "neighborhood": {
             "version_note": "reuse #247 parameter_stability OAT neighborhood",
             "contiguity_rule": policy.contiguity_rule,
@@ -355,6 +446,7 @@ def evaluate_parameter_area(
             "size": plateau_size,
             "contiguous_region": region,
             "isolated_optimum": isolated,
+            "includes_frozen": plateau_includes_frozen,
         },
         "classification": classification,
         "classification_reason": reason,
@@ -370,14 +462,18 @@ def evaluate_parameter_area(
     )
 
 
-def observations_from_manifest(
+def observations_from_sealed_manifest(
     manifest: Mapping[str, Any],
     *,
     frozen_parameters: Mapping[str, Any],
-    costs_by_child: Mapping[str, str | None] | None = None,
-    gate_pass_by_child: Mapping[str, bool | None] | None = None,
+    registry: ExperimentRegistry,
 ) -> tuple[list[NeighborObservation], dict[str, Any]]:
-    """Build observations from a parameter_stability robustness manifest."""
+    """Build observations from sealed manifest + registry-verified child runs.
+
+    Costs and gate_pass are derived from sealed ``metrics.json`` (same PnL≥0
+    gate convention as #248 parameter_neighbor_pass_ratio). Caller maps are
+    not accepted.
+    """
     if manifest.get("test_type") != "parameter_stability":
         raise ParameterAreaError(
             f"expected test_type=parameter_stability, got {manifest.get('test_type')!r}"
@@ -385,7 +481,6 @@ def observations_from_manifest(
     config = dict(manifest.get("config") or {})
     int_deltas = config.get("int_deltas")
     decimal_steps = config.get("decimal_relative_steps")
-    # Config may store lists; normalize to tuples for symmetric_neighborhood.
     int_norm: dict[str, tuple[int, ...]] | None = None
     if isinstance(int_deltas, dict):
         int_norm = {k: tuple(int(x) for x in v) for k, v in int_deltas.items()}
@@ -399,8 +494,7 @@ def observations_from_manifest(
         decimal_relative_steps=dec_norm,
     )
     by_id = {row["child_id"]: row for row in variants}
-    costs = costs_by_child or {}
-    gates = gate_pass_by_child or {}
+    robustness_id = str(manifest.get("robustness_id") or "")
 
     observations: list[NeighborObservation] = []
     for child in manifest.get("children") or []:
@@ -412,15 +506,39 @@ def observations_from_manifest(
                 f"manifest child {child_id!r} not in reconstructed OAT neighborhood"
             )
         meta = by_id[child_id]
+        status = str(child.get("status") or "")
+        run_id = child.get("run_id")
+        net_pnl: str | None = None
+        total_costs: str | None = None
+        gate_pass: bool | None = None
+        if status == "complete":
+            if not run_id:
+                raise ParameterAreaError(
+                    f"complete child {child_id!r} missing run_id "
+                    f"(robustness={robustness_id})"
+                )
+            metrics = _load_verified_run_metrics(registry, str(run_id))
+            if metrics.get("net_pnl") is None:
+                raise ParameterAreaError(
+                    f"sealed metrics missing net_pnl for child {child_id!r}"
+                )
+            net_pnl = str(metrics["net_pnl"])
+            total_costs = _total_costs_from_metrics(metrics)
+            if total_costs is None:
+                raise ParameterAreaError(
+                    f"sealed metrics missing cost fields for child {child_id!r}"
+                )
+            # Gate convention matches #248 parameter_neighbor_pass_ratio.
+            gate_pass = Decimal(str(metrics["net_pnl"])) >= 0
         observations.append(
             NeighborObservation(
                 child_id=child_id,
                 label=str(child.get("label") or meta["label"]),
                 parameters=dict(meta["parameters"]),
-                status=str(child.get("status") or ""),
-                net_pnl=child.get("net_pnl"),
-                total_costs=costs.get(child_id),
-                gate_pass=gates.get(child_id),
+                status=status,
+                net_pnl=net_pnl,
+                total_costs=total_costs,
+                gate_pass=gate_pass,
             )
         )
     return observations, config
@@ -430,27 +548,49 @@ def evaluate_parameter_area_from_robustness(
     root: Path,
     robustness_id: str,
     *,
-    frozen_parameters: Mapping[str, Any],
-    costs_by_child: Mapping[str, str | None] | None = None,
-    gate_pass_by_child: Mapping[str, bool | None] | None = None,
+    trusted_manifest_hash: str,
+    registry: ExperimentRegistry,
     policy_version: str = "1.0",
     require_gate_for_stable: bool = False,
-    require_seal: bool = True,
 ) -> ParameterAreaResult:
-    """Load sealed #247 robustness manifest and classify parameter area."""
-    if require_seal:
-        try:
-            verify_robustness_manifest_seal(root, robustness_id)
-        except (FileNotFoundError, ValueError) as exc:
-            raise ParameterAreaError(f"robustness seal verify failed: {exc}") from exc
+    """Load sealed #247 robustness evidence with an external trust pin.
+
+    Requires:
+    - ``trusted_manifest_hash`` (job/registry pin; not optional sidecar alone)
+    - ``registry`` with ``show(verify=True)`` for base + child runs
+    - Frozen parameters from the verified base-run ``experiment.json``
+    - Costs / gate_pass from verified child ``metrics.json``
+
+    Unsealed evaluation and caller-supplied cost/gate maps are refused.
+    """
+    if not trusted_manifest_hash or not str(trusted_manifest_hash).strip():
+        raise ParameterAreaError(
+            "trusted_manifest_hash required — refuse unpinned robustness evaluation"
+        )
+    try:
+        verify_robustness_manifest_seal(
+            root, robustness_id, expected_hash=str(trusted_manifest_hash).strip()
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise ParameterAreaError(f"robustness seal verify failed: {exc}") from exc
+
     manifest = load_robustness_manifest(root, robustness_id)
     if manifest is None:
         raise ParameterAreaError(f"missing robustness manifest for {robustness_id}")
-    observations, config = observations_from_manifest(
+
+    base_run_id = manifest.get("base_run_id")
+    if not base_run_id:
+        raise ParameterAreaError(
+            f"robustness {robustness_id} missing base_run_id for frozen parameters"
+        )
+    frozen_parameters = _load_frozen_parameters_from_base_run(
+        registry, str(base_run_id)
+    )
+
+    observations, config = observations_from_sealed_manifest(
         manifest,
         frozen_parameters=frozen_parameters,
-        costs_by_child=costs_by_child,
-        gate_pass_by_child=gate_pass_by_child,
+        registry=registry,
     )
     return evaluate_parameter_area(
         robustness_id=str(manifest.get("robustness_id") or robustness_id),
@@ -459,7 +599,13 @@ def evaluate_parameter_area_from_robustness(
         neighborhood_config=config,
         policy_version=policy_version,
         require_gate_for_stable=require_gate_for_stable,
+        evidence_trusted=True,
+        trusted_manifest_hash=str(trusted_manifest_hash).strip(),
     )
+
+
+# Back-compat alias name used in earlier drafts / docs.
+observations_from_manifest = observations_from_sealed_manifest
 
 
 __all__ = [
@@ -474,5 +620,6 @@ __all__ = [
     "evaluate_parameter_area_from_robustness",
     "is_neighbor_stable",
     "observations_from_manifest",
+    "observations_from_sealed_manifest",
     "reconstruct_oat_variants",
 ]
