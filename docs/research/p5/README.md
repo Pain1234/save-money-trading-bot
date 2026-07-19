@@ -75,6 +75,7 @@ Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), 
 |----------|------|
 | [P5_DATA_EXPOSURE_AUDIT.md](P5_DATA_EXPOSURE_AUDIT.md) | Classify historical periods; lock partitions |
 | [P5_CANDIDATE_FREEZE.md](P5_CANDIDATE_FREEZE.md) | Freeze Strategy V1 candidate identity |
+| [P5_GATE1_HANDOFF.md](P5_GATE1_HANDOFF.md) | Binding public-core SHA package for Agents 2/3 (post-#363) |
 | [P5_VALIDATION_PROTOCOL.md](P5_VALIDATION_PROTOCOL.md) | Pre-register all checks before final OOS |
 | [P5_DECISION_RULES.md](P5_DECISION_RULES.md) | ACCEPT / REJECT / INCONCLUSIVE gates |
 | [P5_BENCHMARKS_REGIMES.md](P5_BENCHMARKS_REGIMES.md) | Benchmarks + deterministic regimes (#199) |

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed (P5 candidate freeze pin refresh — #196)
+
+- Post-#363 freeze pin refresh prepared for public-core SHA
+  `aa0e232a6a0ea235a8a10682f8c7c4229b15a4d4`: regression suite 498 passed /
+  1 skipped; sealed symbol-constraint hash bound; Gate-1 handoff YAML in
+  `docs/research/p5/P5_GATE1_HANDOFF.md`. Holdout remains `SEALED`.
+  Human `FREEZE PIN REFRESHED` still required on #196.
+
 ### Fixed (research sealed symbol constraints — #363)
 
 - `ExperimentSpec.symbol_constraints` is required and must cover Spec symbols
