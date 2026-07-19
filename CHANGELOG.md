@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 scorecard acceptance matrix — #293)
+
+- Composition acceptance tests for scorecard reproducibility and anti-overfit
+  boundaries (`tests/research/test_scorecard_e2e_acceptance.py`): idempotent IDs,
+  tamper fail-closed, gate FAIL binding, invalidation, policy content-hash pin,
+  parameter-area peak/plateau, defensive Sideways behaviour. No UI (#292).
+
 ### Added (P4.9 parameter area — #290)
 
 - Parameter plateau / local stability classification under

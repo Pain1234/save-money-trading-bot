@@ -77,3 +77,16 @@ Decided studies re-verify pins fail-closed.
 ## Policy hash
 
 `SCORECARD_POLICY_1_0_CONTENT_HASH` in `scorecard_policy.py` (literal regression pin).
+
+## Acceptance / anti-overfit (#293)
+
+Composition matrix (no dashboard UI):
+
+```text
+python -m pytest tests/research/test_scorecard_e2e_acceptance.py -q
+```
+
+Covers: same inputs → same `scorecard_id`, evidence tamper fail-closed, bound
+critical gate FAIL preserved, invalidation without reactivation, policy content
+hash under same version string, parameter-area isolated vs broad, Sideways
+defensive inactivity. Auto-promotion flags remain false/`none`.
