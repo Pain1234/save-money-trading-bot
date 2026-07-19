@@ -259,17 +259,22 @@ def test_symlink_out_of_run_dir(tmp_path: Path) -> None:
     entry = ExperimentRegistry(root).show(run_id, verify=True)
     run_dir = Path(entry.artifact_path)
 
+    # Evaluate while the run dir is still clean — adding an untracked symlink
+    # *before* evaluate breaks registry checksum verify (CI Linux).
+    sid = _evaluate(root, run_id)
+
     outside = tmp_path / "outside_secret.json"
     outside.write_bytes(b'{"secret":true}\n')
-    link_name = "escape_link.json"
+    # Replace a pinned allowlisted artifact with a symlink escape.
+    link_name = "regime_metrics.json"
     link_path = run_dir / link_name
+    assert link_path.is_file()
+    link_path.unlink()
     try:
         os.symlink(outside, link_path)
     except OSError as exc:
         pytest.skip(f"symlink not available: {exc}")
 
-    # Original sealed scorecard must not serve a symlink escape as content.
-    sid = _evaluate(root, run_id)
     client = _client_for(root)
     try:
         resp = client.get(_content_url(sid, link_name))
