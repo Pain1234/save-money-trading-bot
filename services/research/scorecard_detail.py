@@ -33,13 +33,15 @@ from research.scorecard_evaluator import (
 
 NOT_AVAILABLE = "NOT_AVAILABLE"
 
-_LAYER_FILES = (
+# Public-core layer filenames bound on scorecard raw_artifact_refs / content GET.
+LAYER_FILES = (
     "regime_labels.json",
     "regime_metrics.json",
     "behavior_profile.json",
     "confidence_profile.json",
     "parameter_area.json",
 )
+_LAYER_FILES = LAYER_FILES
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -585,6 +587,7 @@ def assemble_scorecard_detail(root: Path, record: ScorecardRecord) -> dict[str, 
 
 
 __all__ = [
+    "LAYER_FILES",
     "NOT_AVAILABLE",
     "assemble_scorecard_detail",
 ]

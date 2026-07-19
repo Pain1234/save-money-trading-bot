@@ -6,7 +6,9 @@ import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
+from research.artifact_content import ArtifactContentError
 from research.gate_service import GateService
 from research.robustness_service import RobustnessOrchestrationService
 from research.scorecard_service import ScorecardService
@@ -624,6 +626,53 @@ def research_scorecard_regime_detail(
             status_code=409,
             detail={"message": str(exc), "fields": exc.field_errors},
         ) from exc
+
+
+@router.get("/scorecards/{scorecard_id}/artifacts/content")
+def research_scorecard_artifact_content(
+    scorecard_id: str,
+    svc: ScorecardSvc,
+    relative_path: Annotated[str, Query(min_length=1, max_length=512)],
+) -> Response:
+    """Read-only GET for one sealed run artifact pinned on a scorecard (#357).
+
+    Fail-closed on path traversal, missing seal, checksum mismatch, incomplete
+    runs, invalidated scorecards, and non-allowlisted relative paths.
+    Never lists directories or returns empty 200 bodies for missing files.
+    """
+    try:
+        result = svc.get_artifact_content(scorecard_id, relative_path=relative_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ArtifactContentError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.as_detail()) from None
+
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+        "X-Artifact-Relative-Path": result.relative_path,
+        "X-Artifact-Checksum-Sha256": result.checksum_sha256,
+        "Content-Disposition": (
+            f'inline; filename="{result.relative_path.rsplit("/", maxsplit=1)[-1]}"'
+        ),
+    }
+    if result.media_kind == "json":
+        return JSONResponse(
+            content={
+                "scorecard_id": scorecard_id,
+                "relative_path": result.relative_path,
+                "checksum_sha256": result.checksum_sha256,
+                "content_type": "application/json",
+                "byte_length": result.byte_length,
+                "content": result.payload,
+            },
+            headers=headers,
+        )
+    return PlainTextResponse(
+        content=str(result.payload),
+        media_type=result.content_type,
+        headers=headers,
+    )
 
 
 @router.get("/scorecards/{scorecard_id}")

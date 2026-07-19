@@ -191,10 +191,9 @@ The checkboxes below remain the **human browser** residual and close under
       (#350 / #302); empty → Nicht verfügbar with reason.
 - [ ] Partial rest via #302: Evidence Inputs / Gate Failures / Raw Artifact
       Refs **inventory** (incl. `relative_path`) rendered from detail.
-- [ ] **Residual (keeps #292 open):** clickable Raw Metric Refs **into**
-      artifact contents require a fail-closed read-only artifact GET —
-      [#357](https://github.com/Pain1234/save-money-trading-bot/issues/357);
-      no fake download href until that endpoint exists.
+- [ ] **Residual (keeps #292 open until #357 merged):** clickable Raw Metric
+      Refs use fail-closed `GET …/scorecards/{id}/artifacts/content` (#357);
+      no fake download href; missing → Nicht verfügbar.
 
 ### H. Research route densify (#301)
 

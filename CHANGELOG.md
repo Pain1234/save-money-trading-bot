@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (P4.9 safe artifact content GET — #357)
+
+- Auth-bound read-only `GET /api/v1/research/scorecards/{id}/artifacts/content`
+  serves one sealed run file pinned on an active scorecard (checksum + path
+  allowlist + canonical run-dir bound; fail-closed on traversal / symlink /
+  unsealed / invalidated / too-large / unsupported media).
+- Dashboard proxy + Forensics Raw Artifact Refs links only when inventory
+  `present=true` and `status=OK`; otherwise **Nicht verfügbar** (no fake href).
+- Residual for #292 Raw Metric content navigation; keep #292 open until merge.
+
 ### Added (P4.9 research responsive / a11y — #303)
 
 - Research shell skip link, mint `:focus-visible` rings, Escape-close mobile nav.
