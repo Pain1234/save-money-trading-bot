@@ -11,6 +11,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Research shell skip link, mint `:focus-visible` rings, Escape-close mobile nav.
 - Playwright a11y/responsive suite + desktop/mobile reference screenshots under
   `docs/visual-regression/`. Checklist: `docs/research/RESEARCH_RESPONSIVE_A11Y.md`.
+- Skip-link activation focuses `#research-main` (`tabIndex={-1}`); Playwright
+  asserts `toBeFocused()`.
+
+### Added (P4.9 research forensics UI — #302)
+
+- Bind `GET /api/v1/research/scorecards/{id}/detail` (#350) into Research detail
+  routes: regime table rows, cost-stress boundary, classifier transitions,
+  Evidence Inputs / Gate Failures / Raw Artifact Refs inventory (incl.
+  `relative_path`), lineage + audit metadata.
+- `ResearchForensicsSection` for MFE/MAE (honest N/A), folds, costs, gate history,
+  freeze placeholder. Validation gate tables expand per-gate results.
+- Raw Metric **content** download not claimed: no safe artifact GET yet —
+  residual [#357](https://github.com/Pain1234/save-money-trading-bot/issues/357);
+  keep #292 open. Docs: UI spec UI-05.
 
 ### Added (P4.9 scorecard detail API — #350)
 

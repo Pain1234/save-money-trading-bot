@@ -8,6 +8,7 @@ import { UnderwaterDrawdownChart } from "@/components/research/analytics/Underwa
 import type { ExecutiveEvidenceAnchor } from "@/lib/research/executive-summary";
 import type { ResearchSeriesPoint } from "@/lib/research-api/client";
 import type { RegimeScorecardRow } from "@/components/research/analytics/RegimeScorecardTable";
+import type { CostStressView } from "@/lib/research/scorecard-detail-binding";
 
 export interface ResearchAnalyticsSectionProps {
   evidence?: ExecutiveEvidenceAnchor | null;
@@ -15,18 +16,21 @@ export interface ResearchAnalyticsSectionProps {
   drawdown?: ResearchSeriesPoint[] | null;
   benchmark?: ResearchSeriesPoint[] | null;
   costStressInventoryDetail?: string | null;
+  costStressBound?: CostStressView | null;
   /** Bound from #291 scorecard when available (#292). */
   confidenceLabel?: string | null;
   parameterClassification?: string | null;
   parameterDetail?: string | null;
   transitionRiskLabel?: string | null;
   transitionDetail?: string | null;
+  classifierTransitions?: Array<{ id: string; from: string; to: string }> | null;
+  classifierTransitionsReason?: string | null;
   regimeRows?: RegimeScorecardRow[] | null;
   regimeTableReason?: string;
 }
 
 /**
- * Reusable Regime / Analytics block for Overview and detail routes (#300/#292).
+ * Reusable Regime / Analytics block for Overview and detail routes (#300/#292/#302).
  * Scorecard-bound fields only when callers pass real API values.
  */
 export function ResearchAnalyticsSection({
@@ -35,11 +39,14 @@ export function ResearchAnalyticsSection({
   drawdown = null,
   benchmark = null,
   costStressInventoryDetail = null,
+  costStressBound = null,
   confidenceLabel = null,
   parameterClassification = null,
   parameterDetail = null,
   transitionRiskLabel = null,
   transitionDetail = null,
+  classifierTransitions = null,
+  classifierTransitionsReason = null,
   regimeRows = null,
   regimeTableReason,
 }: ResearchAnalyticsSectionProps) {
@@ -51,8 +58,8 @@ export function ResearchAnalyticsSection({
             Regime & Analytics
           </h2>
           <p className="mt-0.5 text-[11px] text-text-muted">
-            Wiederverwendbare Panels (#300). Gebundene Scorecard-Felder aus
-            Layer-5 (#292) — fehlende Werte = Nicht verfügbar.
+            Wiederverwendbare Panels (#300). Regime-Zeilen und Cost-Stress aus
+            Scorecard-Detail (#350/#302) — fehlende Werte = Nicht verfügbar.
           </p>
         </div>
       </div>
@@ -68,12 +75,17 @@ export function ResearchAnalyticsSection({
         <TransitionMatrixPanel
           riskLabel={transitionRiskLabel}
           detail={transitionDetail}
+          transitions={classifierTransitions}
+          transitionsReason={classifierTransitionsReason}
         />
         <ParameterPlateauPanel
           classification={parameterClassification}
           detail={parameterDetail}
         />
-        <CostStressPanel jobInventoryDetail={costStressInventoryDetail} />
+        <CostStressPanel
+          jobInventoryDetail={costStressInventoryDetail}
+          bound={costStressBound}
+        />
       </div>
 
       <EvidenceSummaryPanel

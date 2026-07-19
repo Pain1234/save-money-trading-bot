@@ -3,8 +3,8 @@ import { UNAVAILABLE } from "@/lib/research/executive-summary";
 import { displayValue } from "@/lib/research-api/client";
 
 /**
- * Optional regime row. Layer-5 GET does not include per-regime metrics;
- * columns match #292 AC for when rows become available.
+ * Optional regime row. Prefer GET …/scorecards/{id}/detail regime_rows (#350/#302).
+ * Columns match #292 AC; empty → Nicht verfügbar.
  */
 export interface RegimeScorecardRow {
   regime: string;

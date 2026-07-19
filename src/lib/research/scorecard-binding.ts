@@ -1,8 +1,10 @@
 import {
   fetchResearchExperiment,
   fetchScorecard,
+  fetchScorecardDetail,
   fetchScorecards,
   getResearchErrorMessage,
+  type ScorecardDetail,
   type ScorecardRecord,
   type ValidationStudyDetail,
   type ValidationStudyOutcome,
@@ -15,7 +17,14 @@ export const BACKEND_NOT_AVAILABLE = "NOT_AVAILABLE";
 export type ScorecardBindState =
   | { kind: "empty"; reason: string }
   | { kind: "error"; message: string }
-  | { kind: "ready"; scorecard: ScorecardRecord; warnings: string[] };
+  | {
+      kind: "ready";
+      scorecard: ScorecardRecord;
+      warnings: string[];
+      /** GET …/scorecards/{id}/detail (#350) — forensics + regime rows. */
+      detail: ScorecardDetail | null;
+      detailError: string | null;
+    };
 
 export interface ScorecardProfileCell {
   id: string;
@@ -184,7 +193,30 @@ function bindTrustedScorecard(
   if (!trust.ok) {
     return { kind: "error", message: trust.message };
   }
-  return { kind: "ready", scorecard, warnings: trust.warnings };
+  return {
+    kind: "ready",
+    scorecard,
+    warnings: trust.warnings,
+    detail: null,
+    detailError: null,
+  };
+}
+
+/** Attach sealed detail payload; failures stay fail-closed / honest. */
+export async function attachScorecardDetail(
+  bind: ScorecardBindState,
+): Promise<ScorecardBindState> {
+  if (bind.kind !== "ready") return bind;
+  try {
+    const detail = await fetchScorecardDetail(bind.scorecard.scorecard_id);
+    return { ...bind, detail, detailError: null };
+  } catch (error) {
+    return {
+      ...bind,
+      detail: null,
+      detailError: getResearchErrorMessage(error),
+    };
+  }
 }
 
 export async function loadScorecardForRun(
@@ -206,7 +238,7 @@ export async function loadScorecardForRun(
       };
     }
     // Experiment/strategy path: integrity + active status; no study pin.
-    return bindTrustedScorecard(scorecard);
+    return attachScorecardDetail(bindTrustedScorecard(scorecard));
   } catch (error) {
     return { kind: "error", message: getResearchErrorMessage(error) };
   }
@@ -300,7 +332,9 @@ export async function loadScorecardForStudy(
     }
   }
 
-  return resolveStudyScorecardBind(fetched, study, fetchErrors);
+  return attachScorecardDetail(
+    resolveStudyScorecardBind(fetched, study, fetchErrors),
+  );
 }
 
 export async function loadScorecardForExperiment(

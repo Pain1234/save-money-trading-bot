@@ -201,6 +201,13 @@ export default async function ResearchExperimentDetailPage({
           bind={scorecardBind}
           equity={detail.integrity.ok ? detail.equity : null}
           drawdown={detail.integrity.ok ? detail.drawdown : null}
+          forensicsExtras={{
+            costMetrics: {
+              fees: metrics.fees ?? null,
+              slippage_costs: metrics.slippage_costs ?? null,
+              funding_costs: metrics.funding_costs ?? null,
+            },
+          }}
         />
 
         <ResearchTradeChart

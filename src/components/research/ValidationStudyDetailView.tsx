@@ -196,37 +196,92 @@ export function ValidationStudyDetailView({ study }: ValidationStudyDetailViewPr
         {study.gates.length === 0 ? (
           <p className={rs.muted}>Keine Gate-Ergebnisse verknüpft.</p>
         ) : (
-          <ResearchTableFrame>
-            <table className={rs.table}>
-              <thead>
-                <tr>
-                  {["Gate-Lauf", "Policy", "Gesamtstatus", "Ausgewertet"].map((col) => (
-                    <th key={col} className={`whitespace-nowrap ${rs.th}`}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {study.gates.map((gate) => (
-                  <tr
-                    key={gate.gate_run_id}
-                    className="border-t border-border-subtle"
-                    data-testid={`validation-gate-${gate.gate_run_id}`}
-                  >
-                    <td className={`${rs.td} font-mono text-[11px]`}>{gate.gate_run_id}</td>
-                    <td className={`${rs.td} font-mono text-[11px]`}>{gate.policy_version}</td>
-                    <td className={rs.td}>
-                      {gate.overall_status === "pass" ? "Bestanden" : "Nicht bestanden"}
-                    </td>
-                    <td className={`${rs.td} font-mono text-[11px]`}>
-                      {displayValue(gate.evaluated_at)}
-                    </td>
+          <div className="space-y-3">
+            <ResearchTableFrame>
+              <table className={rs.table}>
+                <thead>
+                  <tr>
+                    {["Gate-Lauf", "Policy", "Gesamtstatus", "Ausgewertet"].map((col) => (
+                      <th key={col} className={`whitespace-nowrap ${rs.th}`}>
+                        {col}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </ResearchTableFrame>
+                </thead>
+                <tbody>
+                  {study.gates.map((gate) => (
+                    <tr
+                      key={gate.gate_run_id}
+                      className="border-t border-border-subtle"
+                      data-testid={`validation-gate-${gate.gate_run_id}`}
+                    >
+                      <td className={`${rs.td} font-mono text-[11px]`}>{gate.gate_run_id}</td>
+                      <td className={`${rs.td} font-mono text-[11px]`}>{gate.policy_version}</td>
+                      <td className={rs.td}>
+                        {gate.overall_status === "pass" ? "Bestanden" : "Nicht bestanden"}
+                      </td>
+                      <td className={`${rs.td} font-mono text-[11px]`}>
+                        {displayValue(gate.evaluated_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ResearchTableFrame>
+            {study.gates.map((gate) =>
+              gate.gates?.length ? (
+                <div
+                  key={`detail-${gate.gate_run_id}`}
+                  data-testid={`validation-gate-detail-${gate.gate_run_id}`}
+                >
+                  <p className={`${rs.label} mb-1`}>
+                    Einzelgates · {gate.gate_run_id}
+                  </p>
+                  <ResearchTableFrame>
+                    <table className={rs.table}>
+                      <thead>
+                        <tr>
+                          {["Name", "Outcome", "Measured", "Threshold", "Reason"].map(
+                            (col) => (
+                              <th key={col} className={`whitespace-nowrap ${rs.th}`}>
+                                {col}
+                              </th>
+                            ),
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gate.gates.map((g) => (
+                          <tr
+                            key={g.name}
+                            className="border-t border-border-subtle"
+                          >
+                            <td className={`${rs.td} font-mono text-[11px]`}>
+                              {g.name}
+                            </td>
+                            <td className={rs.td}>
+                              {displayValue(
+                                g.outcome ?? (g.passed ? "PASS" : "FAIL"),
+                              )}
+                            </td>
+                            <td className={`${rs.td} font-mono text-[11px]`}>
+                              {displayValue(g.measured_value)}
+                            </td>
+                            <td className={`${rs.td} font-mono text-[11px]`}>
+                              {displayValue(g.threshold)}
+                            </td>
+                            <td className={`${rs.td} text-[11px]`}>
+                              {displayValue(g.reason)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ResearchTableFrame>
+                </div>
+              ) : null,
+            )}
+          </div>
         )}
       </Card>
 

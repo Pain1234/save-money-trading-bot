@@ -42,6 +42,20 @@ export default async function ResearchValidationDetailPage({
           bind={scorecardBind}
           evidence={toEvidenceAnchor(study)}
           finalDecision={study.decision}
+          forensicsExtras={{
+            gateHistory: study.gates,
+            folds: study.robustness
+              .filter((r) => r.test_type === "walk_forward" && r.manifest)
+              .flatMap((r) =>
+                (r.manifest?.children ?? []).map((child) => ({
+                  id: `${r.robustness_id}:${child.child_id}`,
+                  label: child.label || child.child_id,
+                  netPnl: child.net_pnl ?? null,
+                  maxDd: child.max_drawdown ?? null,
+                  trades: child.closed_trades ?? null,
+                })),
+              ),
+          }}
         />
 
         <ValidationStudyDetailView study={study} />
