@@ -1,12 +1,13 @@
 # P5 Execution Checklist
 
-**Status:** ENTRY GATE IN PROGRESS — candidate freeze prepared; human signature required before OOS.
+**Status:** ENTRY GATE COMPLETE; PRE-OOS BLOCKED.
+Current phase authority: [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 
 ## Entry gate (Phase B)
 
 P5 becomes executable only when all are evidenced:
 
-- [ ] P4 complete on current `main` — **Engine + read UI on main; Lab code merged (#242/#243) but UI-Abnahme and #245–#250 still open. Do not treat P4 milestone as closed.**
+- [x] P4 acceptance evidence recorded on `main`
 - [x] Material P4 regression tests green (commands + log referenced on P5-00 / `P5_CANDIDATE_FREEZE.md`)
 - [x] ExperimentSpec versioned
 - [x] RunManifest immutable
@@ -17,12 +18,15 @@ P5 becomes executable only when all are evidenced:
 - [x] Compare checks Spec + Run identity
 - [x] Backtester/paper parity documented
 - [x] Strategy V1 uniquely versioned
-- [ ] Candidate parameters frozen (signed freeze manifest) — **prepared; awaiting human**
+- [x] Candidate parameters frozen (`FREEZE APPROVED`, then
+  `FREEZE PIN REFRESHED` on [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196))
 - [x] No open critical P4 defect that can falsify P5 (re-check at sign-off)
 - [x] Public/private storage defined (#181 / PR #222; private repo seeded)
 - [x] Final OOS dataset still unopened
 
-If any item fails: remain PLANNING ONLY; link blocking issue; do not start experiments; do not open OOS.
+If a completed entry item is invalidated: halt, record the blocker, and do not
+open OOS. The current blockers are the #204 gates below, not an unsigned entry
+freeze.
 
 ## Pre-OOS freezes (required before P5-08)
 

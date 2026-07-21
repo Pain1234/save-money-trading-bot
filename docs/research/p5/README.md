@@ -1,6 +1,9 @@
-# P5 – Honest Validation of Trend Strategy V1 (planning)
+# P5 – Honest Validation of Trend Strategy V1
 
-**Status:** PLANNING ONLY
+**Status:** **PRE-OOS BLOCKED** — #251–#254 complete; #204 not run; #205 undecided.
+The single authoritative public status narrative is
+[P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md). Contract and checklist status
+lines elsewhere in this directory are subordinate to that ledger.
 **Milestone:** [P5 – Honest Validation of Trend Strategy V1](https://github.com/Pain1234/save-money-trading-bot/milestone/6)
 **Canonical risk issue:** [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47) (R-003)
 **Canonical public/private issue:** [#181](https://github.com/Pain1234/save-money-trading-bot/issues/181)
@@ -31,7 +34,12 @@ P4 – Research Engine und Research Workspace V1 (in flight; not fully accepted)
 P5 must not pre-empt paper soak, multi-asset work, or live trading.
 
 **Plan vs execute:** Closed issues #200–#203 are planning / helpers / harness only.
-They do **not** prove frozen Strategy V1 was validated. Actual runs: #251–#254.
+They do **not** prove frozen Strategy V1 was validated. The actual sealed
+pre-OOS runs [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251)–
+[#254](https://github.com/Pain1234/save-money-trading-bot/issues/254) are
+complete, but that completion does **not** authorize
+[#204](https://github.com/Pain1234/save-money-trading-bot/issues/204) or decide
+[#205](https://github.com/Pain1234/save-money-trading-bot/issues/205).
 
 ## Binding dependency chain
 
@@ -89,11 +97,15 @@ Canonical: [#47](https://github.com/Pain1234/save-money-trading-bot/issues/47), 
 | [P5_EXECUTION_CHECKLIST.md](P5_EXECUTION_CHECKLIST.md) | Operational gates and stop rules |
 | [P5_PHASE_A_AUDIT.md](P5_PHASE_A_AUDIT.md) | Phase A inventory (evidence-based) |
 
-Templates and placeholders only until human-approved execution. **No real OOS results in this folder or in public GitHub.**
+Public contracts, process receipts, and status only. **No final OOS result or
+private economic metric belongs in this folder or in public GitHub.**
 
 ## Entry gate (summary)
 
-P5 remains PLANNING ONLY until every item in [P5_EXECUTION_CHECKLIST.md](P5_EXECUTION_CHECKLIST.md) § Entry gate is evidenced. Missing prerequisites become blocking issues; no experiment start; no holdout open.
+The candidate entry gate and #251–#254 execution stage have passed. P5 now
+remains blocked before final OOS by
+[P5_PRE_OOS_GATE.md](P5_PRE_OOS_GATE.md). The holdout stays sealed until every
+#204 gate is met; #205 remains undecided.
 
 ## Outcomes
 

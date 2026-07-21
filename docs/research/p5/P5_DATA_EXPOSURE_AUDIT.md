@@ -1,6 +1,7 @@
 # P5 Data Exposure Audit
 
-**Status:** PARTITION LOCK PROPOSED — awaiting human approval
+**Contract status:** PARTITIONS LOCKED. Current phase authority:
+[P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#197](https://github.com/Pain1234/save-money-trading-bot/issues/197) (P5-01)
 **Related:** #47, #181, #196
 

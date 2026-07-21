@@ -1,7 +1,37 @@
 # P5 Execution Status
 
-**Updated:** 2026-07-19 (post PR #369 merge `c469b65…`)
+**Authority:** This document is the single public Source of Truth for current P5
+phase and gate status. Other files in this directory define frozen contracts,
+checklists, or historical handoffs; their header status must not override this
+ledger.
+**Updated:** 2026-07-21 (AUD-P2-008 reconciliation; no new execution)
 **Holdout opened?** `NO`
+**Current phase:** **PRE-OOS BLOCKED** — prerequisite robustness executions are
+complete, but P5 itself is not complete and no final decision exists.
+
+## Authoritative public narrative
+
+- [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196):
+  candidate freeze approved and pin refreshed. The issue remaining open does not
+  mean the freeze is unsigned.
+- [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251),
+  [#252](https://github.com/Pain1234/save-money-trading-bot/issues/252),
+  [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253), and
+  [#254](https://github.com/Pain1234/save-money-trading-bot/issues/254):
+  sealed pre-OOS robustness executions are complete and technically
+  cross-checked. Their economic results remain private; completion is neither an
+  OOS result nor a promotion decision.
+- [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204):
+  final untouched OOS has **not** run. The holdout remains sealed and execution
+  is blocked by the forward-window, warmup, and human Pre-OOS gates below.
+- [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205):
+  no `ACCEPT_FOR_P6`, `REJECT`, or `INCONCLUSIVE` decision has been recorded;
+  this remains blocked by #204.
+
+GitHub issue open/closed state is workflow metadata, not evidence that an
+execution or gate is incomplete. The status above is supported only by the
+linked public comments and public, non-economic receipts. No private economic
+metric is reproduced here.
 
 ## Wave completion (public core)
 

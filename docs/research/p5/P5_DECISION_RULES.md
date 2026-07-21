@@ -1,6 +1,7 @@
 # P5 Decision Rules (ACCEPT / REJECT / INCONCLUSIVE)
 
-**Status:** GATES PROPOSED — awaiting human freeze
+**Contract status:** DECISION RULES FROZEN; final #205 decision not recorded.
+Current phase authority: [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) / [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205)
 **Hard rule:** Freeze before final OOS. No post-hoc threshold changes. Positive return alone never promotes.
 
