@@ -22,12 +22,12 @@ from tests.paper_trading.conftest_execution import utc_dt
 from tests.paper_trading.integration.lifecycle_helpers import btc_eth_sol_constraints
 
 
-def _builder(*, market_data_ready):
+def _builder(*, market_data_ready, paused: bool = False):
     repo = MagicMock()
     runtime = MagicMock()
     runtime.status = RuntimeStatus.READY
     runtime.kill_switch = False
-    runtime.paused = False
+    runtime.paused = paused
     repo.get_runtime_state.return_value = runtime
 
     bundle = MagicMock()
@@ -96,6 +96,16 @@ def test_runtime_true_allows_existing_evaluation_path() -> None:
     assert context is not None
     entry_gates = context["symbols"]["BTC"]["entry_gates"]
     assert entry_gates.market_data_ready is True
+
+
+def test_persisted_pause_blocks_production_entry_gate() -> None:
+    builder, eval_time = _builder(market_data_ready=lambda: True, paused=True)
+
+    context = builder.build_evaluation_context("BTC", eval_time)
+
+    entry_gates = context["symbols"]["BTC"]["entry_gates"]
+    assert entry_gates.entry_ready is False
+    assert entry_gates.paused is True
 
 
 def test_stub_boolean_readiness_is_supported_via_lambda() -> None:

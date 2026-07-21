@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -23,7 +24,7 @@ from strategy_engine.models import (
 from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import TradeIntentRow
 from paper_trading.db.transaction import transaction_scope
-from paper_trading.enums import PaperSide, TradeIntentStatus
+from paper_trading.enums import PaperSide, RuntimeStatus, TradeIntentStatus
 from paper_trading.execution import EntryExecutionRejected, PaperFillService
 from paper_trading.ids import entry_type_to_signal_type, trade_intent_key
 from paper_trading.models import (
@@ -54,6 +55,56 @@ class EntryGateContext:
     open_position_count: int
     has_symbol_position: bool
     has_nonterminal_intent: bool
+
+
+@dataclass(frozen=True)
+class EntryAuthorization:
+    """Final fail-closed authorization for creating new paper risk."""
+
+    allowed: bool
+    reasons: tuple[str, ...]
+    paused: bool = False
+    kill_switch: bool = False
+
+
+def evaluate_final_entry_authorization(
+    repo: PaperTradingRepository,
+    *,
+    config: PaperTradingConfig,
+    market_data_ready: bool,
+    evaluated_at: datetime,
+) -> EntryAuthorization:
+    """Read current persisted controls and readiness immediately before new risk."""
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware UTC")
+
+    repo.session.expire_all()
+    runtime = repo.get_runtime_state()
+    if runtime is None:
+        return EntryAuthorization(False, ("runtime_state_missing",))
+
+    reasons: list[str] = []
+    if runtime.status != RuntimeStatus.READY:
+        reasons.append("runtime_not_ready")
+    if runtime.last_error:
+        reasons.append("last_error_set")
+    if (
+        evaluated_at - runtime.heartbeat_at
+        > timedelta(seconds=config.stale_runtime_threshold_seconds)
+    ):
+        reasons.append("stale_heartbeat")
+    if not market_data_ready:
+        reasons.append("market_data_not_ready")
+    if runtime.paused:
+        reasons.append("paused")
+    if runtime.kill_switch:
+        reasons.append("kill_switch")
+    return EntryAuthorization(
+        allowed=not reasons,
+        reasons=tuple(reasons),
+        paused=runtime.paused,
+        kill_switch=runtime.kill_switch,
+    )
 
 
 def _pending_intents_for_open_batch(
@@ -176,11 +227,24 @@ def create_intent_from_evaluation(
     cycle_id: UUID | None = None,
     created_at: datetime,
 ) -> tuple[TradeIntent | None, bool, tuple[str, ...]]:
+    authorization = evaluate_final_entry_authorization(
+        repo,
+        config=config,
+        market_data_ready=entry_gates.market_data_ready,
+        evaluated_at=created_at,
+    )
+    entry_gates = replace(
+        entry_gates,
+        entry_ready=entry_gates.entry_ready and authorization.allowed,
+        paused=authorization.paused,
+        kill_switch=authorization.kill_switch,
+    )
     blocked = check_entry_gates(
         symbol=evaluation.symbol,
         entry_gates=entry_gates,
         strategy_eval=strategy_eval,
     )
+    blocked = tuple(dict.fromkeys((*blocked, *authorization.reasons)))
     if blocked:
         return None, False, blocked
 
@@ -246,6 +310,8 @@ def process_scheduled_intents_for_open(
     process_time: datetime,
     fill_delay_seconds: int,
     symbol_contexts: dict[str, FillProcessingContext],
+    config: PaperTradingConfig,
+    market_data_ready: Callable[[], bool],
     cycle_id: UUID | None = None,
 ) -> tuple[FillBatchResult, ...]:
     """Process due scheduled intents in BTC → ETH → SOL order."""
@@ -278,6 +344,23 @@ def process_scheduled_intents_for_open(
                 skipped += 1
                 continue
             processed += 1
+            authorization = evaluate_final_entry_authorization(
+                repo,
+                config=config,
+                market_data_ready=market_data_ready(),
+                evaluated_at=process_time,
+            )
+            if not authorization.allowed:
+                validate_intent_transition(intent.status, TradeIntentStatus.CANCELLED)
+                with transaction_scope(repo.session):
+                    repo.update_intent_status(
+                        intent.intent_id,
+                        TradeIntentStatus.CANCELLED.value,
+                        rejection_reason={"reason_codes": list(authorization.reasons)},
+                        updated_at=process_time,
+                    )
+                skipped += 1
+                continue
             validate_intent_transition(intent.status, TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE)
             with transaction_scope(repo.session):
                 repo.update_intent_status(

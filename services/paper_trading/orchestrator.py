@@ -103,5 +103,7 @@ class PaperTradingOrchestrator:
             process_time=process_time,
             fill_delay_seconds=self._config.fill_delay_seconds,
             symbol_contexts=symbol_contexts,
+            config=self._config,
+            market_data_ready=self._scheduler._market_data_ready,  # noqa: SLF001
             cycle_id=cycle_id,
         )
