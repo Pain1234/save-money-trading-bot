@@ -115,7 +115,7 @@ class CandleSeries(BaseModel):
 class StrategyParameters(BaseModel):
     """Specification Freeze 1.0 strategy parameters."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     strategy_version: str = STRATEGY_VERSION
     monthly_ema_period: int = DEFAULT_MONTHLY_EMA_PERIOD
