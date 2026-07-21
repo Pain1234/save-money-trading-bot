@@ -245,9 +245,13 @@ class PaperTradingApplication:
             await asyncio.sleep(0.25)
             await self._poll_market_data()
 
-        self._orchestrator = PaperTradingOrchestrator(self._repo, self.config, clock=self.clock)
+        self._orchestrator = PaperTradingOrchestrator(
+            self._repo,
+            self.config,
+            clock=self.clock,
+            market_data_ready=self.market_data_ready,
+        )
         self._scheduler = self._orchestrator.scheduler
-        self._scheduler._market_data_ready = self.market_data_ready  # noqa: SLF001
         self._scheduler.set_jobs_enabled(True)
 
         if self._candle_repository is not None and self._market_data_service is not None:

@@ -448,6 +448,8 @@ class PaperTradingScheduler:
             process_time=self._clock.now(),
             fill_delay_seconds=self._config.fill_delay_seconds,
             symbol_contexts=contexts,
+            config=self._config,
+            market_data_ready=self._market_data_ready,
             cycle_id=cycle_id,
         )
 

@@ -96,6 +96,12 @@ curl -X POST "http://127.0.0.1:8080/control/pause" -H "X-API-Key: $PAPER_CONTROL
 curl -X POST "http://127.0.0.1:8080/control/resume" -H "X-API-Key: $PAPER_CONTROL_API_KEY"
 ```
 
+`POST /control/pause` persists `runtime.paused=true`. The worker checks that persisted
+flag both before creating an entry intent and immediately before a scheduled paper fill.
+Any due scheduled entry is cancelled if pause, kill switch, stale heartbeat, or degraded
+readiness makes entry authorization unsafe. Resume does not revive cancelled intents.
+Open positions, stop processing, and accounting are unchanged; pause only blocks new risk.
+
 Production equivalent: stop worker (same as kill-switch production path).
 
 ---

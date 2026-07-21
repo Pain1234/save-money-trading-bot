@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -11,7 +12,7 @@ from market_data.models import StrategyDataBundle
 from strategy_engine.engine import StrategyEngine
 from strategy_engine.models import SignalIntentKind, StrategyParameters
 
-from paper_trading.clock import Clock
+from paper_trading.clock import Clock, SystemClock
 from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import StrategyEvaluationRow
 from paper_trading.db.transaction import transaction_scope
@@ -45,10 +46,12 @@ class PaperEvaluationService:
         strategy_engine: StrategyEngine | None = None,
         *,
         clock: Clock | None = None,
+        market_data_ready: Callable[[], bool] | None = None,
     ) -> None:
         self._repo = repository
         self._strategy = strategy_engine or StrategyEngine()
-        self._clock = clock
+        self._clock = clock or SystemClock()
+        self._market_data_ready = market_data_ready or (lambda: False)
 
     def evaluate_symbol_for_daily_close(
         self,
@@ -145,6 +148,8 @@ class PaperEvaluationService:
                     config=config,
                     cycle_id=cycle_id,
                     created_at=created_at,
+                    authorization_at=self._clock.now(),
+                    market_data_ready=self._market_data_ready,
                 )
                 if intent is not None and intent_created:
                     self._repo.append_audit_event(

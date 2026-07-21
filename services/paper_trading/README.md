@@ -6,6 +6,19 @@ Phases 1–9 implement domain, PostgreSQL persistence, execution parity with the
 
 Not implemented: Hyperliquid private API, wallet/signing, real exchange orders (Phase 10 audit gate).
 
+**Order lifecycle V1 (AUD-P2-002 / #390):** Paper execution performs a **single full fill** per intent.
+Enums/schema may mention richer states, but the following are **NOT_IMPLEMENTED** and must not be
+treated as live-readiness or P8 prerequisites until a dedicated issue delivers end-to-end behavior
+and tests:
+
+- partial fills
+- cancel / replace (amend) transitions
+- persistent exchange-style protective stop orders (V1 uses evaluation-time stop logic, not a
+  durable protective order object on the venue)
+
+Planning issues #304/#305 (P7 intent contracts) are **not** substitutes for implementing this
+lifecycle.
+
 ## Key modules
 
 | Module | Purpose |
@@ -159,6 +172,9 @@ See [docs/paper-trading-production-runtime-v1.md](../../docs/paper-trading-produ
 for the market-data event contract, idempotency, look-ahead rules, and integration test.
 
 `funding_enabled` remains `False` in V1 (config rejects `True` fail-closed).
+Independent accounting verification compares `wallet.total_funding` to the sum of
+`funding_events` and fails closed on unexpected nonzero/duplicate funding
+(AUD-P1-011 / #386).
 
 ## Not approved for unsupervised paper trading
 
