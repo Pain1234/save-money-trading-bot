@@ -207,13 +207,16 @@ No Experiment Postgres tables.
 
 | Responsibility | Details |
 |----------------|---------|
-| Lifecycle | `evaluation.py` → `lifecycle.py` → fills |
+| Lifecycle | `evaluation.py` → `lifecycle.py` → **single full fill** (V1) |
 | Scheduler | `scheduler.py`, deterministic jobs |
 | Runtime FSM | `runtime.py`: STARTING → RECOVERING → SYNCING → READY / DEGRADED / FAILED |
 | Single runner | PostgreSQL advisory lock (`lock.py`) |
 | Heartbeat / readiness | `heartbeat.py`, `readiness.py` |
 | API (control) | `api.py` — read + control endpoints for ops |
 | Production runner | `application.py`, `api_runner.py` |
+
+**NOT_IMPLEMENTED (AUD-P2-002 / #390):** partial fills, cancel/replace, and persistent protective
+stop-order objects. Schema/enums alone are scaffolding — do not claim richer execution readiness.
 
 **Production entrypoints (do not change without issue):** see [Production entrypoints](#production-entrypoints) above.
 
@@ -388,7 +391,7 @@ optional isolation — not a P7 runtime deliverable. P4.9 Research Workspace UI
 | Inside V1 paper production | Outside / not implemented |
 |----------------------------|---------------------------|
 | Public market data | Private trading API |
-| Simulated fills | Exchange order placement |
+| Simulated **full** fills | Exchange order placement; partial fills; cancel/replace; persistent protective orders ([#390](https://github.com/Pain1234/save-money-trading-bot/issues/390)) |
 | Single worker + advisory lock | Multi-region active-active |
 | Railway Postgres | **Current Gap:** documented DR |
 
