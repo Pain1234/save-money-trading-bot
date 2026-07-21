@@ -41,9 +41,10 @@ Canonical live checklist: [`P5_PRE_OOS_GATE.md`](P5_PRE_OOS_GATE.md).
 - [x] Dataset partitions locked
 - [x] Benchmarks versioned
 - [x] Metrics set fixed
-- [x] Cost-stress plan fixed + #252 executed (sealed)
-- [x] Parameter-stability plan fixed + #253 executed (sealed)
-- [x] Bootstrap/MC plan fixed + #254 executed (sealed)
+- [ ] #251 Walk-forward receipt present but pending requalification
+- [ ] Cost-stress plan fixed + #252 receipt present but pending requalification
+- [ ] Parameter-stability plan fixed + #253 receipt present but pending requalification
+- [ ] Bootstrap/MC plan fixed + #254 receipt present but pending requalification
 - [ ] Sample-sufficiency rules confirmed for holdout window at open
   (90d calendar: **NOT MET** as of 2026-07-19; clock `2026-07-19T12:54:01Z`)
 - [x] Decision rules frozen

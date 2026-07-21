@@ -7,8 +7,15 @@ status and sign-off fields in those files must not override this ledger.
 **Updated:** 2026-07-21 (AUD-P2-008 reconciliation; no new execution)
 **Holdout opened?** `NO`
 **Current phase:** **AUDIT-BLOCKED BEFORE OOS** — prerequisite robustness
-executions are complete, but P5 itself is not complete, the audit decision
-blocks further P5 execution, and no final decision exists.
+execution receipts exist but are pending requalification; P5 itself is not
+complete, the audit decision blocks further P5 execution, and no final decision
+exists.
+
+For current P5 lifecycle status, this ledger explicitly supersedes the stale
+`ROADMAP.md` statements that P5 is “Planning” with no #251–#254 execution and
+the stale ADR-020 “pending” lifecycle field in `docs/DECISION_LOG.md`. Those
+documents remain authoritative for roadmap structure and decision content, but
+not for the current P5 gate snapshot reconciled by #395.
 
 ## Authoritative public narrative
 
@@ -24,9 +31,11 @@ blocks further P5 execution, and no final decision exists.
   [#252](https://github.com/Pain1234/save-money-trading-bot/issues/252),
   [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253), and
   [#254](https://github.com/Pain1234/save-money-trading-bot/issues/254):
-  sealed pre-OOS robustness executions are complete and technically
-  cross-checked. Their economic results remain private; completion is neither an
-  OOS result nor a promotion decision.
+  sealed pre-OOS execution receipts are present and technically cross-checked,
+  but they are **pending requalification** because the broader entry checklist
+  is not complete and the audit records `BLOCK_P5`. Their economic results
+  remain private; execution is neither qualified #204 evidence nor a promotion
+  decision.
 - [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204):
   final untouched OOS has **not** run. The holdout remains sealed and execution
   is blocked by the audit decision plus the forward-window, warmup, and human
@@ -73,7 +82,8 @@ Do **not** open holdout C until all are true:
 - [x] Human benchmark/regime approval on #199 (`BENCHMARKS AND REGIMES APPROVED`)
 - [x] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
 - [x] #363 sealed symbol constraints merged on `main` (PR #366 @ `aa0e232…`; prior private Partition B packs invalidated)
-- [x] Private robustness packs #251–#254 complete on sealed SHA (private PRs #2–#5; Phase-3 cross-check **130/0**)
+- [ ] #251–#254 execution receipts present on sealed SHA, but pending
+  requalification after the entry and audit blockers clear
 - [ ] Forward holdout length ≥ sample-sufficiency min (90 calendar days per frozen protocol) **and** feature warmup satisfied for the evaluation engine
 - [ ] Human pre-OOS approval recorded (`PRE-OOS APPROVED` on #204 + Decision Log process note)
 
@@ -103,8 +113,8 @@ P5 Partition B private executions that ran **before** sealed
 |------|-------|
 | #363 sealed constraints | **Merged** `aa0e232…` |
 | Gate 1 | **Complete** |
-| #251–#254 sealed re-runs | **Complete** (private PRs #2–#5 merged) |
-| Phase 3 cross-check | **PASS** (130/0) — `P5_PHASE3_CROSS_CHECK.md` |
+| #251–#254 sealed re-runs | **EXECUTED / PENDING REQUALIFICATION** |
+| Phase 3 cross-check | Technical receipt present; does not clear entry/audit blockers |
 | Pre-OOS checklist docs | **Merged** PR #369 → `c469b65…` |
 | Sample-sufficiency (90d) | **NOT MET** (~0d elapsed; earliest ~2026-10-17) |
 | Holdout opened? | `NO` / `SEALED` |
