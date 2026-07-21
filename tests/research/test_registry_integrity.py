@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from research.artifacts import load_checksums
 from research.registry import ExperimentRegistry
 from research.runner import RunRequest, run_experiment
+from research.service import ResearchReadService
 
 from tests.research.fixtures import REPO_ROOT, align_spec_to_bundle, btc_bundle
 
@@ -82,6 +84,70 @@ def test_reconstruct_from_artifacts(tmp_path: Path) -> None:
     registry, outcome, _spec = _complete_run(tmp_path)
     rebuilt = registry.reconstruct_from_artifacts()
     assert any(e.run_id == outcome.run_id for e in rebuilt)
+
+
+def test_invalidation_sidecar_remains_authoritative_after_raw_complete_append(
+    tmp_path: Path,
+) -> None:
+    registry, outcome, _spec = _complete_run(tmp_path)
+    original = registry.show(outcome.run_id)
+    registry.invalidate(outcome.run_id, reason="bad evidence", actor="test")
+
+    reactivation = {
+        **original.__dict__,
+        "status": "complete",
+        "created_at": "2099-01-01T00:00:00.000000Z",
+    }
+    with registry.path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(reactivation, sort_keys=True) + "\n")
+
+    assert registry.show(outcome.run_id, verify=False).status == "invalidated"
+    assert registry.list_entries()[-1].status == "invalidated"
+
+    service = ResearchReadService(registry.root)
+    assert service.get_entry(outcome.experiment_id).status == "invalidated"
+    assert service.latest_entries()[0].status == "invalidated"
+
+
+def test_invalidation_sidecar_blocks_all_complete_append_paths(tmp_path: Path) -> None:
+    registry, outcome, spec = _complete_run(tmp_path)
+    original = registry.show(outcome.run_id)
+    registry.invalidate(outcome.run_id, reason="bad evidence", actor="test")
+
+    with pytest.raises(ValueError, match="reactivation forbidden"):
+        registry._append(  # noqa: SLF001 — exercises the central append guard
+            {
+                **original.__dict__,
+                "status": "complete",
+                "created_at": "2099-01-01T00:00:00.000000Z",
+            }
+        )
+
+    with pytest.raises(ValueError, match="reactivation forbidden"):
+        registry.register_complete(
+            experiment_id=outcome.experiment_id,
+            run_id=outcome.run_id,
+            attempt_id=outcome.attempt_id,
+            strategy_version=spec.strategy_version,
+            dataset_version=spec.dataset_manifest_ref.dataset_id,
+            cost_model_version="1.0",
+            benchmark_ref=spec.benchmark,
+            artifact_path=outcome.artifact_path,  # type: ignore[arg-type]
+            checksums=load_checksums(outcome.artifact_path),  # type: ignore[arg-type]
+        )
+
+
+def test_reconstruct_preserves_invalidated_status_while_sidecar_exists(
+    tmp_path: Path,
+) -> None:
+    registry, outcome, _spec = _complete_run(tmp_path)
+    registry.invalidate(outcome.run_id, reason="bad evidence", actor="test")
+
+    rebuilt = {
+        entry.run_id: entry for entry in registry.reconstruct_from_artifacts()
+    }
+
+    assert rebuilt[outcome.run_id].status == "invalidated"
 
 
 def test_checksum_mismatch_detected(tmp_path: Path) -> None:
