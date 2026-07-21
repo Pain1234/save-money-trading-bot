@@ -64,11 +64,21 @@ def test_unauthenticated_research_posts_fail_before_mutation(
     responses = [
         client.post("/api/v1/research/experiments", json={}),
         client.post("/api/v1/research/experiments/exp_auth/start"),
+        client.post("/api/v1/research/robustness", json={}),
+        client.post("/api/v1/research/robustness/robustness_auth/start"),
         client.post("/api/v1/research/gates/evaluate", json={}),
         client.post("/api/v1/research/gates/gate_auth/invalidate", json={}),
+        client.post("/api/v1/research/scorecards/evaluate", json={}),
+        client.post(
+            "/api/v1/research/scorecards/scorecard_auth/invalidate", json={}
+        ),
+        client.post("/api/v1/research/validation", json={}),
+        client.post(
+            "/api/v1/research/validation/study_auth/decision", json={}
+        ),
     ]
 
-    assert [response.status_code for response in responses] == [403, 403, 403, 403]
+    assert [response.status_code for response in responses] == [403] * 10
     assert write_service.calls == []
     assert gate_service.calls == []
 
