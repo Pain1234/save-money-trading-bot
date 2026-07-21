@@ -1,16 +1,22 @@
 # P5 Execution Status
 
-**Authority:** This document is the single public Source of Truth for current P5
-phase and gate status. Other files in this directory define frozen contracts,
-checklists, or historical handoffs; their header status must not override this
-ledger.
+**Authority:** This document is the single public Source of Truth within
+`docs/research/p5/` for current P5 phase and gate status. Other files in this
+directory define contracts, checklists, or historical handoffs; authoring-time
+status and sign-off fields in those files must not override this ledger.
 **Updated:** 2026-07-21 (AUD-P2-008 reconciliation; no new execution)
 **Holdout opened?** `NO`
-**Current phase:** **PRE-OOS BLOCKED** — prerequisite robustness executions are
-complete, but P5 itself is not complete and no final decision exists.
+**Current phase:** **AUDIT-BLOCKED BEFORE OOS** — prerequisite robustness
+executions are complete, but P5 itself is not complete, the audit decision
+blocks further P5 execution, and no final decision exists.
 
 ## Authoritative public narrative
 
+- [Audit #371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
+  [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372),
+  finding `AUD-P2-008`: the audit decision is `BLOCK_P5`. No further P5
+  execution may occur until the applicable remediation is independently
+  reverified and the block is explicitly lifted.
 - [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196):
   candidate freeze approved and pin refreshed. The issue remaining open does not
   mean the freeze is unsigned.
@@ -23,7 +29,8 @@ complete, but P5 itself is not complete and no final decision exists.
   OOS result nor a promotion decision.
 - [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204):
   final untouched OOS has **not** run. The holdout remains sealed and execution
-  is blocked by the forward-window, warmup, and human Pre-OOS gates below.
+  is blocked by the audit decision plus the forward-window, warmup, and human
+  Pre-OOS gates below.
 - [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205):
   no `ACCEPT_FOR_P6`, `REJECT`, or `INCONCLUSIVE` decision has been recorded;
   this remains blocked by #204.
@@ -49,13 +56,15 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 | 5b | #201 | Cost-stress scenarios | Helpers on `main`; execution = #252 |
 | 5c | #202 | Parameter neighborhood | Helpers on `main`; execution = #253 |
 | 5d | #203 | Path bootstrap helper | Helpers on `main`; execution = #254 |
-| 6 | #204 | Pre-OOS gate checklist | Docs merged (PR #369); **awaiting human `PRE-OOS APPROVED` + ≥90d forward window** — see `P5_PRE_OOS_GATE.md` |
+| 6 | #204 | Pre-OOS gate checklist | **Audit-blocked**; also awaiting human `PRE-OOS APPROVED` + ≥90d forward window — see `P5_PRE_OOS_GATE.md` |
 | 7 | #205 | Decision process / ADR | After #204 once |
 
 ## Pre-OOS hard stop (#204)
 
 Do **not** open holdout C until all are true:
 
+- [ ] Audit `BLOCK_P5` decision (#371 / PR #372) independently reverified and
+  explicitly lifted
 - [x] #181 merged / private store usable
 - [x] Human `FREEZE APPROVED` on #196 (prior pin `35b4fa6…` @ 2026-07-19T12:54:01Z)
 - [x] Human `FREEZE PIN REFRESHED` on #196 for public-core `aa0e232…` (2026-07-19T15:47:02Z)
@@ -99,7 +108,7 @@ P5 Partition B private executions that ran **before** sealed
 | Pre-OOS checklist docs | **Merged** PR #369 → `c469b65…` |
 | Sample-sufficiency (90d) | **NOT MET** (~0d elapsed; earliest ~2026-10-17) |
 | Holdout opened? | `NO` / `SEALED` |
-| #204 OOS execution | **BLOCKED** on `PRE-OOS APPROVED` + ≥90d forward window + warmup ack |
+| #204 OOS execution | **BLOCKED** by audit decision, `PRE-OOS APPROVED`, ≥90d forward window, and warmup ack |
 | #205 final decision | **BLOCKED** by #204 |
 | #47 | Remains open until #205 |
 

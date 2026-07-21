@@ -1,6 +1,8 @@
 # P5 Validation Protocol
 
-**Contract status:** PROTOCOL FROZEN. Current phase authority:
+**Status at authoring:** THRESHOLDS PROPOSED — awaiting human freeze
+**Lifecycle note:** This contract preserves authoring-time proposal and sign-off
+fields. Current P5 phase and gate status is maintained only in
 [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) (P5-02)
 **Hard rule:** Freeze and human-approve this protocol **before** opening the final OOS dataset. Never change thresholds after seeing results.

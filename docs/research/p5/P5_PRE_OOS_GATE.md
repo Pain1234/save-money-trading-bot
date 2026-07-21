@@ -1,6 +1,6 @@
 # P5 Pre-OOS Gate Checklist (#204 blocker)
 
-**Status:** DOCS MERGED — still blocked on human approval + calendar sufficiency
+**Status:** AUDIT-BLOCKED — human approval and calendar sufficiency also pending
 **Holdout opened?** `NO` / `SEALED`
 **Do not run #204** until every required box below is checked **and** a human
 comments `PRE-OOS APPROVED` on [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204)
@@ -16,6 +16,7 @@ and does **not** decide `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` (#205).
 
 | Item | State | Evidence |
 |------|-------|----------|
+| Audit `BLOCK_P5` lifted | **NOT MET** | [#371](https://github.com/Pain1234/save-money-trading-bot/issues/371) / [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372) |
 | #363 sealed symbol constraints | **Done** | PR #366 @ `aa0e232…` |
 | #196 freeze pin refreshed | **Done** | `FREEZE PIN REFRESHED` 2026-07-19T15:47:02Z |
 | #197 partitions locked | **Done** | `PARTITIONS LOCKED` |

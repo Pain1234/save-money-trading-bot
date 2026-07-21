@@ -1,6 +1,9 @@
 # P5 – Honest Validation of Trend Strategy V1
 
-**Status:** **PRE-OOS BLOCKED** — #251–#254 complete; #204 not run; #205 undecided.
+**Status:** **AUDIT-BLOCKED BEFORE OOS** — #251–#254 complete; #204 not run;
+#205 undecided. Audit [#371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
+[PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372)
+(`AUD-P2-008`) blocks further P5 execution until explicitly lifted.
 The single authoritative public status narrative is
 [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md). Contract and checklist status
 lines elsewhere in this directory are subordinate to that ledger.
@@ -32,6 +35,10 @@ P4 – Research Engine und Research Workspace V1 (in flight; not fully accepted)
 ```
 
 P5 must not pre-empt paper soak, multi-asset work, or live trading.
+
+The `ROADMAP.md` phase label is a high-level milestone summary. It must not be
+used to infer that #251–#254 are unexecuted or that #204 is authorized; the
+detailed public gate state is the status ledger linked above.
 
 **Plan vs execute:** Closed issues #200–#203 are planning / helpers / harness only.
 They do **not** prove frozen Strategy V1 was validated. The actual sealed
@@ -102,8 +109,8 @@ private economic metric belongs in this folder or in public GitHub.**
 
 ## Entry gate (summary)
 
-The candidate entry gate and #251–#254 execution stage have passed. P5 now
-remains blocked before final OOS by
+The candidate freeze and #251–#254 execution stage are recorded complete; the
+broader entry checklist is not complete. P5 remains blocked before final OOS by
 [P5_PRE_OOS_GATE.md](P5_PRE_OOS_GATE.md). The holdout stays sealed until every
 #204 gate is met; #205 remains undecided.
 

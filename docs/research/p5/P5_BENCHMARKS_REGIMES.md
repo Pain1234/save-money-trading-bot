@@ -1,6 +1,8 @@
 # P5 Benchmarks and Regimes
 
-**Contract status:** BENCHMARKS AND REGIMES APPROVED. Current phase authority:
+**Status at authoring:** CONTRACTS PROPOSED — awaiting human approval
+**Lifecycle note:** This contract preserves authoring-time proposal and sign-off
+fields. Current P5 phase and gate status is maintained only in
 [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#199](https://github.com/Pain1234/save-money-trading-bot/issues/199) (P5-03)
 **Symbols:** BTC, ETH, SOL only (no new assets).

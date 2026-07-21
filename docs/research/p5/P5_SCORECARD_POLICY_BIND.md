@@ -1,6 +1,8 @@
 # P5 Scorecard / Policy Bind (Freeze)
 
-**Contract status:** `SCORECARD POLICY BIND FROZEN`. Current phase authority:
+**Status at authoring:** `PENDING_HUMAN_SIGN_OFF`
+**Lifecycle note:** This contract preserves authoring-time proposal and sign-off
+fields. Current P5 phase and gate status is maintained only in
 [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
 **ADR:** [ADR-020](../../DECISION_LOG.md#adr-020--strategy-v1-validation-binds-frozen-p49-scorecard-policy-versions)
@@ -32,7 +34,7 @@ It does **not**:
 | Required `evaluation_code_commit` | **exactly** `5cb3a7bf2b310b15f932ccf24e934025990ebf6d` |
 | Document author | Cursor agent (#294) |
 | Document date (UTC) | 2026-07-19 |
-| Human Freeze status | **SCORECARD POLICY BIND FROZEN** (`2026-07-19T12:53:03Z`) |
+| Human Freeze status | **PENDING_HUMAN_SIGN_OFF** |
 
 Recompute policy hashes against this SHA only. Silent edits under the same
 version string must fail closed via content-hash mismatch. A new policy
@@ -164,18 +166,18 @@ private robustness packs, sample sufficiency, pre-OOS ADR note). See
 - [x] Epic chain amended: #294 not blocked by #292
 - [x] #198 / #199 cross-linked without replacing proposed numeric gates
 - [x] Holdout documented as closed
-- [x] Human approver signed (`SCORECARD POLICY BIND FROZEN`)
-- [x] Human `#196` / `#198` / `#199` freezes recorded separately
+- [ ] Human approver signs below (`SCORECARD POLICY BIND FROZEN`)
+- [ ] Human `#196` / `#198` / `#199` freezes (separate issues; still required before #204)
 
 ## Sign-off
 
 | Role | Name | Date (UTC) | Comment |
 |------|------|------------|---------|
 | Author | Cursor agent (#294) | 2026-07-19 | Docs bind + P1 review fixes |
-| Human approver | @Pain1234 | 2026-07-19T12:53:03Z | `SCORECARD POLICY BIND FROZEN` on #294 |
+| Human approver | **REQUIRED** | | Comment `SCORECARD POLICY BIND FROZEN` on #294 / this PR |
 
-The bind is frozen. Current execution and #204 blockers are tracked only in
-[P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
+Until human sign-off, treat status as **pending**. Docs may merge for review;
+execution of #251–#254 / #204 must wait for freezes including this bind.
 
 ## Verification (docs / governance)
 

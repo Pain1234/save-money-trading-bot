@@ -1,13 +1,14 @@
 # P5 Execution Checklist
 
-**Status:** ENTRY GATE COMPLETE; PRE-OOS BLOCKED.
+**Status:** AUDIT-BLOCKED BEFORE OOS.
 Current phase authority: [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 
 ## Entry gate (Phase B)
 
 P5 becomes executable only when all are evidenced:
 
-- [x] P4 acceptance evidence recorded on `main`
+- [ ] P4 complete on current `main` — **acceptance evidence recorded, but human
+  closure of #250/#295 remains pending; do not weaken this prerequisite**
 - [x] Material P4 regression tests green (commands + log referenced on P5-00 / `P5_CANDIDATE_FREEZE.md`)
 - [x] ExperimentSpec versioned
 - [x] RunManifest immutable
@@ -25,8 +26,11 @@ P5 becomes executable only when all are evidenced:
 - [x] Final OOS dataset still unopened
 
 If a completed entry item is invalidated: halt, record the blocker, and do not
-open OOS. The current blockers are the #204 gates below, not an unsigned entry
-freeze.
+open OOS. Audit [#371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
+[PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372)
+currently records `BLOCK_P5`; that hard stop must be independently reverified
+and explicitly lifted before any further P5 execution. The #204 gates below
+remain independently required.
 
 ## Pre-OOS freezes (required before P5-08)
 
