@@ -7,7 +7,7 @@ describe("Research write proxy authentication", () => {
 
   beforeEach(() => {
     process.env.PRIVATE_PAPER_API_URL = "http://research-api.internal:8080";
-    process.env.RESEARCH_WRITE_API_KEY = "dashboard-research-key";
+    process.env["RESEARCH_WRITE_API_KEY"] = "dashboard-research-key";
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ status: "created" }), {
         status: 200,
@@ -19,7 +19,7 @@ describe("Research write proxy authentication", () => {
 
   afterEach(() => {
     delete process.env.PRIVATE_PAPER_API_URL;
-    delete process.env.RESEARCH_WRITE_API_KEY;
+    delete process.env["RESEARCH_WRITE_API_KEY"];
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -46,7 +46,7 @@ describe("Research write proxy authentication", () => {
   });
 
   it("fails closed before forwarding a POST when the key is missing", async () => {
-    delete process.env.RESEARCH_WRITE_API_KEY;
+    delete process.env["RESEARCH_WRITE_API_KEY"];
 
     const response = await proxyResearch("/api/v1/research/experiments", {
       method: "POST",

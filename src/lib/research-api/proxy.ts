@@ -25,9 +25,9 @@ export async function proxyResearch(
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
     const method = (init?.method ?? "GET").toUpperCase();
-    const writeApiKey =
+    const writeCredential =
       method === "POST" ? process.env.RESEARCH_WRITE_API_KEY : undefined;
-    if (method === "POST" && !writeApiKey) {
+    if (method === "POST" && !writeCredential) {
       throw new Error("RESEARCH_WRITE_API_KEY is required for Research writes");
     }
     const response = await fetch(`${apiBaseUrl()}${path}`, {
@@ -36,7 +36,7 @@ export async function proxyResearch(
       headers: {
         Accept: "*/*",
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
-        ...(writeApiKey ? { "X-API-Key": writeApiKey } : {}),
+        ...(writeCredential ? { "X-API-Key": writeCredential } : {}),
       },
       body: init?.body ? JSON.stringify(init.body) : undefined,
       signal: controller.signal,
