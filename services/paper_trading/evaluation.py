@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
@@ -45,10 +46,12 @@ class PaperEvaluationService:
         strategy_engine: StrategyEngine | None = None,
         *,
         clock: Clock | None = None,
+        market_data_ready: Callable[[], bool] | None = None,
     ) -> None:
         self._repo = repository
         self._strategy = strategy_engine or StrategyEngine()
         self._clock = clock or SystemClock()
+        self._market_data_ready = market_data_ready or (lambda: False)
 
     def evaluate_symbol_for_daily_close(
         self,
@@ -146,6 +149,7 @@ class PaperEvaluationService:
                     cycle_id=cycle_id,
                     created_at=created_at,
                     authorization_at=self._clock.now(),
+                    market_data_ready=self._market_data_ready,
                 )
                 if intent is not None and intent_created:
                     self._repo.append_audit_event(

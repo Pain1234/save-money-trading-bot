@@ -39,7 +39,11 @@ class PaperTradingOrchestrator:
         self._repo = repository
         self._config = config
         self._market_data_ready = market_data_ready or (lambda: False)
-        self._evaluation = PaperEvaluationService(repository, clock=clock)
+        self._evaluation = PaperEvaluationService(
+            repository,
+            clock=clock,
+            market_data_ready=self._market_data_ready,
+        )
         self._fills = PaperFillService(repository)
         self._stops = StopLifecycleService(repository, config=config)
         self._scheduler = PaperTradingScheduler(

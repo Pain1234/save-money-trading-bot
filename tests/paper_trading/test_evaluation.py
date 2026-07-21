@@ -102,7 +102,12 @@ def test_same_evaluation_twice_one_record() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_no_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
+    service = PaperEvaluationService(
+        repo,
+        engine,
+        clock=FixedClock(eval_time),
+        market_data_ready=lambda: True,
+    )
     params = StrategyParameters()
     r1 = service.evaluate_symbol_for_daily_close(
         symbol="BTC",
@@ -131,7 +136,12 @@ def test_no_signal_evaluation_no_intent() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_no_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
+    service = PaperEvaluationService(
+        repo,
+        engine,
+        clock=FixedClock(eval_time),
+        market_data_ready=lambda: True,
+    )
     result = service.evaluate_symbol_for_daily_close(
         symbol="BTC",
         evaluation_time=eval_time,
@@ -150,7 +160,12 @@ def test_breakout_creates_scheduled_intent() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_long_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
+    service = PaperEvaluationService(
+        repo,
+        engine,
+        clock=FixedClock(eval_time),
+        market_data_ready=lambda: True,
+    )
     result = service.evaluate_symbol_for_daily_close(
         symbol="BTC",
         evaluation_time=eval_time,
@@ -180,6 +195,7 @@ def test_persisted_pause_blocks_intent_at_final_authorization() -> None:
         repo,
         engine,
         clock=FixedClock(eval_time),
+        market_data_ready=lambda: True,
     ).evaluate_symbol_for_daily_close(
         symbol="BTC",
         evaluation_time=eval_time,
@@ -194,13 +210,45 @@ def test_persisted_pause_blocks_intent_at_final_authorization() -> None:
     repo.insert_or_get_trade_intent.assert_not_called()
 
 
+def test_current_market_readiness_blocks_intent_after_gate_snapshot() -> None:
+    repo = _setup_repo_with_storage()
+    engine = MagicMock()
+    bundle = make_strategy_bundle()
+    eval_time = bundle.evaluation_time
+    engine.evaluate.return_value = make_long_entry_eval("BTC", eval_time)
+    service = PaperEvaluationService(
+        repo,
+        engine,
+        clock=FixedClock(eval_time),
+        market_data_ready=lambda: False,
+    )
+
+    result = service.evaluate_symbol_for_daily_close(
+        symbol="BTC",
+        evaluation_time=eval_time,
+        bundle=bundle,
+        strategy_params=StrategyParameters(),
+        config=_config(),
+        entry_gates=_open_gates(),
+    )
+
+    assert result.intent is None
+    assert "market_data_not_ready" in result.blocked_reasons
+    repo.insert_or_get_trade_intent.assert_not_called()
+
+
 def test_same_evaluation_twice_one_intent() -> None:
     repo = _setup_repo_with_storage()
     engine = MagicMock()
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_long_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
+    service = PaperEvaluationService(
+        repo,
+        engine,
+        clock=FixedClock(eval_time),
+        market_data_ready=lambda: True,
+    )
     bundle = make_strategy_bundle()
     params = StrategyParameters()
     gates = _open_gates()

@@ -236,11 +236,16 @@ def create_intent_from_evaluation(
     cycle_id: UUID | None = None,
     created_at: datetime,
     authorization_at: datetime,
+    market_data_ready: Callable[[], bool],
 ) -> tuple[TradeIntent | None, bool, tuple[str, ...]]:
+    try:
+        current_market_data_ready = market_data_ready()
+    except Exception:
+        current_market_data_ready = False
     authorization = evaluate_final_entry_authorization(
         repo,
         config=config,
-        market_data_ready=entry_gates.market_data_ready,
+        market_data_ready=current_market_data_ready,
         evaluated_at=authorization_at,
         lock_runtime=True,
     )
