@@ -44,9 +44,21 @@ Implementation: `services/research/dataset_binding.py` (called from `runner.run_
 ## Rules
 
 - Unknown fields are **rejected** (`extra=forbid`).
-- Credential-like keys (`api_key`, `password`, `secret`, `token`, ÔÇª) are **rejected**.
+- Unknown or misspelled `parameters` keys are **rejected** before identity/run creation
+  (`StrategyParameters` with `extra=forbid`; optional catalog key `strategy_id` allowed).
+- Parsed Specs **bind** `parameters` to the effective StrategyParameters snapshot (defaults
+  applied), so `experiment_id` / `run_id` reflect executed configuration ([#375](https://github.com/Pain1234/save-money-trading-bot/issues/375) / AUD-P1-002).
+- Credential-like keys (`api_key`, `password`, `secret`, `token`, …) are **rejected**.
 - Serialization is deterministic (stable key order, decimal strings, UTC timestamps).
-- Paper/research only ÔÇö no live trading keys in specs.
+- Paper/research only — no live trading keys in specs.
+
+### Migration note (AUD-P1-002)
+
+Specs that previously carried unknown parameter keys now fail validation. Specs that
+omitted fields relying on engine defaults will canonicalize those defaults into
+`parameters` and therefore may receive a **new** `experiment_id` / `run_id`. Treat
+prior IDs from incomplete parameter snapshots as non-comparable; re-seal or invalidate
+as needed before P5 evidence use.
 
 ## Usage
 

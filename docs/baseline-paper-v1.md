@@ -164,14 +164,17 @@ Recorded baseline (from repository artifacts, 2026-07):
 
 - **Declared:** `pyproject.toml` with lower-bound pins (`>=`).
 - **Install (dev/tests):** `pip install -e ".[dev]"` or `pip install -e ".[api]"`.
-- **Production image:** `pip install -e ".[api]"` in Dockerfile.
+- **Production image:** `deploy/Dockerfile.paper-python` installs
+  `requirements-baseline.txt`, then `pip install -e ".[api]" --no-deps`
+  (AUD-P1-014 / [#377](https://github.com/Pain1234/save-money-trading-bot/issues/377)).
 - **Baseline lock:** `requirements-baseline.txt` — transitive **PyPI** pins from a clean
   venv after `pip install -e ".[dev]"`. Regenerate with
   `py -3.12 scripts/export_requirements_baseline.py` (**Python 3.12 required**,
   matches `deploy/Dockerfile.paper-python`). Local project refs are stripped.
   Issue #8.
-- **Reproducibility:** use the lock file for audit/reinstall; production Docker
-  images remain the authoritative runtime artifact until tag gate closes.
+- **Reproducibility / promotion evidence:** same Git SHA rebuilds are only comparable when
+  the baseline lock content and resulting image digest are recorded. Do not treat a
+  rebuilt Python image as promotion evidence without matched digest + baseline hash.
 
 ### Node dependency strategy
 

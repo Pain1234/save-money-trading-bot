@@ -23,7 +23,7 @@ _BASE_EXPERIMENT: dict[str, Any] = {
     "schema_version": "1.0",
     "hypothesis": "smoke compare fixture",
     "strategy_version": "trend-v1.0.0",
-    "parameters": {"strategy_id": "trend_v1", "lookback": 20},
+    "parameters": {"strategy_id": "trend_v1", "breakout_lookback": 20},
     "dataset_manifest_ref": {
         "dataset_id": "ds-fixture",
         "content_hash": "a" * 64,
