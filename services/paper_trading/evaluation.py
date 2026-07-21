@@ -145,6 +145,9 @@ class PaperEvaluationService:
                     config=config,
                     cycle_id=cycle_id,
                     created_at=created_at,
+                    authorization_at=(
+                        self._clock.now() if self._clock is not None else evaluation_time
+                    ),
                 )
                 if intent is not None and intent_created:
                     self._repo.append_audit_event(

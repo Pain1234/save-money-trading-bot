@@ -226,12 +226,13 @@ def create_intent_from_evaluation(
     config: PaperTradingConfig,
     cycle_id: UUID | None = None,
     created_at: datetime,
+    authorization_at: datetime,
 ) -> tuple[TradeIntent | None, bool, tuple[str, ...]]:
     authorization = evaluate_final_entry_authorization(
         repo,
         config=config,
         market_data_ready=entry_gates.market_data_ready,
-        evaluated_at=created_at,
+        evaluated_at=authorization_at,
     )
     entry_gates = replace(
         entry_gates,
@@ -344,10 +345,14 @@ def process_scheduled_intents_for_open(
                 skipped += 1
                 continue
             processed += 1
+            try:
+                current_market_data_ready = market_data_ready()
+            except Exception:
+                current_market_data_ready = False
             authorization = evaluate_final_entry_authorization(
                 repo,
                 config=config,
-                market_data_ready=market_data_ready(),
+                market_data_ready=current_market_data_ready,
                 evaluated_at=process_time,
             )
             if not authorization.allowed:
