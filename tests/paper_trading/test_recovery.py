@@ -63,6 +63,30 @@ def test_multiple_open_positions_is_fatal() -> None:
     assert fatal[0].severity == IssueSeverity.FATAL
 
 
+def test_independent_accounting_mismatch_is_manual_recovery_issue() -> None:
+    repo = MagicMock()
+    repo.get_wallet.return_value = MagicMock(
+        cash=Decimal("100001"),
+        total_fees=Decimal("0"),
+        total_slippage=Decimal("0"),
+        total_realized_pnl=Decimal("0"),
+    )
+    repo.list_positions.return_value = ()
+    repo.get_open_positions.return_value = ()
+    repo.list_all_fills.return_value = ()
+
+    issue = RecoveryService(repo, _config()).run_accounting_verification()
+
+    assert issue is not None
+    assert issue.code == "accounting_reconciliation_mismatch"
+    assert issue.severity == IssueSeverity.MANUAL
+    assert issue.details == {
+        "mismatches": (
+            "wallet cash mismatch: db=100001 reconstructed=100000",
+        )
+    }
+
+
 def test_open_order_with_fill_auto_repair() -> None:
     repo = MagicMock()
     repo.get_running_scheduler_runs.return_value = ()

@@ -13,6 +13,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 
+from paper_trading.accounting_verification import verify_accounting_independent
 from paper_trading.clock import Clock, SystemClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import PaperOrderRow, PaperPositionRow
@@ -91,6 +92,21 @@ class RecoveryService:
         self._check_stop_invariants(issues)
         self._check_duplicate_fills(issues)
         return issues
+
+    def run_accounting_verification(self) -> ConsistencyIssue | None:
+        """Run the independent fill-based wallet reconstruction."""
+        mismatches = verify_accounting_independent(
+            self._repo,
+            initial_cash=self._config.paper_initial_equity,
+        )
+        if not mismatches:
+            return None
+        return ConsistencyIssue(
+            code="accounting_reconciliation_mismatch",
+            severity=IssueSeverity.MANUAL,
+            message="Independent accounting reconciliation failed",
+            details={"mismatches": tuple(mismatches)},
+        )
 
     def apply_auto_repairs(self, issues: list[ConsistencyIssue]) -> list[str]:
         repairs: list[str] = []
@@ -195,6 +211,10 @@ class RecoveryService:
                 issues = self.run_consistency_checks()
                 repairs.extend(self.apply_auto_repairs(issues))
                 issues = self.run_consistency_checks()
+                accounting_issue = self.run_accounting_verification()
+                if accounting_issue is not None:
+                    issues.append(accounting_issue)
+                    self._record_accounting_incident(accounting_issue)
                 fatal = [i for i in issues if i.severity == IssueSeverity.FATAL]
                 manual = [i for i in issues if i.severity == IssueSeverity.MANUAL]
                 if fatal:
@@ -223,6 +243,10 @@ class RecoveryService:
             issues = self.run_consistency_checks()
             repairs.extend(self.apply_auto_repairs(issues))
             issues = self.run_consistency_checks()
+            accounting_issue = self.run_accounting_verification()
+            if accounting_issue is not None:
+                issues.append(accounting_issue)
+                self._record_accounting_incident(accounting_issue)
 
             fatal = [i for i in issues if i.severity == IssueSeverity.FATAL]
             manual = [i for i in issues if i.severity == IssueSeverity.MANUAL]
@@ -281,6 +305,20 @@ class RecoveryService:
                 aggregate_type="runtime_state",
                 aggregate_id=runtime.instance_id,
                 payload_json={"code": code},
+                created_at=self._clock.now(),
+            )
+
+    def _record_accounting_incident(self, issue: ConsistencyIssue) -> None:
+        runtime = self._runtime.get_state()
+        with transaction_scope(self._repo.session):
+            self._repo.append_audit_event(
+                event_type="ACCOUNTING_RECONCILIATION_INCIDENT",
+                aggregate_type="runtime_state",
+                aggregate_id=runtime.instance_id,
+                payload_json={
+                    "code": issue.code,
+                    "mismatches": list(issue.details["mismatches"]),
+                },
                 created_at=self._clock.now(),
             )
 

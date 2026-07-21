@@ -72,7 +72,11 @@ sync when fill + position + wallet chain is fully consistent.
 duplicate deterministic fills, invalid stop monotonicity, fill without order, position without
 entry fill.
 
-Recovery requires advisory lock; blocks new entries while active.
+Recovery requires advisory lock; blocks new entries while active. Before any transition to
+`READY`, recovery runs `verify_accounting_independent()` against canonical fills, positions,
+and the configured initial equity. A mismatch leaves the runtime `DEGRADED`, keeps entry
+readiness false, and emits an `ACCOUNTING_RECONCILIATION_INCIDENT` audit event for operator
+investigation.
 
 ## API
 
