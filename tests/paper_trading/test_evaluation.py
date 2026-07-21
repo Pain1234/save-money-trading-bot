@@ -6,6 +6,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+from paper_trading.clock import FixedClock
 from paper_trading.config import PaperTradingConfig
 from paper_trading.db.orm import StrategyEvaluationRow, TradeIntentRow
 from paper_trading.enums import RuntimeStatus, SignalType, TradeIntentStatus
@@ -85,11 +86,13 @@ def _setup_repo_with_storage() -> MagicMock:
     repo.session.begin.return_value.__exit__ = MagicMock(return_value=False)
     repo.append_audit_event.return_value = MagicMock()
     repo.get_open_positions.return_value = ()
-    repo.get_runtime_state.return_value = RuntimeState(
+    runtime = RuntimeState(
         instance_id=uuid4(),
         status=RuntimeStatus.READY,
         heartbeat_at=utc_dt(2024, 1, 31, 0, 0, 4),
     )
+    repo.get_runtime_state.return_value = runtime
+    repo.get_runtime_state_for_update.return_value = runtime
     return repo
 
 
@@ -99,7 +102,7 @@ def test_same_evaluation_twice_one_record() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_no_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine)
+    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
     params = StrategyParameters()
     r1 = service.evaluate_symbol_for_daily_close(
         symbol="BTC",
@@ -128,7 +131,7 @@ def test_no_signal_evaluation_no_intent() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_no_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine)
+    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
     result = service.evaluate_symbol_for_daily_close(
         symbol="BTC",
         evaluation_time=eval_time,
@@ -147,7 +150,7 @@ def test_breakout_creates_scheduled_intent() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_long_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine)
+    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
     result = service.evaluate_symbol_for_daily_close(
         symbol="BTC",
         evaluation_time=eval_time,
@@ -167,12 +170,17 @@ def test_persisted_pause_blocks_intent_at_final_authorization() -> None:
     repo = _setup_repo_with_storage()
     runtime = repo.get_runtime_state.return_value
     repo.get_runtime_state.return_value = runtime.model_copy(update={"paused": True})
+    repo.get_runtime_state_for_update.return_value = repo.get_runtime_state.return_value
     engine = MagicMock()
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_long_entry_eval("BTC", eval_time)
 
-    result = PaperEvaluationService(repo, engine).evaluate_symbol_for_daily_close(
+    result = PaperEvaluationService(
+        repo,
+        engine,
+        clock=FixedClock(eval_time),
+    ).evaluate_symbol_for_daily_close(
         symbol="BTC",
         evaluation_time=eval_time,
         bundle=bundle,
@@ -192,7 +200,7 @@ def test_same_evaluation_twice_one_intent() -> None:
     bundle = make_strategy_bundle()
     eval_time = bundle.evaluation_time
     engine.evaluate.return_value = make_long_entry_eval("BTC", eval_time)
-    service = PaperEvaluationService(repo, engine)
+    service = PaperEvaluationService(repo, engine, clock=FixedClock(eval_time))
     bundle = make_strategy_bundle()
     params = StrategyParameters()
     gates = _open_gates()

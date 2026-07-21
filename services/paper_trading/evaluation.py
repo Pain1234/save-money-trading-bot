@@ -11,7 +11,7 @@ from market_data.models import StrategyDataBundle
 from strategy_engine.engine import StrategyEngine
 from strategy_engine.models import SignalIntentKind, StrategyParameters
 
-from paper_trading.clock import Clock
+from paper_trading.clock import Clock, SystemClock
 from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import StrategyEvaluationRow
 from paper_trading.db.transaction import transaction_scope
@@ -48,7 +48,7 @@ class PaperEvaluationService:
     ) -> None:
         self._repo = repository
         self._strategy = strategy_engine or StrategyEngine()
-        self._clock = clock
+        self._clock = clock or SystemClock()
 
     def evaluate_symbol_for_daily_close(
         self,
@@ -145,9 +145,7 @@ class PaperEvaluationService:
                     config=config,
                     cycle_id=cycle_id,
                     created_at=created_at,
-                    authorization_at=(
-                        self._clock.now() if self._clock is not None else evaluation_time
-                    ),
+                    authorization_at=self._clock.now(),
                 )
                 if intent is not None and intent_created:
                     self._repo.append_audit_event(

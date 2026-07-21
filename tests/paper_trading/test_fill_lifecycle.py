@@ -94,6 +94,7 @@ def test_fill_idempotent_via_service() -> None:
     repo = MagicMock()
     intent = _intent()
     repo.get_runtime_state.return_value = _ready_runtime()
+    repo.get_runtime_state_for_update.return_value = _ready_runtime()
     repo.get_scheduled_intents_for_symbol.return_value = (intent,)
     repo.update_intent_status.return_value = intent
     repo.session.begin.return_value.__enter__ = MagicMock(return_value=None)
@@ -118,12 +119,14 @@ def test_fill_idempotent_via_service() -> None:
     )
     assert results[0].processed == 1
     assert fill_service.execute_scheduled_paper_fill.call_count == 1
+    repo.get_runtime_state_for_update.assert_called_once_with()
 
 
 def test_risk_rejection_no_position() -> None:
     repo = MagicMock()
     intent = _intent()
     repo.get_runtime_state.return_value = _ready_runtime()
+    repo.get_runtime_state_for_update.return_value = _ready_runtime()
     repo.get_scheduled_intents_for_symbol.return_value = (intent,)
     repo.update_intent_status.return_value = intent
     repo.session.begin.return_value.__enter__ = MagicMock(return_value=None)
@@ -167,6 +170,7 @@ def test_pending_fill_is_cancelled_when_final_entry_authorization_fails(
         heartbeat_at=utc_dt(2024, 1, 16),
     ).model_copy(update=runtime_update)
     repo.get_runtime_state.return_value = runtime
+    repo.get_runtime_state_for_update.return_value = runtime
     repo.get_scheduled_intents_for_symbol.return_value = (intent,)
     repo.update_intent_status.return_value = intent.model_copy(
         update={"status": TradeIntentStatus.CANCELLED}
@@ -188,6 +192,7 @@ def test_pending_fill_is_cancelled_when_final_entry_authorization_fails(
     assert results[0].processed == 1
     assert results[0].skipped == 1
     fill_service.execute_scheduled_paper_fill.assert_not_called()
+    repo.get_runtime_state_for_update.assert_called_once_with()
     assert repo.update_intent_status.call_args.args == (
         intent.intent_id,
         TradeIntentStatus.CANCELLED.value,

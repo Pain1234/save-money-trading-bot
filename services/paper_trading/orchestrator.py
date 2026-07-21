@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
@@ -33,9 +34,11 @@ class PaperTradingOrchestrator:
         config: PaperTradingConfig,
         *,
         clock: Clock | None = None,
+        market_data_ready: Callable[[], bool] | None = None,
     ) -> None:
         self._repo = repository
         self._config = config
+        self._market_data_ready = market_data_ready or (lambda: False)
         self._evaluation = PaperEvaluationService(repository, clock=clock)
         self._fills = PaperFillService(repository)
         self._stops = StopLifecycleService(repository, config=config)
@@ -46,6 +49,7 @@ class PaperTradingOrchestrator:
             fill_service=self._fills,
             stop_service=self._stops,
             clock=clock,
+            market_data_ready=self._market_data_ready,
         )
 
     @property
@@ -104,6 +108,6 @@ class PaperTradingOrchestrator:
             fill_delay_seconds=self._config.fill_delay_seconds,
             symbol_contexts=symbol_contexts,
             config=self._config,
-            market_data_ready=self._scheduler._market_data_ready,  # noqa: SLF001
+            market_data_ready=self._market_data_ready,
             cycle_id=cycle_id,
         )

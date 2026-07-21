@@ -25,7 +25,11 @@ from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import TradeIntentRow
 from paper_trading.db.transaction import transaction_scope
 from paper_trading.enums import PaperSide, RuntimeStatus, TradeIntentStatus
-from paper_trading.execution import EntryExecutionRejected, PaperFillService
+from paper_trading.execution import (
+    EntryExecutionRejected,
+    PaperFillService,
+    TransactionalFillResult,
+)
 from paper_trading.ids import entry_type_to_signal_type, trade_intent_key
 from paper_trading.models import (
     PaperExecutionConfig,
@@ -73,13 +77,18 @@ def evaluate_final_entry_authorization(
     config: PaperTradingConfig,
     market_data_ready: bool,
     evaluated_at: datetime,
+    lock_runtime: bool = False,
 ) -> EntryAuthorization:
     """Read current persisted controls and readiness immediately before new risk."""
     if evaluated_at.tzinfo is None:
         raise ValueError("evaluated_at must be timezone-aware UTC")
 
     repo.session.expire_all()
-    runtime = repo.get_runtime_state()
+    runtime = (
+        repo.get_runtime_state_for_update()
+        if lock_runtime
+        else repo.get_runtime_state()
+    )
     if runtime is None:
         return EntryAuthorization(False, ("runtime_state_missing",))
 
@@ -233,6 +242,7 @@ def create_intent_from_evaluation(
         config=config,
         market_data_ready=entry_gates.market_data_ready,
         evaluated_at=authorization_at,
+        lock_runtime=True,
     )
     entry_gates = replace(
         entry_gates,
@@ -349,52 +359,58 @@ def process_scheduled_intents_for_open(
                 current_market_data_ready = market_data_ready()
             except Exception:
                 current_market_data_ready = False
-            authorization = evaluate_final_entry_authorization(
-                repo,
-                config=config,
-                market_data_ready=current_market_data_ready,
-                evaluated_at=process_time,
-            )
-            if not authorization.allowed:
-                validate_intent_transition(intent.status, TradeIntentStatus.CANCELLED)
-                with transaction_scope(repo.session):
+            outcome: TransactionalFillResult | EntryExecutionRejected | None = None
+            with transaction_scope(repo.session):
+                authorization = evaluate_final_entry_authorization(
+                    repo,
+                    config=config,
+                    market_data_ready=current_market_data_ready,
+                    evaluated_at=process_time,
+                    lock_runtime=True,
+                )
+                if not authorization.allowed:
+                    validate_intent_transition(intent.status, TradeIntentStatus.CANCELLED)
                     repo.update_intent_status(
                         intent.intent_id,
                         TradeIntentStatus.CANCELLED.value,
                         rejection_reason={"reason_codes": list(authorization.reasons)},
                         updated_at=process_time,
                     )
+                else:
+                    validate_intent_transition(
+                        intent.status,
+                        TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE,
+                    )
+                    repo.update_intent_status(
+                        intent.intent_id,
+                        TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE.value,
+                        updated_at=process_time,
+                    )
+                    outcome = fill_service.execute_scheduled_paper_fill(
+                        intent=intent,
+                        atr14=ctx.atr14,
+                        open_ref=ctx.open_ref,
+                        candle_open_time=ctx.candle_open_time,
+                        constraints=ctx.constraints,
+                        strategy_params=ctx.strategy_params,
+                        risk_params=ctx.risk_params,
+                        execution_config=ctx.execution_config,
+                        day_candles=ctx.day_candles,
+                        prior_closes=ctx.prior_closes,
+                        processed_intent_ids=processed_intent_ids,
+                        pending_intents=_pending_intents_for_open_batch(
+                            repo,
+                            candle_open_time=ctx.candle_open_time,
+                            current_symbol=symbol,
+                            symbol_contexts=symbol_contexts,
+                            skip_intent_keys=processed_intent_ids,
+                        ),
+                        cycle_id=cycle_id,
+                    )
+            if not authorization.allowed:
                 skipped += 1
                 continue
-            validate_intent_transition(intent.status, TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE)
-            with transaction_scope(repo.session):
-                repo.update_intent_status(
-                    intent.intent_id,
-                    TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE.value,
-                    updated_at=process_time,
-                )
-
-            outcome = fill_service.execute_scheduled_paper_fill(
-                intent=intent,
-                atr14=ctx.atr14,
-                open_ref=ctx.open_ref,
-                candle_open_time=ctx.candle_open_time,
-                constraints=ctx.constraints,
-                strategy_params=ctx.strategy_params,
-                risk_params=ctx.risk_params,
-                execution_config=ctx.execution_config,
-                day_candles=ctx.day_candles,
-                prior_closes=ctx.prior_closes,
-                processed_intent_ids=processed_intent_ids,
-                pending_intents=_pending_intents_for_open_batch(
-                    repo,
-                    candle_open_time=ctx.candle_open_time,
-                    current_symbol=symbol,
-                    symbol_contexts=symbol_contexts,
-                    skip_intent_keys=processed_intent_ids,
-                ),
-                cycle_id=cycle_id,
-            )
+            assert outcome is not None
             processed_intent_ids = frozenset(
                 processed_intent_ids | {intent.idempotency_key}
             )
