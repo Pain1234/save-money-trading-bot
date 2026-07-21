@@ -171,7 +171,10 @@ Recorded baseline (from repository artifacts, 2026-07):
   venv after `pip install -e ".[dev]"`. Regenerate with
   `py -3.12 scripts/export_requirements_baseline.py` (**Python 3.12 required**,
   matches `deploy/Dockerfile.paper-python`). Local project refs are stripped.
-  Issue #8.
+  Issue #8. **Regenerate whenever `pyproject.toml` dependencies change** — a stale
+  lock plus `--no-deps` omits packages at runtime (Railway API healthcheck outage
+  [#408](https://github.com/Pain1234/save-money-trading-bot/issues/408) when
+  `jsonschema` was missing).
 - **Reproducibility / promotion evidence:** same Git SHA rebuilds are only comparable when
   the baseline lock content and resulting image digest are recorded. Do not treat a
   rebuilt Python image as promotion evidence without matched digest + baseline hash.
