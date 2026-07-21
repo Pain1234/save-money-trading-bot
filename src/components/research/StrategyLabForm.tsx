@@ -9,6 +9,7 @@ import {
 } from "@/components/research/chrome/ResearchPageChrome";
 import { Card } from "@/components/ui/Card";
 import {
+  labDatesFromDatasetTimeRange,
   labDayEndUtc,
   labDayStartUtc,
   validateLabDraft,
@@ -30,6 +31,8 @@ export interface DatasetOption {
   label: string;
   dataset_id: string;
   symbols: string[];
+  /** Published catalog coverage; used by Max (#410). */
+  time_range?: { start: string; end: string } | null;
 }
 
 export interface StrategySchemaPayload {
@@ -105,11 +108,28 @@ export function StrategyLabForm({
   const [submitting, setSubmitting] = useState(false);
 
   const strategy = strategies.find((s) => s.strategy_id === strategyId);
+  const selectedDataset = datasets.find((d) => d.id === datasetId);
+  const maxDates = useMemo(
+    () => labDatesFromDatasetTimeRange(selectedDataset?.time_range),
+    [selectedDataset?.time_range],
+  );
 
   const paramKeys = useMemo(() => {
     const props = schema?.parameters_schema?.properties ?? {};
     return Object.keys(props).filter((k) => k !== "strategy_version");
   }, [schema]);
+
+  function applyMaxTimeRange() {
+    if (!maxDates) return;
+    setStartDate(maxDates.startDate);
+    setEndDate(maxDates.endDate);
+    setFieldErrors((prev) => {
+      if (!prev.time_range) return prev;
+      const next = { ...prev };
+      delete next.time_range;
+      return next;
+    });
+  }
 
   async function onStrategyChange(next: string) {
     setStrategyId(next);
@@ -381,25 +401,46 @@ export function StrategyLabForm({
             )}
           </fieldset>
 
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className={rs.field}>
-              <span className={rs.fieldLabel}>Startdatum</span>
-              <input
-                type="date"
-                className={fieldControl}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </label>
-            <label className={rs.field}>
-              <span className={rs.fieldLabel}>Enddatum</span>
-              <input
-                type="date"
-                className={fieldControl}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </label>
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className={rs.fieldLabel}>Zeitraum</span>
+              <button
+                type="button"
+                className={`${rs.btnSecondary} disabled:cursor-not-allowed disabled:opacity-40`}
+                onClick={applyMaxTimeRange}
+                disabled={!maxDates}
+                title={
+                  maxDates
+                    ? `Dataset-Fenster: ${maxDates.startDate} → ${maxDates.endDate}`
+                    : "Gewähltes Dataset hat keinen veröffentlichten time_range"
+                }
+                data-testid="lab-time-range-max"
+              >
+                Max
+              </button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className={rs.field}>
+                <span className={rs.fieldLabel}>Startdatum</span>
+                <input
+                  type="date"
+                  className={fieldControl}
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="lab-start-date"
+                />
+              </label>
+              <label className={rs.field}>
+                <span className={rs.fieldLabel}>Enddatum</span>
+                <input
+                  type="date"
+                  className={fieldControl}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  data-testid="lab-end-date"
+                />
+              </label>
+            </div>
           </div>
           {fieldErrors.time_range && (
             <span className={rs.fieldError}>{fieldErrors.time_range}</span>

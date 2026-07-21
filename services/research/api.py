@@ -368,15 +368,21 @@ def research_strategy_schema(strategy_id: str) -> dict[str, Any]:
 
 @router.get("/datasets")
 def research_datasets() -> dict[str, Any]:
-    items = [
-        {
+    items = []
+    for e in load_dataset_catalog():
+        item: dict[str, Any] = {
             "id": e.id,
             "label": e.label,
             "dataset_id": e.dataset_id,
             "symbols": list(e.symbols),
+            "time_range": None,
         }
-        for e in load_dataset_catalog()
-    ]
+        if e.time_range_start and e.time_range_end:
+            item["time_range"] = {
+                "start": e.time_range_start,
+                "end": e.time_range_end,
+            }
+        items.append(item)
     return {"items": items, "count": len(items)}
 
 
