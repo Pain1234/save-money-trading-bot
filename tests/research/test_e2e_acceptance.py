@@ -245,7 +245,7 @@ def e2e_client(
     app.dependency_overrides[get_robustness_service] = _robustness
     app.dependency_overrides[get_gate_service] = _gate
     app.dependency_overrides[get_validation_service] = _validation
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
     try:
         yield client
     finally:

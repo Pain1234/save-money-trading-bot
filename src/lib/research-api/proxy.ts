@@ -24,12 +24,19 @@ export async function proxyResearch(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   try {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const writeCredential =
+      method === "POST" ? process.env.RESEARCH_WRITE_API_KEY : undefined;
+    if (method === "POST" && !writeCredential) {
+      throw new Error("RESEARCH_WRITE_API_KEY is required for Research writes");
+    }
     const response = await fetch(`${apiBaseUrl()}${path}`, {
-      method: init?.method ?? "GET",
+      method,
       cache: "no-store",
       headers: {
         Accept: "*/*",
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(writeCredential ? { "X-API-Key": writeCredential } : {}),
       },
       body: init?.body ? JSON.stringify(init.body) : undefined,
       signal: controller.signal,

@@ -38,7 +38,7 @@ def _write_run(
                     "end": "2024-03-01T00:00:00Z",
                 },
                 "starting_capital": "100000",
-                "parameters": {"strategy_id": "trend_v1", "lookback": 20},
+                "parameters": {"strategy_id": "trend_v1", "breakout_lookback": 20},
                 "fee_assumption": {"maker_bps": "1"},
                 "slippage_assumption": {"bps": "2"},
                 "funding_assumption": {"rate": "0"},
@@ -216,7 +216,7 @@ def _client_for(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
         tmp_path
     )
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "research-test-key"})
 
 
 @pytest.fixture

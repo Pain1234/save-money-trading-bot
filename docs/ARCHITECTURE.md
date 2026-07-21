@@ -91,9 +91,9 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Candle aggregation | Multiple intervals; ISO weekly derived from daily (not native `1w` subscription) |
 | Reconnect / degraded mode | Transport reconnect; readiness interaction with paper worker |
 | Backfill | `initial_backfill.py`, repository upserts |
-| Persistence | **In-process only** — `InMemoryCandleRepository` (`repository.py`); lost on worker restart |
+| Persistence | Live runtime still uses in-process candles for the paper worker path; **durable P3 catalog** exists under `services/market_data/` (`postgres_catalog.py`, raw artifacts, manifests) for research/import |
 
-**Persistent state:** No durable candle rows or market-data catalog today. HTTP pagination cursors in `providers/hyperliquid_historical.py` exist only for the duration of a single backfill request (in-process). The PostgreSQL advisory lock (`paper_trading/lock.py`) serializes the **entire paper worker** via `PaperTradingApplication`; it is not a market-data refresh lock and does not live under `services/market_data/`. **P3 gap:** versioned raw artifact storage and normalized catalog per storage ADR.
+**Persistent state:** Versioned raw artifacts and dataset manifests are registered in PostgreSQL (migrations `010_market_data_datasets`+). Live paper worker candle feeds remain in-process (`InMemoryCandleRepository`) unless a production path is explicitly wired to the durable catalog. The PostgreSQL advisory lock (`paper_trading/lock.py`) serializes the **entire paper worker** via `PaperTradingApplication`; it is not a market-data refresh lock and does not live under `services/market_data/`.
 
 **Entrypoints:** No standalone production process. Started inside the paper worker via `PaperTradingApplication._build_market_data_runtime()` (`services/paper_trading/application.py`).
 
@@ -109,7 +109,7 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Recovery consistency | `services/paper_trading/recovery.py` |
 | Symbol constraints | `services/paper_trading/symbol_constraints.py`, `services/trading_constraints/` |
 
-**Current Gap:** Centralized data-quality pipeline with manifests and quarantine (P3).
+**Current Gap:** Quarantine/productization of gap detection and unifying live paper feeds with the durable catalog where required for parity evidence.
 
 ---
 
@@ -118,8 +118,8 @@ Verified against `deploy/scripts/`, `deploy/railway/`, and Python module entrypo
 | Responsibility | Details |
 |----------------|---------|
 | Paper trading domain | Intents, orders, fills, positions, wallet, snapshots, scheduler, audit |
-| Market data | **Not persisted today** — in-memory candles only; Alembic has no candle tables (P3) |
-| Migrations | Alembic `001`–`009` at repository root `migrations/` |
+| Market data | Durable P3 catalog tables for raw datasets / manifests (`010`+); live paper candle path may still be in-memory for the worker runtime |
+| Migrations | Alembic at repository root `migrations/` — includes paper domain (`001`–`009`) and market-data catalog (`010`+) plus later revisions (e.g. soak identity `011` when present) |
 
 **Production URL:** `PAPER_TRADING_DATABASE_URL` (Railway private network).
 
@@ -207,13 +207,16 @@ No Experiment Postgres tables.
 
 | Responsibility | Details |
 |----------------|---------|
-| Lifecycle | `evaluation.py` → `lifecycle.py` → fills |
+| Lifecycle | `evaluation.py` → `lifecycle.py` → **single full fill** (V1) |
 | Scheduler | `scheduler.py`, deterministic jobs |
 | Runtime FSM | `runtime.py`: STARTING → RECOVERING → SYNCING → READY / DEGRADED / FAILED |
 | Single runner | PostgreSQL advisory lock (`lock.py`) |
 | Heartbeat / readiness | `heartbeat.py`, `readiness.py` |
 | API (control) | `api.py` — read + control endpoints for ops |
 | Production runner | `application.py`, `api_runner.py` |
+
+**NOT_IMPLEMENTED (AUD-P2-002 / #390):** partial fills, cancel/replace, and persistent protective
+stop-order objects. Schema/enums alone are scaffolding — do not claim richer execution readiness.
 
 **Production entrypoints (do not change without issue):** see [Production entrypoints](#production-entrypoints) above.
 
@@ -374,7 +377,7 @@ optional isolation — not a P7 runtime deliverable. P4.9 Research Workspace UI
 
 ## Data flows (paper production path)
 
-1. **Market data** ingests candles → in-memory repository (PostgreSQL persistence planned in P3).
+1. **Market data** ingests candles for the live paper worker (in-memory runtime path) while research/import uses the durable P3 PostgreSQL catalog (`010`/`011`).
 2. **Market events** bridge notifies paper **scheduler** on new closed bars.
 3. **Evaluation** runs strategy at daily close boundaries.
 4. **Lifecycle** creates intents; **scheduler** executes scheduled fills (paper model).
@@ -388,7 +391,7 @@ optional isolation — not a P7 runtime deliverable. P4.9 Research Workspace UI
 | Inside V1 paper production | Outside / not implemented |
 |----------------------------|---------------------------|
 | Public market data | Private trading API |
-| Simulated fills | Exchange order placement |
+| Simulated **full** fills | Exchange order placement; partial fills; cancel/replace; persistent protective orders ([#390](https://github.com/Pain1234/save-money-trading-bot/issues/390)) |
 | Single worker + advisory lock | Multi-region active-active |
 | Railway Postgres | **Current Gap:** documented DR |
 
@@ -406,6 +409,7 @@ See `docs/RISK_REGISTER.md`. Highest priority: execution/accounting integrity (S
 |------|--------|-------|
 | 2026-07-13 | Production entrypoints table; migrations `001`–`009`; `trading_constraints` module | #3 |
 | 2026-07-14 | CI workflow `ci.yml`; branch migration plan doc (#52); baseline tag criteria met | #53, #10, #52 |
+| 2026-07-21 | Inventory: durable market-data catalog migrations `010`/`011`; clarify live vs catalog paths (AUD-P2-001) | #389 |
 
 ## Document maintenance
 
