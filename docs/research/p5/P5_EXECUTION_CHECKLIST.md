@@ -1,12 +1,13 @@
 # P5 Execution Checklist
 
-**Status:** ENTRY GATE IN PROGRESS — candidate freeze prepared; human signature required before OOS.
+**Status:** AUDIT-BLOCKED BEFORE OOS.
+Current phase authority: [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 
 ## Entry gate (Phase B)
 
 P5 becomes executable only when all are evidenced:
 
-- [ ] P4 complete on current `main` — **Engine + read UI on main; Lab code merged (#242/#243) but UI-Abnahme and #245–#250 still open. Do not treat P4 milestone as closed.**
+- [x] P4 complete on current `main` — #250 and #295 closed; PR #365 merged
 - [x] Material P4 regression tests green (commands + log referenced on P5-00 / `P5_CANDIDATE_FREEZE.md`)
 - [x] ExperimentSpec versioned
 - [x] RunManifest immutable
@@ -17,12 +18,18 @@ P5 becomes executable only when all are evidenced:
 - [x] Compare checks Spec + Run identity
 - [x] Backtester/paper parity documented
 - [x] Strategy V1 uniquely versioned
-- [ ] Candidate parameters frozen (signed freeze manifest) — **prepared; awaiting human**
+- [x] Candidate parameters frozen (`FREEZE APPROVED`, then
+  `FREEZE PIN REFRESHED` on [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196))
 - [x] No open critical P4 defect that can falsify P5 (re-check at sign-off)
 - [x] Public/private storage defined (#181 / PR #222; private repo seeded)
 - [x] Final OOS dataset still unopened
 
-If any item fails: remain PLANNING ONLY; link blocking issue; do not start experiments; do not open OOS.
+If a completed entry item is invalidated: halt, record the blocker, and do not
+open OOS. Audit [#371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
+[PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372)
+currently records `BLOCK_P5`; that hard stop must be independently reverified
+and explicitly lifted before any further P5 execution. The #204 gates below
+remain independently required.
 
 ## Pre-OOS freezes (required before P5-08)
 
@@ -33,9 +40,10 @@ Canonical live checklist: [`P5_PRE_OOS_GATE.md`](P5_PRE_OOS_GATE.md).
 - [x] Dataset partitions locked
 - [x] Benchmarks versioned
 - [x] Metrics set fixed
-- [x] Cost-stress plan fixed + #252 executed (sealed)
-- [x] Parameter-stability plan fixed + #253 executed (sealed)
-- [x] Bootstrap/MC plan fixed + #254 executed (sealed)
+- [ ] #251 Walk-forward receipt present but pending requalification
+- [ ] Cost-stress plan fixed + #252 receipt present but pending requalification
+- [ ] Parameter-stability plan fixed + #253 receipt present but pending requalification
+- [ ] Bootstrap/MC plan fixed + #254 receipt present but pending requalification
 - [ ] Sample-sufficiency rules confirmed for holdout window at open
   (90d calendar: **NOT MET** as of 2026-07-19; clock `2026-07-19T12:54:01Z`)
 - [x] Decision rules frozen

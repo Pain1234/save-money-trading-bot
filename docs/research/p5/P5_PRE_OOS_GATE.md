@@ -1,6 +1,6 @@
 # P5 Pre-OOS Gate Checklist (#204 blocker)
 
-**Status:** DOCS MERGED — still blocked on human approval + calendar sufficiency
+**Status:** AUDIT-BLOCKED — human approval and calendar sufficiency also pending
 **Holdout opened?** `NO` / `SEALED`
 **Do not run #204** until every required box below is checked **and** a human
 comments `PRE-OOS APPROVED` on [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204)
@@ -16,17 +16,18 @@ and does **not** decide `ACCEPT_FOR_P6` / `REJECT` / `INCONCLUSIVE` (#205).
 
 | Item | State | Evidence |
 |------|-------|----------|
+| Audit `BLOCK_P5` lifted | **NOT MET** | [#371](https://github.com/Pain1234/save-money-trading-bot/issues/371) / [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372) |
 | #363 sealed symbol constraints | **Done** | PR #366 @ `aa0e232…` |
 | #196 freeze pin refreshed | **Done** | `FREEZE PIN REFRESHED` 2026-07-19T15:47:02Z |
 | #197 partitions locked | **Done** | `PARTITIONS LOCKED` |
 | #198 protocol + decision rules frozen | **Done** | `PROTOCOL FROZEN` / `DECISION RULES FROZEN` |
 | #199 benchmarks / regimes approved | **Done** | `BENCHMARKS AND REGIMES APPROVED` |
 | #294 scorecard/policy bind | **Done** | `SCORECARD POLICY BIND FROZEN` |
-| #251 Walk-Forward complete + reviewed | **Done** | private PR #2; Phase-3 cross-check |
-| #252 Cost/Funding stress complete + reviewed | **Done** | private PR #3; Phase-3 cross-check |
-| #253 Parameter stability complete + reviewed | **Done** | private PR #4; Phase-3 cross-check |
-| #254 Bootstrap/MC complete + reviewed | **Done** | private PR #5; Phase-3 cross-check |
-| No open technical invalidations | **Clear** | Phase-3: 130/0 integrity checks |
+| #251 Walk-Forward receipt | **PENDING REQUALIFICATION** | execution receipt exists; entry/audit blockers remain |
+| #252 Cost/Funding stress receipt | **PENDING REQUALIFICATION** | execution receipt exists; entry/audit blockers remain |
+| #253 Parameter stability receipt | **PENDING REQUALIFICATION** | execution receipt exists; entry/audit blockers remain |
+| #254 Bootstrap/MC receipt | **PENDING REQUALIFICATION** | execution receipt exists; entry/audit blockers remain |
+| No open technical invalidations | **NOT MET** | audit `BLOCK_P5` remains active |
 | No unexplained config mutation | **Clear** | shared base + pins across packs |
 | Private artifacts sealed | **Done** | private repo `main` after PR #5 |
 | Holdout still unopened | **SEALED** | `P5_EXECUTION_STATUS.md` / private status |
