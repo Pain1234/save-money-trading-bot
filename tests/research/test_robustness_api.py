@@ -97,7 +97,7 @@ def robustness_client(
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
     app.dependency_overrides[get_robustness_service] = _robustness
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
 
     created = client.post("/api/v1/research/experiments", json=payload).json()
     base_experiment_id = created["experiment_id"]

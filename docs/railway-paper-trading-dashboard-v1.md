@@ -164,8 +164,9 @@ Do not enable live soak variables in production.
 | `PAPER_API_HOST` | Recommended | `0.0.0.0` |
 | `PAPER_API_PORT` | Recommended | `8080` |
 | `HYPERLIQUID_NETWORK` | Recommended | `testnet` |
+| `RESEARCH_WRITE_API_KEY` | Yes, when Research writes are available | random service credential shared only with the dashboard |
 
-No trading secrets, wallet keys, or control API keys.
+No trading secrets, wallet keys, or paper control API keys.
 
 ### Dashboard
 
@@ -175,6 +176,7 @@ No trading secrets, wallet keys, or control API keys.
 | `AUTH_USERNAME` | Yes | single dashboard user |
 | `AUTH_PASSWORD_HASH` | Yes | bcrypt hash, not plaintext |
 | `SESSION_SECRET` | Yes | random string, ≥ 32 chars |
+| `RESEARCH_WRITE_API_KEY` | Yes, when Research writes are available | same service credential as the API |
 | `NODE_ENV` | Yes | `production` |
 
 Optional public URL for redirects/metadata:
@@ -224,6 +226,19 @@ RESEARCH_DATASET_CATALOG_PATH=/data/research/catalog.json
 
 Never set `NEXT_PUBLIC_PRIVATE_PAPER_API_URL` or expose database URLs to the
 browser bundle.
+
+### Research write-plane authentication
+
+All `POST /api/v1/research/*` mutation routes require the backend-only
+`RESEARCH_WRITE_API_KEY` in the `X-API-Key` header. The API returns `403` for a
+missing or invalid credential before invoking a mutation service, and `503`
+when the API service itself has no key configured. Research `GET` routes remain
+read-only and do not require this credential.
+
+The authenticated dashboard BFF injects `X-API-Key` only when forwarding a
+Research `POST`; browser code and `NEXT_PUBLIC_*` variables must never receive
+the key. Configure the same random value on the API and dashboard services and
+rotate both together.
 
 ## Authentication
 
