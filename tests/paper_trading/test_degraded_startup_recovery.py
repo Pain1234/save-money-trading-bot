@@ -123,8 +123,13 @@ def test_recover_from_degraded_ready_path_runs_migration_and_checks() -> None:
     with patch.object(service, "_migration_at_head", return_value=True) as migration:
         with patch.object(service, "run_consistency_checks", return_value=[]) as checks:
             with patch.object(service, "apply_auto_repairs", return_value=[]) as repairs:
-                with patch.object(service, "_capture_recovery_snapshot") as snapshot:
-                    result = service.recover_on_startup(lock, market_data_ready=True)
+                with patch.object(
+                    service, "run_accounting_verification", return_value=None
+                ):
+                    with patch.object(service, "_capture_recovery_snapshot") as snapshot:
+                        result = service.recover_on_startup(
+                            lock, market_data_ready=True
+                        )
 
     migration.assert_called_once()
     assert checks.call_count == 2

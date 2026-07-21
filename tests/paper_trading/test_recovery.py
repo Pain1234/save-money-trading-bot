@@ -70,10 +70,12 @@ def test_independent_accounting_mismatch_is_manual_recovery_issue() -> None:
         total_fees=Decimal("0"),
         total_slippage=Decimal("0"),
         total_realized_pnl=Decimal("0"),
+        total_funding=Decimal("0"),
     )
     repo.list_positions.return_value = ()
     repo.get_open_positions.return_value = ()
     repo.list_all_fills.return_value = ()
+    repo.list_funding_events.return_value = ()
 
     issue = RecoveryService(repo, _config()).run_accounting_verification()
 
