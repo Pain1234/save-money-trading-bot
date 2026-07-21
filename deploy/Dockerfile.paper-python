@@ -17,15 +17,19 @@ WORKDIR /app
 ARG RAILWAY_GIT_COMMIT_SHA=
 ENV RAILWAY_GIT_COMMIT_SHA=${RAILWAY_GIT_COMMIT_SHA}
 
-COPY pyproject.toml alembic.ini ./
+COPY pyproject.toml alembic.ini requirements-baseline.txt ./
 COPY migrations ./migrations
 COPY services ./services
 COPY scripts ./scripts
 COPY examples ./examples
 COPY deploy/scripts ./deploy/scripts
 
+# Install transitive PyPI pins first, then the local package without resolving
+# lower-bound deps again (AUD-P1-014 / #377). Same Git SHA + same baseline file
+# ⇒ same executable dependency set for promotion evidence.
 RUN pip install --upgrade pip \
-    && pip install -e ".[api]"
+    && pip install -r requirements-baseline.txt \
+    && pip install -e ".[api]" --no-deps
 
 RUN chmod +x deploy/scripts/*.sh \
     && chown -R paper:paper /app
