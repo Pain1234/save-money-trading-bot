@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from research.artifact_content import ArtifactContentError
@@ -24,6 +26,17 @@ from research.write_service import (
 )
 
 router = APIRouter(prefix="/api/v1/research", tags=["research"])
+
+
+def verify_research_write_api_key(
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> None:
+    """Authenticate Research mutations with a backend-only shared secret."""
+    expected = os.environ.get("RESEARCH_WRITE_API_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="research write api key not configured")
+    if not secrets.compare_digest(x_api_key or "", expected):
+        raise HTTPException(status_code=403, detail="invalid api key")
 
 
 def get_research_service() -> ResearchReadService:
@@ -367,7 +380,7 @@ def research_datasets() -> dict[str, Any]:
     return {"items": items, "count": len(items)}
 
 
-@router.post("/experiments")
+@router.post("/experiments", dependencies=[Depends(verify_research_write_api_key)])
 def research_create_experiment(
     payload: dict[str, Any],
     write_svc: ResearchWriteSvc,
@@ -381,7 +394,10 @@ def research_create_experiment(
         ) from exc
 
 
-@router.post("/experiments/{experiment_id}/start")
+@router.post(
+    "/experiments/{experiment_id}/start",
+    dependencies=[Depends(verify_research_write_api_key)],
+)
 def research_start_experiment(
     experiment_id: str,
     write_svc: ResearchWriteSvc,
@@ -422,7 +438,7 @@ def research_list_robustness_jobs(
     return {"items": items, "count": len(items)}
 
 
-@router.post("/robustness")
+@router.post("/robustness", dependencies=[Depends(verify_research_write_api_key)])
 def research_create_robustness_job(
     payload: dict[str, Any],
     svc: RobustnessSvc,
@@ -436,7 +452,10 @@ def research_create_robustness_job(
         ) from exc
 
 
-@router.post("/robustness/{robustness_id}/start")
+@router.post(
+    "/robustness/{robustness_id}/start",
+    dependencies=[Depends(verify_research_write_api_key)],
+)
 def research_start_robustness_job(
     robustness_id: str,
     svc: RobustnessSvc,
@@ -508,7 +527,7 @@ def research_list_gates(
     return {"items": items, "count": len(items)}
 
 
-@router.post("/gates/evaluate")
+@router.post("/gates/evaluate", dependencies=[Depends(verify_research_write_api_key)])
 def research_evaluate_gate(
     payload: dict[str, Any],
     svc: GateSvc,
@@ -545,7 +564,10 @@ def research_gate_detail(
         ) from exc
 
 
-@router.post("/gates/{gate_run_id}/invalidate")
+@router.post(
+    "/gates/{gate_run_id}/invalidate",
+    dependencies=[Depends(verify_research_write_api_key)],
+)
 def research_invalidate_gate(
     gate_run_id: str,
     payload: dict[str, Any],
@@ -587,7 +609,10 @@ def research_list_scorecards(
     return {"items": items, "count": len(items)}
 
 
-@router.post("/scorecards/evaluate")
+@router.post(
+    "/scorecards/evaluate",
+    dependencies=[Depends(verify_research_write_api_key)],
+)
 def research_evaluate_scorecard(
     payload: dict[str, Any],
     svc: ScorecardSvc,
@@ -693,7 +718,10 @@ def research_scorecard_detail(
         ) from exc
 
 
-@router.post("/scorecards/{scorecard_id}/invalidate")
+@router.post(
+    "/scorecards/{scorecard_id}/invalidate",
+    dependencies=[Depends(verify_research_write_api_key)],
+)
 def research_invalidate_scorecard(
     scorecard_id: str,
     payload: dict[str, Any],
@@ -723,7 +751,7 @@ def research_list_validation_studies(
     return {"items": items, "count": len(items)}
 
 
-@router.post("/validation")
+@router.post("/validation", dependencies=[Depends(verify_research_write_api_key)])
 def research_create_validation_study(
     payload: dict[str, Any],
     svc: ValidationSvc,
@@ -766,7 +794,10 @@ def research_validation_study_detail(
         ) from exc
 
 
-@router.post("/validation/{study_id}/decision")
+@router.post(
+    "/validation/{study_id}/decision",
+    dependencies=[Depends(verify_research_write_api_key)],
+)
 def research_decide_validation_study(
     study_id: str,
     payload: dict[str, Any],

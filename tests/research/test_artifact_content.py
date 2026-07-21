@@ -39,7 +39,7 @@ def _client_for(root: Path) -> TestClient:
         return ScorecardService(root, repo_root=te._evaluation_image_root(root))
 
     app.dependency_overrides[get_scorecard_service] = _scorecard
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "research-test-key"})
 
 
 def _evaluate(root: Path, run_id: str) -> str:

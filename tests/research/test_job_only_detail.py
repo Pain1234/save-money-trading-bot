@@ -62,7 +62,7 @@ def test_failed_job_detail_has_full_config_shape(tmp_path: Path) -> None:
 
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
     try:
         resp = client.get(f"/api/v1/research/experiments/{exp_id}")
         assert resp.status_code == 200, resp.text

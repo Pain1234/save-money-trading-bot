@@ -216,7 +216,7 @@ def _client_for(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     app.dependency_overrides[get_research_service] = lambda: ResearchReadService(
         tmp_path
     )
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "research-test-key"})
 
 
 @pytest.fixture

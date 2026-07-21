@@ -831,7 +831,7 @@ def test_matrix_api_evaluate_idempotent_without_dirty_git_bypass(
     app.dependency_overrides[get_scorecard_service] = lambda: ScorecardService(
         tmp_path, repo_root=eval_root
     )
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
     try:
         payload = {
             "strategy_id": "trend_v1",

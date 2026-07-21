@@ -105,7 +105,7 @@ def scorecard_client(
     app.dependency_overrides[get_robustness_service] = _robustness
     app.dependency_overrides[get_gate_service] = _gate
     app.dependency_overrides[get_scorecard_service] = _scorecard
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
 
     created = client.post("/api/v1/research/experiments", json=payload).json()
     base_experiment_id = created["experiment_id"]
