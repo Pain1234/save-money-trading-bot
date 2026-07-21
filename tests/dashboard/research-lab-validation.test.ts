@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   isActiveJobStatus,
+  isoTimestampToLabDate,
+  labDatesFromDatasetTimeRange,
   labDayEndUtc,
   labDayStartUtc,
   validateLabDraft,
@@ -12,6 +14,31 @@ describe("labDayStartUtc / labDayEndUtc", () => {
     expect(labDayStartUtc("2024-01-31")).toBe("2024-01-31T00:00:00.000000Z");
     expect(labDayEndUtc("2024-01-31")).toBe("2024-01-31T23:59:59.000000Z");
     expect(labDayEndUtc("2024-01-31")).not.toContain(".999999");
+  });
+});
+
+describe("labDatesFromDatasetTimeRange (Issue #410)", () => {
+  it("maps catalog ISO bounds to Lab YYYY-MM-DD inputs", () => {
+    expect(isoTimestampToLabDate("2020-08-19T00:00:00+00:00")).toBe(
+      "2020-08-19",
+    );
+    expect(
+      labDatesFromDatasetTimeRange({
+        start: "2020-08-19T00:00:00.000000Z",
+        end: "2025-07-16T23:59:59.000000Z",
+      }),
+    ).toEqual({ startDate: "2020-08-19", endDate: "2025-07-16" });
+  });
+
+  it("returns null when bounds are missing or inverted", () => {
+    expect(labDatesFromDatasetTimeRange(null)).toBeNull();
+    expect(labDatesFromDatasetTimeRange({ start: "2024-01-01" })).toBeNull();
+    expect(
+      labDatesFromDatasetTimeRange({
+        start: "2024-02-01T00:00:00Z",
+        end: "2024-01-01T00:00:00Z",
+      }),
+    ).toBeNull();
   });
 });
 

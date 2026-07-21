@@ -22,6 +22,31 @@ export function labDayEndUtc(dateYmd: string): string {
   return `${dateYmd}T23:59:59.000000Z`;
 }
 
+/** Extract YYYY-MM-DD from a catalog/manifest ISO timestamp (Issue #410). */
+export function isoTimestampToLabDate(iso: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(iso.trim());
+  return match?.[1] ?? null;
+}
+
+export interface DatasetTimeRangeBounds {
+  start?: string | null;
+  end?: string | null;
+}
+
+/**
+ * Map catalog ``time_range`` to Lab date inputs. Returns null when bounds are
+ * missing or invalid (Max button stays disabled).
+ */
+export function labDatesFromDatasetTimeRange(
+  timeRange: DatasetTimeRangeBounds | null | undefined,
+): { startDate: string; endDate: string } | null {
+  if (!timeRange?.start || !timeRange?.end) return null;
+  const startDate = isoTimestampToLabDate(timeRange.start);
+  const endDate = isoTimestampToLabDate(timeRange.end);
+  if (!startDate || !endDate || startDate > endDate) return null;
+  return { startDate, endDate };
+}
+
 export function validateLabDraft(input: LabDraftInput): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!input.name.trim()) errors.name = "Experimentname ist erforderlich";

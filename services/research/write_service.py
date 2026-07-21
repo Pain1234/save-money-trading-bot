@@ -57,6 +57,9 @@ class DatasetCatalogEntry:
     manifest_path: str
     bundle_path: str
     symbols: tuple[str, ...]
+    # Optional published coverage from catalog JSON (Issue #410).
+    time_range_start: str | None = None
+    time_range_end: str | None = None
 
 
 def _mark_unrunnable(job: ResearchJob, reason: str) -> None:
@@ -120,6 +123,16 @@ def load_dataset_catalog() -> list[DatasetCatalogEntry]:
         if not _SAFE_CATALOG_ID.fullmatch(catalog_id):
             continue
         symbols = tuple(str(s) for s in (row.get("symbols") or []))
+        tr = row.get("time_range")
+        tr_start: str | None = None
+        tr_end: str | None = None
+        if isinstance(tr, dict):
+            raw_start = tr.get("start")
+            raw_end = tr.get("end")
+            if raw_start is not None and str(raw_start).strip():
+                tr_start = str(raw_start).strip()
+            if raw_end is not None and str(raw_end).strip():
+                tr_end = str(raw_end).strip()
         entries.append(
             DatasetCatalogEntry(
                 id=catalog_id,
@@ -129,6 +142,8 @@ def load_dataset_catalog() -> list[DatasetCatalogEntry]:
                 manifest_path=str(row["manifest_path"]),
                 bundle_path=str(row["bundle_path"]),
                 symbols=symbols,
+                time_range_start=tr_start,
+                time_range_end=tr_end,
             )
         )
     return entries

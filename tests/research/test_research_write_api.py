@@ -355,6 +355,70 @@ def test_load_dataset_catalog_falls_back_to_local_lab(
         "examples/research/local_lab/bundle.json"
     )
     assert (REPO_ROOT / Path(local.bundle_path)).is_file()
+    assert local.time_range_start is not None
+    assert local.time_range_end is not None
+    assert local.time_range_start.startswith("2023-12-01")
+    assert local.time_range_end.startswith("2024-01-31")
+
+
+def test_research_datasets_exposes_catalog_time_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #410: Lab Max button reads published dataset coverage from API."""
+    catalog = [
+        {
+            "id": "fixture-btc",
+            "label": "BTC fixture",
+            "dataset_id": "ds-1",
+            "content_hash": "a" * 64,
+            "manifest_path": str(tmp_path / "manifest.json"),
+            "bundle_path": str(tmp_path / "bundle.json"),
+            "symbols": ["BTC"],
+            "time_range": {
+                "start": "2020-08-19T00:00:00.000000Z",
+                "end": "2025-07-16T23:59:59.000000Z",
+            },
+        },
+        {
+            "id": "no-range",
+            "label": "Missing range",
+            "dataset_id": "ds-2",
+            "content_hash": "b" * 64,
+            "manifest_path": str(tmp_path / "m2.json"),
+            "bundle_path": str(tmp_path / "b2.json"),
+            "symbols": ["ETH"],
+        },
+    ]
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    monkeypatch.setenv("RESEARCH_DATASET_CATALOG_PATH", str(catalog_path))
+    monkeypatch.setenv("RESEARCH_ARTIFACTS_ROOT", str(tmp_path))
+    monkeypatch.setenv("RESEARCH_REPO_ROOT", str(REPO_ROOT))
+
+    def _read() -> ResearchReadService:
+        return ResearchReadService(tmp_path)
+
+    def _write() -> ResearchWriteService:
+        return ResearchWriteService(
+            tmp_path, repo_root=REPO_ROOT, allow_dirty_git=True
+        )
+
+    app.dependency_overrides[get_research_service] = _read
+    app.dependency_overrides[get_research_write_service] = _write
+    try:
+        with TestClient(app) as client:
+            resp = client.get("/api/v1/research/datasets")
+            assert resp.status_code == 200
+            body = resp.json()
+            by_id = {i["id"]: i for i in body["items"]}
+            assert by_id["fixture-btc"]["time_range"] == {
+                "start": "2020-08-19T00:00:00.000000Z",
+                "end": "2025-07-16T23:59:59.000000Z",
+            }
+            assert by_id["no-range"]["time_range"] is None
+    finally:
+        app.dependency_overrides.pop(get_research_service, None)
+        app.dependency_overrides.pop(get_research_write_service, None)
 
 
 def test_load_dataset_catalog_empty_without_fallback(
