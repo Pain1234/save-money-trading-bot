@@ -4,7 +4,9 @@
 requalification; #204 not run; #205 undecided. Audit
 [#371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
 [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372)
-(`AUD-P2-008`) blocks further P5 execution until explicitly lifted.
+records the overall `BLOCK_P5` decision until its full exit criteria are met.
+`AUD-P2-008` is the status-consistency finding addressed here; fixing it alone
+does not lift that decision.
 The single authoritative public status narrative is
 [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md). Contract and checklist status
 lines elsewhere in this directory are subordinate to that ledger.
@@ -112,9 +114,9 @@ private economic metric belongs in this folder or in public GitHub.**
 
 ## Entry gate (summary)
 
-The candidate freeze is recorded complete and #251–#254 execution receipts
-exist, but the broader entry checklist is not complete and the receipts are not
-qualified #204 evidence. P5 remains blocked before final OOS by
+The entry checklist is recorded complete and #251–#254 execution receipts
+exist, but the audit decision leaves those receipts pending requalification and
+not qualified #204 evidence. P5 remains blocked before final OOS by
 [P5_PRE_OOS_GATE.md](P5_PRE_OOS_GATE.md). The holdout stays sealed until every
 #204 gate is met; #205 remains undecided.
 

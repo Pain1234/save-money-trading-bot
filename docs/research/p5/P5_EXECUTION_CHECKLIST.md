@@ -7,8 +7,7 @@ Current phase authority: [P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 
 P5 becomes executable only when all are evidenced:
 
-- [ ] P4 complete on current `main` — **acceptance evidence recorded, but human
-  closure of #250/#295 remains pending; do not weaken this prerequisite**
+- [x] P4 complete on current `main` — #250 and #295 closed; PR #365 merged
 - [x] Material P4 regression tests green (commands + log referenced on P5-00 / `P5_CANDIDATE_FREEZE.md`)
 - [x] ExperimentSpec versioned
 - [x] RunManifest immutable

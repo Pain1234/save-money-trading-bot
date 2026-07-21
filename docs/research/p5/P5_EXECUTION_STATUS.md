@@ -20,10 +20,13 @@ not for the current P5 gate snapshot reconciled by #395.
 ## Authoritative public narrative
 
 - [Audit #371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
-  [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372),
-  finding `AUD-P2-008`: the audit decision is `BLOCK_P5`. No further P5
-  execution may occur until the applicable remediation is independently
-  reverified and the block is explicitly lifted.
+  [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372):
+  the overall audit decision is `BLOCK_P5`. That decision follows from the audit
+  as a whole, not from `AUD-P2-008` alone. No further P5 execution may occur
+  until the audit exit criteria are independently reverified and the block is
+  explicitly lifted.
+- `AUD-P2-008` is the public status-consistency finding remediated by #395. Its
+  remediation does not lift the overall audit decision.
 - [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196):
   candidate freeze approved and pin refreshed. The issue remaining open does not
   mean the freeze is unsigned.
@@ -32,10 +35,9 @@ not for the current P5 gate snapshot reconciled by #395.
   [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253), and
   [#254](https://github.com/Pain1234/save-money-trading-bot/issues/254):
   sealed pre-OOS execution receipts are present and technically cross-checked,
-  but they are **pending requalification** because the broader entry checklist
-  is not complete and the audit records `BLOCK_P5`. Their economic results
-  remain private; execution is neither qualified #204 evidence nor a promotion
-  decision.
+  but they are **pending requalification** under the overall audit
+  `BLOCK_P5` decision. Their economic results remain private; execution is
+  neither qualified #204 evidence nor a promotion decision.
 - [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204):
   final untouched OOS has **not** run. The holdout remains sealed and execution
   is blocked by the audit decision plus the forward-window, warmup, and human
