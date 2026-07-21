@@ -32,20 +32,30 @@ class PostgresDatasetCatalog:
                     :raw_dataset_id, :content_hash, :storage_relpath, :source,
                     CAST(:fetch_metadata AS jsonb)
                 )
-            ON CONFLICT (raw_dataset_id) DO NOTHING
+            ON CONFLICT (raw_dataset_id) DO UPDATE
+            SET content_hash = EXCLUDED.content_hash
+            WHERE market_data_raw_artifacts.content_hash = EXCLUDED.content_hash
+            RETURNING content_hash
             """
         )
-        with self._engine.begin() as conn:
-            conn.execute(
-                stmt,
-                {
-                    "raw_dataset_id": record.raw_dataset_id,
-                    "content_hash": record.content_hash,
-                    "storage_relpath": record.storage_relpath,
-                    "source": record.source,
-                    "fetch_metadata": json.dumps(record.fetch_metadata),
-                },
-            )
+        try:
+            with self._engine.begin() as conn:
+                stored_hash = conn.execute(
+                    stmt,
+                    {
+                        "raw_dataset_id": record.raw_dataset_id,
+                        "content_hash": record.content_hash,
+                        "storage_relpath": record.storage_relpath,
+                        "source": record.source,
+                        "fetch_metadata": json.dumps(record.fetch_metadata),
+                    },
+                ).scalar_one_or_none()
+                if stored_hash is None:
+                    raise DatasetCatalogError("raw_dataset_id conflict")
+        except DatasetCatalogError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise DatasetCatalogError(str(exc)) from exc
 
     def publish_dataset(self, manifest: DatasetManifest) -> DatasetManifest:
         published = manifest.with_dataset_id()
@@ -55,25 +65,36 @@ class PostgresDatasetCatalog:
             INSERT INTO market_data_datasets
                 (dataset_id, schema_version, manifest, raw_dataset_id, parent_dataset_id,
                  quality_status, layer)
-            VALUES
-                (:dataset_id, :schema_version, CAST(:manifest AS jsonb), :raw_dataset_id,
-                 :parent_dataset_id, :quality_status, :layer)
+            SELECT
+                :dataset_id, :schema_version, CAST(:manifest AS jsonb), raw_dataset_id,
+                :parent_dataset_id, :quality_status, :layer
+            FROM market_data_raw_artifacts
+            WHERE raw_dataset_id = :raw_dataset_id
+              AND content_hash = :raw_content_hash
+            RETURNING dataset_id
             """
         )
         try:
             with self._engine.begin() as conn:
-                conn.execute(
+                dataset_id = conn.execute(
                     stmt,
                     {
                         "dataset_id": published.dataset_id,
                         "schema_version": published.schema_version,
                         "manifest": json.dumps(published.to_catalog_dict()),
                         "raw_dataset_id": published.raw_dataset_id,
+                        "raw_content_hash": published.raw_content_hash,
                         "parent_dataset_id": published.parent_dataset_id,
                         "quality_status": published.quality_status.value,
                         "layer": published.layer,
                     },
-                )
+                ).scalar_one_or_none()
+                if dataset_id is None:
+                    raise DatasetCatalogError(
+                        "raw artifact hash mismatch or unknown raw_dataset_id"
+                    )
+        except DatasetCatalogError:
+            raise
         except Exception as exc:  # noqa: BLE001
             raise DatasetCatalogError(str(exc)) from exc
         return published

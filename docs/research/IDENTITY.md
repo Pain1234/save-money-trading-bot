@@ -10,6 +10,9 @@
 
 **Excluded from `experiment_id`:** `owner`, `notes`.
 
+`parameters` participating in identity are the **effective** StrategyParameters snapshot
+(unknown keys rejected; defaults applied) per AUD-P1-002 / [#375](https://github.com/Pain1234/save-money-trading-bot/issues/375).
+
 ## RunManifest
 
 - Schema version `1.0` (`services/research/schema/run_manifest.schema.json`)
