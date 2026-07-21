@@ -231,7 +231,12 @@ class PaperE2EHarness:
         self.repo = repository
         self.config = config
         self.clock = clock or FixedClock(datetime(2024, 1, 1, tzinfo=UTC))
-        self.orchestrator = PaperTradingOrchestrator(repository, config, clock=self.clock)
+        self.orchestrator = PaperTradingOrchestrator(
+            repository,
+            config,
+            clock=self.clock,
+            market_data_ready=lambda: True,
+        )
         self.strategy_params = StrategyParameters()
         self.risk_params = DEFAULT_RISK
 

@@ -52,8 +52,12 @@ def _build_bridge(
     clock: FixedClock,
     lock: PostgresAdvisoryLock,
 ) -> MarketEventBridge:
-    orchestrator = PaperTradingOrchestrator(repo, config, clock=clock)
-    orchestrator.scheduler._market_data_ready = lambda: md.status(clock.now()).readiness  # noqa: SLF001
+    orchestrator = PaperTradingOrchestrator(
+        repo,
+        config,
+        clock=clock,
+        market_data_ready=lambda: md.status(clock.now()).readiness,
+    )
     orchestrator.scheduler.set_jobs_enabled(True)
     constraints = StaticSymbolConstraintsProvider(btc_eth_sol_constraints())
     context_builder = ProductionContextBuilder(
