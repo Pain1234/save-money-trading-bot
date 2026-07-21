@@ -96,6 +96,15 @@ class PaperTradingRepository:
         row = self._session.get(RuntimeStateRow, RUNTIME_SINGLETON_ID)
         return runtime_row_to_domain(row) if row else None
 
+    def get_runtime_state_for_update(self) -> RuntimeState | None:
+        """Lock the singleton so control changes serialize with new-risk writes."""
+        row = self._session.execute(
+            select(RuntimeStateRow)
+            .where(RuntimeStateRow.instance_id == RUNTIME_SINGLETON_ID)
+            .with_for_update()
+        ).scalar_one_or_none()
+        return runtime_row_to_domain(row) if row else None
+
     def update_runtime_state(
         self,
         *,

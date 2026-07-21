@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -45,7 +45,41 @@ class ExperimentRegistry:
         self.invalidation_dir = root / "artifacts" / "research" / "invalidations"
         self.artifacts_root = root / "artifacts" / "research"
 
+    def invalidation_sidecar_path(self, run_id: str) -> Path:
+        return self.invalidation_dir / f"{run_id}.jsonl"
+
+    def _sidecar_marks_invalidated(self, run_id: str) -> bool:
+        """Return whether the authoritative sidecar invalidates ``run_id``."""
+        sidecar = self.invalidation_sidecar_path(run_id)
+        if not sidecar.is_file():
+            return False
+        try:
+            text = sidecar.read_text(encoding="utf-8")
+        except OSError:
+            return True
+        if not text.strip():
+            return True
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                return True
+            if not isinstance(raw, dict):
+                return True
+            if str(raw.get("status") or "") == "invalidated":
+                return True
+            if str(raw.get("run_id") or "") == run_id:
+                return True
+        return True
+
     def _append(self, record: dict[str, Any]) -> None:
+        run_id = str(record.get("run_id") or "")
+        status = str(record.get("status") or "")
+        if run_id and status != "invalidated" and self._sidecar_marks_invalidated(run_id):
+            msg = f"run_id invalidated — reactivation forbidden: {run_id}"
+            raise ValueError(msg)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -63,6 +97,9 @@ class ExperimentRegistry:
         artifact_path: Path,
         checksums: dict[str, str],
     ) -> None:
+        if self._sidecar_marks_invalidated(run_id):
+            msg = f"run_id invalidated — reactivation forbidden: {run_id}"
+            raise ValueError(msg)
         if any(e.run_id == run_id and e.status == "complete" for e in self.list_entries()):
             msg = f"duplicate complete run_id forbidden: {run_id}"
             raise ValueError(msg)
@@ -94,7 +131,13 @@ class ExperimentRegistry:
             }
         )
 
+    def _apply_sidecar(self, entry: RegistryEntry) -> RegistryEntry:
+        if self._sidecar_marks_invalidated(entry.run_id):
+            return replace(entry, status="invalidated")
+        return entry
+
     def list_entries(self) -> list[RegistryEntry]:
+        """Append history with authoritative sidecar invalidation applied."""
         if not self.path.exists():
             return []
         entries: list[RegistryEntry] = []
@@ -103,18 +146,23 @@ class ExperimentRegistry:
                 continue
             raw = json.loads(line)
             entries.append(
-                RegistryEntry(
-                    experiment_id=str(raw["experiment_id"]),
-                    run_id=str(raw["run_id"]),
-                    attempt_id=str(raw["attempt_id"]),
-                    status=raw["status"],
-                    strategy_version=str(raw["strategy_version"]),
-                    dataset_version=str(raw["dataset_version"]),
-                    cost_model_version=str(raw["cost_model_version"]),
-                    benchmark_ref=str(raw["benchmark_ref"]),
-                    created_at=str(raw["created_at"]),
-                    artifact_path=str(raw["artifact_path"]),
-                    checksums={str(k): str(v) for k, v in raw.get("checksums", {}).items()},
+                self._apply_sidecar(
+                    RegistryEntry(
+                        experiment_id=str(raw["experiment_id"]),
+                        run_id=str(raw["run_id"]),
+                        attempt_id=str(raw["attempt_id"]),
+                        status=raw["status"],
+                        strategy_version=str(raw["strategy_version"]),
+                        dataset_version=str(raw["dataset_version"]),
+                        cost_model_version=str(raw["cost_model_version"]),
+                        benchmark_ref=str(raw["benchmark_ref"]),
+                        created_at=str(raw["created_at"]),
+                        artifact_path=str(raw["artifact_path"]),
+                        checksums={
+                            str(k): str(v)
+                            for k, v in raw.get("checksums", {}).items()
+                        },
+                    )
                 )
             )
         return entries
@@ -153,7 +201,7 @@ class ExperimentRegistry:
             msg = f"run already invalidated: {run_id}"
             raise ValueError(msg)
         self.invalidation_dir.mkdir(parents=True, exist_ok=True)
-        sidecar = self.invalidation_dir / f"{run_id}.jsonl"
+        sidecar = self.invalidation_sidecar_path(run_id)
         record = {
             "run_id": run_id,
             "status": "invalidated",
@@ -268,22 +316,28 @@ class ExperimentRegistry:
                     costs = json.loads(costs_path.read_text(encoding="utf-8"))
                     cost_ver = str(costs.get("cost_model_version", "1.0"))
                 rebuilt.append(
-                    RegistryEntry(
-                        experiment_id=str(manifest["experiment_id"]),
-                        run_id=str(manifest["run_id"]),
-                        attempt_id=str(manifest["attempt_id"]),
-                        status="complete"
-                        if manifest.get("status") == "complete"
-                        else "failed",
-                        strategy_version=str(manifest.get("strategy_version", "")),
-                        dataset_version=str(
-                            experiment.get("dataset_manifest_ref", {}).get("dataset_id", "")
-                        ),
-                        cost_model_version=cost_ver,
-                        benchmark_ref=str(experiment.get("benchmark", "")),
-                        created_at=str(manifest.get("created_at_utc", "")),
-                        artifact_path=str(run_dir),
-                        checksums=load_checksums(run_dir),
+                    self._apply_sidecar(
+                        RegistryEntry(
+                            experiment_id=str(manifest["experiment_id"]),
+                            run_id=str(manifest["run_id"]),
+                            attempt_id=str(manifest["attempt_id"]),
+                            status=(
+                                "complete"
+                                if manifest.get("status") == "complete"
+                                else "failed"
+                            ),
+                            strategy_version=str(manifest.get("strategy_version", "")),
+                            dataset_version=str(
+                                experiment.get("dataset_manifest_ref", {}).get(
+                                    "dataset_id", ""
+                                )
+                            ),
+                            cost_model_version=cost_ver,
+                            benchmark_ref=str(experiment.get("benchmark", "")),
+                            created_at=str(manifest.get("created_at_utc", "")),
+                            artifact_path=str(run_dir),
+                            checksums=load_checksums(run_dir),
+                        )
                     )
                 )
         return rebuilt

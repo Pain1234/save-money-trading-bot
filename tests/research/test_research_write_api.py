@@ -98,7 +98,7 @@ def write_client(
 
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
     yield client, payload
     app.dependency_overrides.pop(get_research_service, None)
     app.dependency_overrides.pop(get_research_write_service, None)
@@ -473,7 +473,7 @@ def test_committed_local_lab_fixture_run_completes(
 
     app.dependency_overrides[get_research_service] = _read
     app.dependency_overrides[get_research_write_service] = _write
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-API-Key": "research-test-key"})
     try:
         payload = {
             "strategy_id": "trend_v1",

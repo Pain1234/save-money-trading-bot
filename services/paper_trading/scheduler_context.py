@@ -92,7 +92,7 @@ class ProductionContextBuilder:
         runtime = self._repo.get_runtime_state()
         if runtime is None:
             return False, False, False
-        paused = runtime.status == RuntimeStatus.PAUSED
+        paused = runtime.paused
         kill = runtime.kill_switch
         entry_ready = runtime.status == RuntimeStatus.READY and not kill and not paused
         return entry_ready, paused, kill

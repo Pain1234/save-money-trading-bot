@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -23,8 +24,12 @@ from strategy_engine.models import (
 from paper_trading.config import ALLOWED_SYMBOLS, PaperTradingConfig
 from paper_trading.db.orm import TradeIntentRow
 from paper_trading.db.transaction import transaction_scope
-from paper_trading.enums import PaperSide, TradeIntentStatus
-from paper_trading.execution import EntryExecutionRejected, PaperFillService
+from paper_trading.enums import PaperSide, RuntimeStatus, TradeIntentStatus
+from paper_trading.execution import (
+    EntryExecutionRejected,
+    PaperFillService,
+    TransactionalFillResult,
+)
 from paper_trading.ids import entry_type_to_signal_type, trade_intent_key
 from paper_trading.models import (
     PaperExecutionConfig,
@@ -54,6 +59,61 @@ class EntryGateContext:
     open_position_count: int
     has_symbol_position: bool
     has_nonterminal_intent: bool
+
+
+@dataclass(frozen=True)
+class EntryAuthorization:
+    """Final fail-closed authorization for creating new paper risk."""
+
+    allowed: bool
+    reasons: tuple[str, ...]
+    paused: bool = False
+    kill_switch: bool = False
+
+
+def evaluate_final_entry_authorization(
+    repo: PaperTradingRepository,
+    *,
+    config: PaperTradingConfig,
+    market_data_ready: bool,
+    evaluated_at: datetime,
+    lock_runtime: bool = False,
+) -> EntryAuthorization:
+    """Read current persisted controls and readiness immediately before new risk."""
+    if evaluated_at.tzinfo is None:
+        raise ValueError("evaluated_at must be timezone-aware UTC")
+
+    repo.session.expire_all()
+    runtime = (
+        repo.get_runtime_state_for_update()
+        if lock_runtime
+        else repo.get_runtime_state()
+    )
+    if runtime is None:
+        return EntryAuthorization(False, ("runtime_state_missing",))
+
+    reasons: list[str] = []
+    if runtime.status != RuntimeStatus.READY:
+        reasons.append("runtime_not_ready")
+    if runtime.last_error:
+        reasons.append("last_error_set")
+    if (
+        evaluated_at - runtime.heartbeat_at
+        > timedelta(seconds=config.stale_runtime_threshold_seconds)
+    ):
+        reasons.append("stale_heartbeat")
+    if not market_data_ready:
+        reasons.append("market_data_not_ready")
+    if runtime.paused:
+        reasons.append("paused")
+    if runtime.kill_switch:
+        reasons.append("kill_switch")
+    return EntryAuthorization(
+        allowed=not reasons,
+        reasons=tuple(reasons),
+        paused=runtime.paused,
+        kill_switch=runtime.kill_switch,
+    )
 
 
 def _pending_intents_for_open_batch(
@@ -175,12 +235,32 @@ def create_intent_from_evaluation(
     config: PaperTradingConfig,
     cycle_id: UUID | None = None,
     created_at: datetime,
+    authorization_at: datetime,
+    market_data_ready: Callable[[], bool],
 ) -> tuple[TradeIntent | None, bool, tuple[str, ...]]:
+    try:
+        current_market_data_ready = market_data_ready()
+    except Exception:
+        current_market_data_ready = False
+    authorization = evaluate_final_entry_authorization(
+        repo,
+        config=config,
+        market_data_ready=current_market_data_ready,
+        evaluated_at=authorization_at,
+        lock_runtime=True,
+    )
+    entry_gates = replace(
+        entry_gates,
+        entry_ready=entry_gates.entry_ready and authorization.allowed,
+        paused=authorization.paused,
+        kill_switch=authorization.kill_switch,
+    )
     blocked = check_entry_gates(
         symbol=evaluation.symbol,
         entry_gates=entry_gates,
         strategy_eval=strategy_eval,
     )
+    blocked = tuple(dict.fromkeys((*blocked, *authorization.reasons)))
     if blocked:
         return None, False, blocked
 
@@ -246,6 +326,8 @@ def process_scheduled_intents_for_open(
     process_time: datetime,
     fill_delay_seconds: int,
     symbol_contexts: dict[str, FillProcessingContext],
+    config: PaperTradingConfig,
+    market_data_ready: Callable[[], bool],
     cycle_id: UUID | None = None,
 ) -> tuple[FillBatchResult, ...]:
     """Process due scheduled intents in BTC → ETH → SOL order."""
@@ -278,35 +360,62 @@ def process_scheduled_intents_for_open(
                 skipped += 1
                 continue
             processed += 1
-            validate_intent_transition(intent.status, TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE)
+            try:
+                current_market_data_ready = market_data_ready()
+            except Exception:
+                current_market_data_ready = False
+            outcome: TransactionalFillResult | EntryExecutionRejected | None = None
             with transaction_scope(repo.session):
-                repo.update_intent_status(
-                    intent.intent_id,
-                    TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE.value,
-                    updated_at=process_time,
-                )
-
-            outcome = fill_service.execute_scheduled_paper_fill(
-                intent=intent,
-                atr14=ctx.atr14,
-                open_ref=ctx.open_ref,
-                candle_open_time=ctx.candle_open_time,
-                constraints=ctx.constraints,
-                strategy_params=ctx.strategy_params,
-                risk_params=ctx.risk_params,
-                execution_config=ctx.execution_config,
-                day_candles=ctx.day_candles,
-                prior_closes=ctx.prior_closes,
-                processed_intent_ids=processed_intent_ids,
-                pending_intents=_pending_intents_for_open_batch(
+                authorization = evaluate_final_entry_authorization(
                     repo,
-                    candle_open_time=ctx.candle_open_time,
-                    current_symbol=symbol,
-                    symbol_contexts=symbol_contexts,
-                    skip_intent_keys=processed_intent_ids,
-                ),
-                cycle_id=cycle_id,
-            )
+                    config=config,
+                    market_data_ready=current_market_data_ready,
+                    evaluated_at=process_time,
+                    lock_runtime=True,
+                )
+                if not authorization.allowed:
+                    validate_intent_transition(intent.status, TradeIntentStatus.CANCELLED)
+                    repo.update_intent_status(
+                        intent.intent_id,
+                        TradeIntentStatus.CANCELLED.value,
+                        rejection_reason={"reason_codes": list(authorization.reasons)},
+                        updated_at=process_time,
+                    )
+                else:
+                    validate_intent_transition(
+                        intent.status,
+                        TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE,
+                    )
+                    repo.update_intent_status(
+                        intent.intent_id,
+                        TradeIntentStatus.SUBMITTED_TO_PAPER_ENGINE.value,
+                        updated_at=process_time,
+                    )
+                    outcome = fill_service.execute_scheduled_paper_fill(
+                        intent=intent,
+                        atr14=ctx.atr14,
+                        open_ref=ctx.open_ref,
+                        candle_open_time=ctx.candle_open_time,
+                        constraints=ctx.constraints,
+                        strategy_params=ctx.strategy_params,
+                        risk_params=ctx.risk_params,
+                        execution_config=ctx.execution_config,
+                        day_candles=ctx.day_candles,
+                        prior_closes=ctx.prior_closes,
+                        processed_intent_ids=processed_intent_ids,
+                        pending_intents=_pending_intents_for_open_batch(
+                            repo,
+                            candle_open_time=ctx.candle_open_time,
+                            current_symbol=symbol,
+                            symbol_contexts=symbol_contexts,
+                            skip_intent_keys=processed_intent_ids,
+                        ),
+                        cycle_id=cycle_id,
+                    )
+            if not authorization.allowed:
+                skipped += 1
+                continue
+            assert outcome is not None
             processed_intent_ids = frozenset(
                 processed_intent_ids | {intent.idempotency_key}
             )
