@@ -16,6 +16,7 @@ class ReconstructedWallet:
     total_slippage: Decimal
     total_realized_pnl: Decimal
     open_margin: Decimal
+    total_funding: Decimal
 
 
 def reconstruct_wallet(
@@ -49,6 +50,11 @@ def reconstruct_wallet(
         cash += net_pnl
         realized += net_pnl
 
+    funding_events = repo.list_funding_events()
+    total_funding = Decimal(sum((e.amount for e in funding_events), Decimal("0")))
+    # Funding adjusts cash once per event (V1 may keep funding disabled at zero).
+    cash += total_funding
+
     open_margin = Decimal(sum(p.margin_reserved for p in repo.get_open_positions()))
     return ReconstructedWallet(
         cash=cash,
@@ -56,6 +62,7 @@ def reconstruct_wallet(
         total_slippage=slippage,
         total_realized_pnl=realized,
         open_margin=open_margin,
+        total_funding=total_funding,
     )
 
 
@@ -90,6 +97,24 @@ def verify_accounting_independent(
             "wallet realized_pnl mismatch: "
             f"db={wallet.total_realized_pnl} reconstructed={reconstructed.total_realized_pnl}"
         )
+    if wallet.total_funding != reconstructed.total_funding:
+        issues.append(
+            "wallet funding mismatch: "
+            f"db={wallet.total_funding} reconstructed={reconstructed.total_funding}"
+        )
+    if wallet.total_funding != 0 and reconstructed.total_funding == 0:
+        issues.append(
+            "wallet total_funding nonzero without funding events: "
+            f"db={wallet.total_funding}"
+        )
+
+    funding_keys: dict[str, int] = {}
+    for event in repo.list_funding_events():
+        key = event.deterministic_key
+        funding_keys[key] = funding_keys.get(key, 0) + 1
+    for key, count in funding_keys.items():
+        if count > 1:
+            issues.append(f"duplicate funding event key {key}")
 
     exit_fills_by_position: dict[str, int] = {}
     for fill in repo.list_all_fills():
