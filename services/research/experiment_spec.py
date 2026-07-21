@@ -23,11 +23,34 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from strategy_engine.models import StrategyParameters
 
 from research.validation import assert_no_secrets, validate_against_json_schema
 
 EXPERIMENT_SPEC_SCHEMA_VERSION = "1.0"
 ALLOWED_SYMBOLS: frozenset[str] = frozenset(s.value for s in MarketSymbol)
+# Catalog metadata inside parameters; not StrategyParameters fields.
+_PARAMETER_META_KEYS: frozenset[str] = frozenset({"strategy_id"})
+
+
+def bind_effective_parameters(
+    *,
+    strategy_version: str,
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Reject unknown keys and return effective StrategyParameters (+ optional strategy_id).
+
+    ``strategy_version`` is validated against StrategyParameters but stored on the Spec
+    root, not re-emitted into ``parameters``.
+    """
+    meta = {k: parameters[k] for k in _PARAMETER_META_KEYS if k in parameters}
+    engine_raw = {k: v for k, v in parameters.items() if k not in _PARAMETER_META_KEYS}
+    params = StrategyParameters.model_validate(
+        {"strategy_version": strategy_version, **engine_raw}
+    )
+    effective = params.model_dump(mode="json")
+    del effective["strategy_version"]
+    return {**effective, **meta}
 
 
 class DatasetManifestRef(BaseModel):
@@ -194,6 +217,17 @@ class ExperimentSpec(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _bind_effective_strategy_parameters(self) -> ExperimentSpec:
+        """Fail closed on unknown keys; bind identity to effective StrategyParameters."""
+        bound = bind_effective_parameters(
+            strategy_version=self.strategy_version,
+            parameters=dict(self.parameters),
+        )
+        if bound == self.parameters:
+            return self
+        return self.model_copy(update={"parameters": bound})
 
 
 def parse_experiment_spec(
