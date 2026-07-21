@@ -52,6 +52,12 @@ python scripts/reconcile_accounting.py
 **Fail:** S2 — stop worker on Railway (see [kill-switch](kill-switch.md)), file incident,
 do not deploy strategy changes until resolved.
 
+The same independent reconstruction is a startup readiness gate (AUD-P1-008). Recovery
+must not transition to `READY` when it finds a mismatch: runtime remains `DEGRADED`,
+entry readiness remains false, and audit event `ACCOUNTING_RECONCILIATION_INCIDENT`
+captures the mismatch details. Treat that event like a failed manual reconciliation:
+stop the worker, preserve the database state, and file an incident before restart.
+
 Automated test reference: `tests/paper_trading/test_accounting_verification.py` (CI `postgres`).
 
 ---

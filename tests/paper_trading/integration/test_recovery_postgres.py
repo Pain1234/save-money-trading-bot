@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 from paper_trading.config import PaperTradingConfig
@@ -39,6 +40,37 @@ def test_recovery_on_clean_database_reaches_ready(db_session) -> None:
     runtime = repo.get_runtime_state()
     assert runtime is not None
     assert runtime.status == RuntimeStatus.READY
+
+
+@requires_postgres
+def test_recovery_wallet_mismatch_stays_non_ready_and_emits_incident(db_session) -> None:
+    repo = PaperTradingRepository(db_session)
+    repo.update_wallet(cash_delta=Decimal("1"))
+    config = PaperTradingConfig.from_env(database_url=_postgres_url())
+    lock = InMemoryAdvisoryLock("accounting-mismatch-test")
+    assert lock.try_acquire()
+
+    result = recover_on_startup(
+        repo,
+        config,
+        lock,
+        market_data_ready=True,
+    )
+
+    assert result.final_status == RuntimeStatus.DEGRADED
+    assert result.entry_readiness is False
+    assert any(issue.code == "accounting_reconciliation_mismatch" for issue in result.issues)
+    runtime = repo.get_runtime_state()
+    assert runtime is not None
+    assert runtime.status == RuntimeStatus.DEGRADED
+    assert runtime.last_error == "accounting_reconciliation_mismatch"
+    incidents = [
+        event
+        for event in repo.list_audit_events(limit=20)
+        if event.event_type == "ACCOUNTING_RECONCILIATION_INCIDENT"
+    ]
+    assert len(incidents) == 1
+    assert "wallet cash mismatch" in incidents[0].payload_json["mismatches"][0]
 
 
 @requires_postgres

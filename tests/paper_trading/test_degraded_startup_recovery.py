@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -74,6 +75,14 @@ def _stateful_repo(
     repo.list_all_intents.return_value = ()
     repo.list_all_positions.return_value = ()
     repo.list_all_fills.return_value = ()
+    repo.list_positions.return_value = ()
+    repo.get_open_positions.return_value = ()
+    repo.get_wallet.return_value = MagicMock(
+        cash=Decimal("100000"),
+        total_fees=Decimal("0"),
+        total_slippage=Decimal("0"),
+        total_realized_pnl=Decimal("0"),
+    )
     repo.count_open_positions_by_symbol.return_value = {}
     repo.session.execute.return_value = None
     repo.session.begin.return_value.__enter__ = MagicMock(return_value=None)
@@ -114,8 +123,13 @@ def test_recover_from_degraded_ready_path_runs_migration_and_checks() -> None:
     with patch.object(service, "_migration_at_head", return_value=True) as migration:
         with patch.object(service, "run_consistency_checks", return_value=[]) as checks:
             with patch.object(service, "apply_auto_repairs", return_value=[]) as repairs:
-                with patch.object(service, "_capture_recovery_snapshot") as snapshot:
-                    result = service.recover_on_startup(lock, market_data_ready=True)
+                with patch.object(
+                    service, "run_accounting_verification", return_value=None
+                ):
+                    with patch.object(service, "_capture_recovery_snapshot") as snapshot:
+                        result = service.recover_on_startup(
+                            lock, market_data_ready=True
+                        )
 
     migration.assert_called_once()
     assert checks.call_count == 2
