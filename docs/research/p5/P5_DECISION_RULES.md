@@ -1,6 +1,10 @@
 # P5 Decision Rules (ACCEPT / REJECT / INCONCLUSIVE)
 
-**Status:** GATES PROPOSED — awaiting human freeze
+**Status at authoring:** GATES PROPOSED — awaiting human freeze
+**Lifecycle note:** This contract preserves authoring-time proposal and sign-off
+fields. Current P5 phase and gate status, including the still-unrecorded #205
+decision, is maintained only in
+[P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) / [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205)
 **Hard rule:** Freeze before final OOS. No post-hoc threshold changes. Positive return alone never promotes.
 

@@ -1,7 +1,55 @@
 # P5 Execution Status
 
-**Updated:** 2026-07-19 (post PR #369 merge `c469b65…`)
+**Authority:** This document is the single public Source of Truth within
+`docs/research/p5/` for current P5 phase and gate status. Other files in this
+directory define contracts, checklists, or historical handoffs; authoring-time
+status and sign-off fields in those files must not override this ledger.
+**Updated:** 2026-07-21 (AUD-P2-008 reconciliation; no new execution)
 **Holdout opened?** `NO`
+**Current phase:** **AUDIT-BLOCKED BEFORE OOS** — prerequisite robustness
+execution receipts exist but are pending requalification; P5 itself is not
+complete, the audit decision blocks further P5 execution, and no final decision
+exists.
+
+For current P5 lifecycle status, this ledger explicitly supersedes the stale
+`ROADMAP.md` statements that P5 is “Planning” with no #251–#254 execution and
+the stale ADR-020 “pending” lifecycle field in `docs/DECISION_LOG.md`. Those
+documents remain authoritative for roadmap structure and decision content, but
+not for the current P5 gate snapshot reconciled by #395.
+
+## Authoritative public narrative
+
+- [Audit #371](https://github.com/Pain1234/save-money-trading-bot/issues/371) /
+  [PR #372](https://github.com/Pain1234/save-money-trading-bot/pull/372):
+  the overall audit decision is `BLOCK_P5`. That decision follows from the audit
+  as a whole, not from `AUD-P2-008` alone. No further P5 execution may occur
+  until the audit exit criteria are independently reverified and the block is
+  explicitly lifted.
+- `AUD-P2-008` is the public status-consistency finding remediated by #395. Its
+  remediation does not lift the overall audit decision.
+- [#196](https://github.com/Pain1234/save-money-trading-bot/issues/196):
+  candidate freeze approved and pin refreshed. The issue remaining open does not
+  mean the freeze is unsigned.
+- [#251](https://github.com/Pain1234/save-money-trading-bot/issues/251),
+  [#252](https://github.com/Pain1234/save-money-trading-bot/issues/252),
+  [#253](https://github.com/Pain1234/save-money-trading-bot/issues/253), and
+  [#254](https://github.com/Pain1234/save-money-trading-bot/issues/254):
+  sealed pre-OOS execution receipts are present and technically cross-checked,
+  but they are **pending requalification** under the overall audit
+  `BLOCK_P5` decision. Their economic results remain private; execution is
+  neither qualified #204 evidence nor a promotion decision.
+- [#204](https://github.com/Pain1234/save-money-trading-bot/issues/204):
+  final untouched OOS has **not** run. The holdout remains sealed and execution
+  is blocked by the audit decision plus the forward-window, warmup, and human
+  Pre-OOS gates below.
+- [#205](https://github.com/Pain1234/save-money-trading-bot/issues/205):
+  no `ACCEPT_FOR_P6`, `REJECT`, or `INCONCLUSIVE` decision has been recorded;
+  this remains blocked by #204.
+
+GitHub issue open/closed state is workflow metadata, not evidence that an
+execution or gate is incomplete. The status above is supported only by the
+linked public comments and public, non-economic receipts. No private economic
+metric is reproduced here.
 
 ## Wave completion (public core)
 
@@ -19,13 +67,15 @@ One GitHub issue per branch/PR (AGENTS.md / DoD). No silent multi-issue bundling
 | 5b | #201 | Cost-stress scenarios | Helpers on `main`; execution = #252 |
 | 5c | #202 | Parameter neighborhood | Helpers on `main`; execution = #253 |
 | 5d | #203 | Path bootstrap helper | Helpers on `main`; execution = #254 |
-| 6 | #204 | Pre-OOS gate checklist | Docs merged (PR #369); **awaiting human `PRE-OOS APPROVED` + ≥90d forward window** — see `P5_PRE_OOS_GATE.md` |
+| 6 | #204 | Pre-OOS gate checklist | **Audit-blocked**; also awaiting human `PRE-OOS APPROVED` + ≥90d forward window — see `P5_PRE_OOS_GATE.md` |
 | 7 | #205 | Decision process / ADR | After #204 once |
 
 ## Pre-OOS hard stop (#204)
 
 Do **not** open holdout C until all are true:
 
+- [ ] Audit `BLOCK_P5` decision (#371 / PR #372) independently reverified and
+  explicitly lifted
 - [x] #181 merged / private store usable
 - [x] Human `FREEZE APPROVED` on #196 (prior pin `35b4fa6…` @ 2026-07-19T12:54:01Z)
 - [x] Human `FREEZE PIN REFRESHED` on #196 for public-core `aa0e232…` (2026-07-19T15:47:02Z)
@@ -34,7 +84,8 @@ Do **not** open holdout C until all are true:
 - [x] Human benchmark/regime approval on #199 (`BENCHMARKS AND REGIMES APPROVED`)
 - [x] Human scorecard/policy bind sign-off on #294 (`SCORECARD POLICY BIND FROZEN`; Holdout remains closed)
 - [x] #363 sealed symbol constraints merged on `main` (PR #366 @ `aa0e232…`; prior private Partition B packs invalidated)
-- [x] Private robustness packs #251–#254 complete on sealed SHA (private PRs #2–#5; Phase-3 cross-check **130/0**)
+- [ ] #251–#254 execution receipts present on sealed SHA, but pending
+  requalification after the entry and audit blockers clear
 - [ ] Forward holdout length ≥ sample-sufficiency min (90 calendar days per frozen protocol) **and** feature warmup satisfied for the evaluation engine
 - [ ] Human pre-OOS approval recorded (`PRE-OOS APPROVED` on #204 + Decision Log process note)
 
@@ -64,12 +115,12 @@ P5 Partition B private executions that ran **before** sealed
 |------|-------|
 | #363 sealed constraints | **Merged** `aa0e232…` |
 | Gate 1 | **Complete** |
-| #251–#254 sealed re-runs | **Complete** (private PRs #2–#5 merged) |
-| Phase 3 cross-check | **PASS** (130/0) — `P5_PHASE3_CROSS_CHECK.md` |
+| #251–#254 sealed re-runs | **EXECUTED / PENDING REQUALIFICATION** |
+| Phase 3 cross-check | Technical receipt present; does not clear entry/audit blockers |
 | Pre-OOS checklist docs | **Merged** PR #369 → `c469b65…` |
 | Sample-sufficiency (90d) | **NOT MET** (~0d elapsed; earliest ~2026-10-17) |
 | Holdout opened? | `NO` / `SEALED` |
-| #204 OOS execution | **BLOCKED** on `PRE-OOS APPROVED` + ≥90d forward window + warmup ack |
+| #204 OOS execution | **BLOCKED** by audit decision, `PRE-OOS APPROVED`, ≥90d forward window, and warmup ack |
 | #205 final decision | **BLOCKED** by #204 |
 | #47 | Remains open until #205 |
 

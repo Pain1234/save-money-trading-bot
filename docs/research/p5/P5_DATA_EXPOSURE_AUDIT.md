@@ -1,6 +1,9 @@
 # P5 Data Exposure Audit
 
-**Status:** PARTITION LOCK PROPOSED — awaiting human approval
+**Status at authoring:** PARTITION LOCK PROPOSED — awaiting human approval
+**Lifecycle note:** This contract preserves authoring-time proposal and sign-off
+fields. Current P5 phase and gate status is maintained only in
+[P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#197](https://github.com/Pain1234/save-money-trading-bot/issues/197) (P5-01)
 **Related:** #47, #181, #196
 

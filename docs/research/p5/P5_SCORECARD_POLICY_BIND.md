@@ -1,6 +1,9 @@
 # P5 Scorecard / Policy Bind (Freeze)
 
-**Status:** `PENDING_HUMAN_SIGN_OFF`
+**Status at authoring:** `PENDING_HUMAN_SIGN_OFF`
+**Lifecycle note:** This contract preserves authoring-time proposal and sign-off
+fields. Current P5 phase and gate status is maintained only in
+[P5_EXECUTION_STATUS.md](P5_EXECUTION_STATUS.md).
 **Issue:** [#294](https://github.com/Pain1234/save-money-trading-bot/issues/294)
 **ADR:** [ADR-020](../../DECISION_LOG.md#adr-020--strategy-v1-validation-binds-frozen-p49-scorecard-policy-versions)
 **Extends:** [#198](https://github.com/Pain1234/save-money-trading-bot/issues/198) / [#199](https://github.com/Pain1234/save-money-trading-bot/issues/199) — does **not** replace them
