@@ -138,3 +138,13 @@ def test_verifier_reports_nonzero_exit_on_wallet_mismatch(e2e_harness: PaperE2EH
     e2e_harness.repo.update_wallet(cash_delta=Decimal("50"))
     issues = verify_accounting_independent(e2e_harness.repo, initial_cash=INITIAL_CASH)
     assert issues
+
+
+def test_nonzero_funding_without_events_detected(e2e_harness: PaperE2EHarness) -> None:
+    """AUD-P1-011: unexpected wallet.total_funding must fail independent reconciliation."""
+    run_deterministic_soak(e2e_harness, days=30, seed=1)
+    repo = e2e_harness.repo
+    assert repo.list_funding_events() == []
+    repo.update_wallet(funding_delta=Decimal("12.34"))
+    issues = verify_accounting_independent(repo, initial_cash=INITIAL_CASH)
+    assert any("funding" in issue for issue in issues)

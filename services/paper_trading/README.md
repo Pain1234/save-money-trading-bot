@@ -159,6 +159,9 @@ See [docs/paper-trading-production-runtime-v1.md](../../docs/paper-trading-produ
 for the market-data event contract, idempotency, look-ahead rules, and integration test.
 
 `funding_enabled` remains `False` in V1 (config rejects `True` fail-closed).
+Independent accounting verification compares `wallet.total_funding` to the sum of
+`funding_events` and fails closed on unexpected nonzero/duplicate funding
+(AUD-P1-011 / #386).
 
 ## Not approved for unsupervised paper trading
 

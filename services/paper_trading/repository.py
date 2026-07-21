@@ -395,6 +395,10 @@ class PaperTradingRepository:
         ).scalar_one()
         return funding_row_to_domain(existing), False
 
+    def list_funding_events(self) -> list[FundingEventRecord]:
+        rows = self._session.execute(select(FundingEventRow)).scalars().all()
+        return [funding_row_to_domain(row) for row in rows]
+
     def insert_or_get_scheduler_run(self, row: SchedulerRunRow) -> tuple[SchedulerRun, bool]:
         soak_run_id = (
             row.soak_run_id if row.soak_run_id is not None else self._active_soak_run_id
